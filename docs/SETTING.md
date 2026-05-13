@@ -2,6 +2,8 @@
 
 本文档定义 Halo 设置面板（`HaloApp/SettingsWindow.swift` 承载）的信息结构、配置项与默认策略。设计目标是让用户在不理解内部概念的情况下，能快速完成"如何召唤 Halo、Halo 如何呈现、在哪些应用里被抑制"的基础设置。
 
+> **v1.1 实施状态 (2026-05)：** §2.1 / §2.2 / §2.3 / §2.4（含 panelScale） / §2.6 / §2.7 / §3.1 / §3.2 / §3.3 / §4 / §5 已落地。设置窗口已改为 sidebar nav + 720×620（不再是 §1 写的 TabView / 560×540），以 `mockups/halo-settings.html` 为视觉契约。§2.5 反馈与动效仍为 roadmap；§3 多 profile 仍为 roadmap。
+
 ## 1. 总体结构
 
 设置面板以 macOS 原生 `TabView` 形式打开，固定四个 Tab：
