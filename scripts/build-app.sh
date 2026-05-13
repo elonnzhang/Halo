@@ -52,6 +52,14 @@ if [[ ! -f Resources/Halo.icns ]]; then
 fi
 cp Resources/Halo.icns "$RESOURCES/Halo.icns"
 
+# Copy *.lproj localization bundles. SwiftUI `Text("key")` looks up keys
+# from `Bundle.main`, so dropping `<lang>.lproj/Localizable.strings` into
+# the .app's main Resources is enough for system locale to pick them up.
+for lproj in Resources/*.lproj; do
+    [ -d "$lproj" ] || continue
+    cp -R "$lproj" "$RESOURCES/"
+done
+
 # Stamp PkgInfo (some Finder paths still read it)
 printf 'APPL????' > "$CONTENTS/PkgInfo"
 

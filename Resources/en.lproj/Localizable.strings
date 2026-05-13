@@ -1,0 +1,53 @@
+/* Settings tab labels */
+"General" = "General";
+"Hotkey" = "Hotkey";
+"Apps" = "Apps";
+"About" = "About";
+
+/* General tab */
+"Layout" = "Layout";
+"Slot count" = "Slot count";
+"Summon position" = "Summon position";
+"At cursor" = "At cursor";
+"Screen center" = "Screen center";
+"Ranking" = "Ranking";
+"Frequency profile" = "Frequency profile";
+"MFU only" = "MFU only";
+"Balanced" = "Balanced";
+"MRU only" = "MRU only";
+"Startup" = "Startup";
+"Launch Halo at login" = "Launch Halo at login";
+"Reset onboarding overlay" = "Reset onboarding overlay";
+"Language" = "Language";
+"Display language" = "Display language";
+"System" = "System";
+"English" = "English";
+"简体中文" = "简体中文";
+"Restart Halo for the language change to take effect." = "Restart Halo for the language change to take effect.";
+
+/* Hotkey tab */
+"Summon hotkey" = "Summon hotkey";
+"Rebind" = "Rebind";
+"Press chord…" = "Press chord…";
+"Reset to ⌘⌥Space" = "Reset to ⌘⌥Space";
+"Press the hotkey to summon instantly; release to commit the highlighted slot." = "Press the hotkey to summon instantly; release to commit the highlighted slot.";
+"Double-tap ⌘ window" = "Double-tap ⌘ window";
+"Second trigger: double-tap ⌘ alone — the second press must land within this window. Hold the second ⌘ to navigate, release to commit." = "Second trigger: double-tap ⌘ alone — the second press must land within this window. Hold the second ⌘ to navigate, release to commit.";
+
+/* Apps tab */
+"Auto" = "Auto";
+"Pin…" = "Pin…";
+"Change" = "Change";
+"Clear" = "Clear";
+"Reset color" = "Reset color";
+"Each slot is either Auto (frequency picks the app) or pinned to a specific app. Pinned apps can have their identity colour overridden inline." = "Each slot is either Auto (frequency picks the app) or pinned to a specific app. Pinned apps can have their identity colour overridden inline.";
+"Hidden pins (slot count too low)" = "Hidden pins (slot count too low)";
+
+/* App picker sheet */
+"Search apps" = "Search apps";
+"Cancel" = "Cancel";
+
+/* About tab */
+"Radial app launcher for macOS — point a direction, switch apps." = "Radial app launcher for macOS — point a direction, switch apps.";
+"GitHub" = "GitHub";
+"License (MIT)" = "License (MIT)";

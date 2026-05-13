@@ -162,6 +162,24 @@ private struct GeneralTab: View {
                     prefs.resetOnboarding()
                 }
             }
+
+            Section {
+                Picker("Display language", selection: Binding(
+                    get: { prefs.appLanguageOverride ?? "system" },
+                    set: { prefs.appLanguageOverride = ($0 == "system" ? nil : $0) }
+                )) {
+                    Text("System").tag("system")
+                    Text("English").tag("en")
+                    Text("简体中文").tag("zh-Hans")
+                }
+                .pickerStyle(.menu)
+            } header: {
+                Text("Language")
+            } footer: {
+                Text("Restart Halo for the language change to take effect.")
+                    .foregroundStyle(.secondary)
+                    .font(.callout)
+            }
         }
         .compatGroupedFormStyle()
     }

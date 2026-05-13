@@ -1,0 +1,53 @@
+/* Settings tab labels */
+"General" = "通用";
+"Hotkey" = "快捷键";
+"Apps" = "应用";
+"About" = "关于";
+
+/* General tab */
+"Layout" = "布局";
+"Slot count" = "槽位数";
+"Summon position" = "召唤位置";
+"At cursor" = "光标位置";
+"Screen center" = "屏幕中心";
+"Ranking" = "排序";
+"Frequency profile" = "排序策略";
+"MFU only" = "最常用";
+"Balanced" = "平衡";
+"MRU only" = "最近用";
+"Startup" = "启动";
+"Launch Halo at login" = "登录时启动 Halo";
+"Reset onboarding overlay" = "重置引导提示";
+"Language" = "语言";
+"Display language" = "界面语言";
+"System" = "跟随系统";
+"English" = "English";
+"简体中文" = "简体中文";
+"Restart Halo for the language change to take effect." = "重启 Halo 后语言更改才会生效。";
+
+/* Hotkey tab */
+"Summon hotkey" = "召唤快捷键";
+"Rebind" = "重新绑定";
+"Press chord…" = "请按下组合键…";
+"Reset to ⌘⌥Space" = "重置为 ⌘⌥Space";
+"Press the hotkey to summon instantly; release to commit the highlighted slot." = "按下快捷键即召唤;松开则提交当前高亮的槽位。";
+"Double-tap ⌘ window" = "双击 ⌘ 间隔";
+"Second trigger: double-tap ⌘ alone — the second press must land within this window. Hold the second ⌘ to navigate, release to commit." = "第二触发方式:单独双击 ⌘——两次按下需在此时间窗内完成。按住第二次 ⌘ 选择槽位,松开提交。";
+
+/* Apps tab */
+"Auto" = "自动";
+"Pin…" = "选择…";
+"Change" = "更改";
+"Clear" = "清除";
+"Reset color" = "重置颜色";
+"Each slot is either Auto (frequency picks the app) or pinned to a specific app. Pinned apps can have their identity colour overridden inline." = "每个槽位可设为「自动」(按使用频率挑选应用) 或手动选择指定应用。已选择的应用可在右侧覆盖识别色。";
+"Hidden pins (slot count too low)" = "已选择但隐藏的应用 (当前槽位不足)";
+
+/* App picker sheet */
+"Search apps" = "搜索应用";
+"Cancel" = "取消";
+
+/* About tab */
+"Radial app launcher for macOS — point a direction, switch apps." = "macOS 环形启动器——指一个方向,切换应用。";
+"GitHub" = "GitHub";
+"License (MIT)" = "许可证 (MIT)";

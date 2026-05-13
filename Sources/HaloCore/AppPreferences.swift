@@ -61,6 +61,7 @@ public final class AppPreferences: ObservableObject {
         static let cmdHoldDuration = "halo.prefs.cmdHoldDuration"
         static let cmdDoubleTapGap = "halo.prefs.cmdDoubleTapGap"
         static let autostart       = "halo.prefs.autostart"
+        static let languageOverride = "halo.prefs.languageOverride"
         static let onboardingShown = "halo.onboarding.shown"
     }
 
@@ -170,6 +171,26 @@ public final class AppPreferences: ObservableObject {
             objectWillChange.send()
             let clamped = max(0.15, min(0.50, newValue))
             defaults.set(clamped, forKey: Keys.cmdDoubleTapGap)
+        }
+    }
+
+    /// User-facing language override. `nil` means follow the system locale.
+    /// Writing also mirrors into `AppleLanguages` so the override survives
+    /// across launches and is picked up by SwiftUI / Foundation localization.
+    /// Takes effect on next launch — SwiftUI's `Text("key")` resolves at view
+    /// build time against `Bundle.main`'s current localization, which only
+    /// re-evaluates after process restart.
+    public var appLanguageOverride: String? {
+        get { defaults.string(forKey: Keys.languageOverride) }
+        set {
+            objectWillChange.send()
+            if let value = newValue {
+                defaults.set(value, forKey: Keys.languageOverride)
+                defaults.set([value], forKey: "AppleLanguages")
+            } else {
+                defaults.removeObject(forKey: Keys.languageOverride)
+                defaults.removeObject(forKey: "AppleLanguages")
+            }
         }
     }
 
