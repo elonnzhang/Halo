@@ -4,6 +4,8 @@ A radial app launcher for macOS, inspired by the colour-wheel mechanic of the pu
 
 Single, self-contained macOS app. **No Accessibility permission** required for the core switching loop.
 
+[中文 README](README_zh.md)
+
 ## Status
 
 **v1.0** — first public release. Full Liquid Glass Halo on macOS 26, NSVisualEffectView fallback on macOS 14/15. Double-tap ⌘ second-trigger. Chroma-weighted hue histogram identity colour extraction. See [CHANGELOG.md](CHANGELOG.md).
