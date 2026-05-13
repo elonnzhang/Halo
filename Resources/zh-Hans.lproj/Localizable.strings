@@ -73,6 +73,55 @@
 "GitHub" = "GitHub";
 "License (MIT)" = "许可证 (MIT)";
 
+/* Settings sidebar v1.1 */
+"Whitelist" = "白名单";
+
+/* General — v1.1 sections */
+"Summon position & ranking" = "召唤位置与排序";
+"Trigger" = "触发键";
+"Hold the chord to summon, release to commit. Or double-tap the auxiliary key — the second press must land within the gap window." = "按住组合键召唤,松开提交。或单独双击辅助键——两次按下需在间隔窗口内完成。";
+"Double-tap trigger" = "双击触发键";
+"Double-tap gap" = "双击间隔";
+"Reset" = "重置";
+
+"Navigation" = "导航与切换";
+"Scroll wheel cycles slots with the highlighted one as anchor. Digit keys 1–9 0 - = jump directly. Highlight frontmost falls back to 12 o'clock when the frontmost app isn't pinned." = "滚轮以当前高亮槽为锚点顺/逆时针切换;数字键 1–9 0 - = 直接跳转。当前 App 未被 pin 时回落 12 点方向。";
+"Scroll to switch slots" = "滚轮切换槽位";
+"Digit-key commit" = "数字键提交";
+"Highlight frontmost on summon" = "召唤时高亮当前 App";
+
+"Appearance & wheel layout" = "外观与轮盘布局";
+"Panel size is a renderer-time uniform scale (0.80–1.50x). Summon Halo to see the change take effect." = "面板大小是渲染期统一缩放 (0.80–1.50x),召唤一次 Halo 即可看到效果。";
+"Panel size" = "面板大小";
+"Reset layout" = "重置布局";
+
+"Startup & diagnostics" = "启动与诊断";
+"Welcome guide" = "欢迎引导";
+"Replay" = "重新播放";
+"Onboarding overlay" = "首次提示蒙层";
+"Diagnostic log" = "诊断日志";
+"Export…" = "导出…";
+
+/* DoubleTapTrigger labels */
+"⌥ Option (Left)" = "⌥ Option (左)";
+"⌥ Option (Right)" = "⌥ Option (右)";
+"⌘ Command" = "⌘ Command";
+"⌃ Control" = "⌃ Control";
+"Mouse 3 (Middle)" = "鼠标中键";
+
+/* Whitelist tab */
+"Halo won't summon while these apps are frontmost." = "在这些 App 中不会召唤 Halo。";
+"Best for IDEs, games, remote desktop, design tools — anywhere ⌥ chords matter." = "适合 IDE、游戏、远程桌面、设计软件——任何依赖 ⌥ 组合键的场景。";
+"Whitelist is empty." = "白名单为空。";
+"Halo will summon in every app. Add one above, or apply the recommended set below." = "Halo 会在所有 App 内召唤。可上方添加,或应用下方的推荐白名单。";
+"Apply recommended" = "应用推荐";
+"Replace whitelist with recommended apps?" = "用推荐白名单替换当前列表?";
+"Your current list will be replaced with installed apps from Halo's recommended set (IDEs, design tools, 3D engines, remote desktop)." = "当前白名单会被替换为系统中已安装的推荐 App (IDE / 设计工具 / 3D 引擎 / 远程桌面)。";
+"Replace" = "替换";
+"%d apps" = "%d 个应用";
+"Add app" = "添加应用";
+"Remove selected" = "移除所选";
+
 /* Welcome window */
 "Welcome to Halo" = "欢迎使用 Halo";
 "Summon" = "召唤";
