@@ -1,0 +1,186 @@
+import AppKit
+import SwiftUI
+import HaloCore
+
+/// Transparent floating panel that hosts the radial HUD. While visible, a
+/// 60 fps cursor timer polls `NSEvent.mouseLocation` and drives
+/// `state.updateHover(slot:)` — that's the primary hover mechanism, because
+/// `.onContinuousHover` / mouse-moved events don't reliably fire for
+/// non-activating panels.
+///
+/// On summon we activate Halo (`NSApp.activate(ignoringOtherApps: true)`) so
+/// local `NSEvent` monitors receive keystrokes (ESC, Return, digits). The
+/// previous frontmost app is remembered and restored on cancel; on commit the
+/// Switcher activates the target app directly.
+@MainActor
+public final class HaloWindow {
+    public let panel: NSPanel
+    private let state: HaloState
+    private var cursorTimer: Timer?
+    private var previousFrontApp: NSRunningApplication?
+    private var rippleWindow: NSWindow?
+
+    public init(state: HaloState) {
+        self.state = state
+        let size = HaloUI.Geometry.totalDiameter
+        let rect = NSRect(x: 0, y: 0, width: size, height: size)
+        let panel = NSPanel(
+            contentRect: rect,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        panel.level = .popUpMenu
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = false
+        panel.collectionBehavior = [
+            .canJoinAllSpaces,
+            .fullScreenAuxiliary,
+            .ignoresCycle
+        ]
+        panel.isMovable = false
+        panel.hidesOnDeactivate = false
+        panel.becomesKeyOnlyIfNeeded = true
+        panel.appearance = NSAppearance(named: .darkAqua)
+
+        let host = NSHostingView(rootView: RadialView(state: state))
+        host.frame = rect
+        host.autoresizingMask = [.width, .height]
+        panel.contentView = host
+
+        self.panel = panel
+    }
+
+    // MARK: - Summon / dismiss
+
+    public func summon(at origin: CGPoint? = nil) {
+        let size = panel.frame.size
+        let cursor = origin ?? NSEvent.mouseLocation
+        let screen = screenContaining(cursor) ?? NSScreen.main ?? NSScreen.screens.first!
+        let frame = RadialPanelFrame.frame(
+            forCursor: cursor,
+            in: screen.visibleFrame,
+            wheelSize: size.width
+        )
+        panel.setFrame(frame, display: true)
+
+        previousFrontApp = NSWorkspace.shared.frontmostApplication.flatMap { app in
+            app.bundleIdentifier == Bundle.main.bundleIdentifier ? nil : app
+        }
+
+        panel.alphaValue = 0
+        panel.orderFrontRegardless()
+        NSApp.activate(ignoringOtherApps: true)
+
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.12
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 1
+        }
+
+        state.center = CGPoint(x: frame.midX, y: frame.midY)
+        if state.phase == .hidden { state.phase = .idle }
+        installCursorTimer()
+    }
+
+    public func dismiss(animated: Bool = true, restorePreviousFront: Bool = false) {
+        uninstallCursorTimer()
+        state.phase = .hidden
+        let restore = restorePreviousFront ? previousFrontApp : nil
+        previousFrontApp = nil
+
+        if animated {
+            let panel = self.panel
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.12
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                panel.animator().alphaValue = 0
+            }, completionHandler: {
+                MainActor.assumeIsolated {
+                    panel.orderOut(nil)
+                    panel.alphaValue = 1
+                }
+            })
+        } else {
+            panel.orderOut(nil)
+        }
+
+        if let app = restore, !app.isTerminated {
+            app.activate(options: [])
+        }
+    }
+
+    // MARK: - Ripple
+
+    public func fireRipple(color: IdentityColor) {
+        let rippleSize: CGFloat = 1200
+        let center = CGPoint(x: panel.frame.midX, y: panel.frame.midY)
+        let rect = NSRect(x: center.x - rippleSize / 2,
+                          y: center.y - rippleSize / 2,
+                          width: rippleSize, height: rippleSize)
+
+        let win = NSPanel(
+            contentRect: rect,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        win.level = .popUpMenu
+        win.isOpaque = false
+        win.backgroundColor = .clear
+        win.hasShadow = false
+        win.ignoresMouseEvents = true
+        win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        win.contentView = NSHostingView(rootView: RippleView(color: color))
+        win.orderFrontRegardless()
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) { [weak win] in
+            win?.orderOut(nil)
+        }
+    }
+
+    // MARK: - Cursor timer
+
+    private func installCursorTimer() {
+        cursorTimer?.invalidate()
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.updateHoverFromCursor() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        cursorTimer = timer
+    }
+
+    private func uninstallCursorTimer() {
+        cursorTimer?.invalidate()
+        cursorTimer = nil
+    }
+
+    private func updateHoverFromCursor() {
+        let mouse = NSEvent.mouseLocation
+        // Panel frame is screen coords, y-up; convert to panel-local y-up.
+        let local = CGPoint(
+            x: mouse.x - panel.frame.minX,
+            y: mouse.y - panel.frame.minY
+        )
+        let size = HaloUI.Geometry.totalDiameter
+        let centered = CGPoint(
+            x: local.x - size / 2,
+            y: local.y - size / 2
+        )
+        let index = RadialGeometry.sectorIndex(
+            for: centered,
+            sectorCount: state.slotCount,
+            innerRadius: HaloUI.Geometry.deadzoneDiameter / 2,
+            outerRadius: HaloUI.Geometry.hudDiameter / 2
+        )
+        state.updateHover(slot: index)
+    }
+
+    // MARK: - Screen helpers
+
+    private func screenContaining(_ point: CGPoint) -> NSScreen? {
+        NSScreen.screens.first { $0.frame.contains(point) }
+    }
+}

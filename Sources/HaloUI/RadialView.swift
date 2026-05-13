@@ -1,0 +1,623 @@
+import AppKit
+import SwiftUI
+import HaloCore
+
+/// The radial HUD. Hue-inspired layout:
+///
+///   halo glow → wheel background (real NSVisualEffectView) → sectors (pie
+///   slices + full-color icons) → center hub (punches donut hole, shows
+///   frontmost app) → curved tooltip label floating outside the wheel.
+///
+/// Hover tracking uses `DragGesture(minimumDistance: 0)` instead of
+/// `.onContinuousHover` — the latter doesn't fire reliably for non-key
+/// windows, and the HUD lives in a non-activating panel.
+public struct RadialView: View {
+    @ObservedObject var state: HaloState
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// Shared namespace so the wheel disc and label chip morph as one Liquid
+    /// Glass system on macOS 26+. Unused on older systems but the @Namespace
+    /// is cheap and keeps the codepaths symmetric.
+    @Namespace private var glassNamespace
+
+    public init(state: HaloState) {
+        self.state = state
+    }
+
+    public var body: some View {
+        ZStack {
+            haloGlow
+            wheelBackground
+            ForEach(state.slots) { slot in
+                sectorView(slot: slot)
+            }
+            centerHub
+            // Only the label sits inside a GlassEffectContainer so the chip
+            // can morph between slots via `glassEffectID`. The wheel disc is
+            // a single glass element on its own — no container needed — and
+            // the sector icons must NOT be inside any container or they get
+            // pulled into the glass sampling and frosted.
+            labelOverlay
+        }
+        .frame(width: HaloUI.Geometry.totalDiameter,
+               height: HaloUI.Geometry.totalDiameter)
+        .contentShape(Circle())
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Halo radial app launcher"))
+        .gesture(hoverGesture)
+    }
+
+    @ViewBuilder
+    private var labelOverlay: some View {
+        if #available(macOS 26.0, *) {
+            GlassEffectContainer {
+                if let slot = hoveredSlot, slot.app != nil {
+                    labelChip(for: slot)
+                }
+            }
+        } else {
+            if let slot = hoveredSlot, slot.app != nil {
+                labelChip(for: slot)
+            }
+        }
+    }
+
+    // MARK: - Halo glow
+
+    @ViewBuilder
+    private var haloGlow: some View {
+        if let slot = hoveredSlot {
+            let accent = slot.identityColor.swiftUIColor
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [accent.opacity(0.32), accent.opacity(0)],
+                        center: .center,
+                        startRadius: HaloUI.Geometry.hudDiameter / 2 - 24,
+                        endRadius: HaloUI.Geometry.hudDiameter / 2 + 20
+                    )
+                )
+                .blur(radius: 18)
+                .frame(
+                    width: HaloUI.Geometry.hudDiameter + 40,
+                    height: HaloUI.Geometry.hudDiameter + 40
+                )
+                .allowsHitTesting(false)
+                .transition(.opacity)
+                .animation(
+                    reduceMotion ? .easeOut(duration: 0.05) : .easeOut(duration: 0.12),
+                    value: slot.id
+                )
+        }
+    }
+
+    // MARK: - Wheel background (liquid glass)
+
+    private var wheelBackground: some View {
+        let d = HaloUI.Geometry.hudDiameter
+        let tint = hoveredSlot?.identityColor.swiftUIColor ?? .clear
+        let isHovering = hoveredSlot != nil
+        return ZStack {
+            // 1a. Base glass. NSVisualEffectView under a convex depth gradient
+            // on macOS 14/15; native Liquid Glass on macOS 26+.
+            glassDisc(diameter: d)
+
+            // 1b. Convex depth gradient: brighter near the top-left (simulated
+            // light), dimmer at the far rim so the disc reads as a polished
+            // glass pebble rather than a flat black coin.
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [
+                            Color.white.opacity(0.09),
+                            Color.white.opacity(0.02),
+                            Color.black.opacity(0.22)
+                        ],
+                        center: UnitPoint(x: 0.42, y: 0.34),
+                        startRadius: 0,
+                        endRadius: d / 2
+                    )
+                )
+
+            // 2. Content-aware tint. Glass picks up ~5% of the hovered
+            // sector's identity colour, like a prism catching a light source.
+            Circle()
+                .fill(tint.opacity(isHovering ? 0.06 : 0))
+                .blendMode(.plusLighter)
+                .animation(
+                    reduceMotion ? .easeOut(duration: 0.05) : .easeOut(duration: 0.22),
+                    value: hoveredSlot?.id
+                )
+                .allowsHitTesting(false)
+
+            // 3. Weight shadow at the bottom. The disc looks like it's resting
+            // on something, the lower half catches less light. Kept subtle so
+            // the soft-edge mask below can carry most of the rim falloff.
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.clear, Color.black.opacity(0.10)],
+                        startPoint: UnitPoint(x: 0.5, y: 0.55),
+                        endPoint: .bottom
+                    )
+                )
+                .allowsHitTesting(false)
+
+            // 4. Specular arc. The signature liquid-glass move: a narrow
+            // bright sliver at 12 o'clock, soft blur, fading at the ends so
+            // it doesn't read as a drawn stroke. (Was previously layer 5; the
+            // explicit rim stroke between this and the weight gradient was
+            // removed so the disc edge feathers out naturally.)
+            SpecularArc(startAngleDegrees: -135, endAngleDegrees: -45)
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0),
+                            Color.white.opacity(0.78),
+                            Color.white.opacity(0)
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    ),
+                    style: StrokeStyle(lineWidth: 1.1, lineCap: .round)
+                )
+                .blur(radius: 0.35)
+                .padding(1.2)
+                .allowsHitTesting(false)
+        }
+        .frame(width: d, height: d)
+        .compositingGroup()
+        // Soft-edge mask: opaque from center to ~84% radius, then a linear
+        // alpha falloff to the rim. Replaces the old hard 0.8pt rim stroke
+        // with a Liquid-Glass-style feathered edge so the disc dissolves
+        // into the desktop instead of stamping a circle on it.
+        .mask(
+            Circle()
+                .fill(
+                    RadialGradient(
+                        stops: [
+                            .init(color: .black, location: 0.0),
+                            .init(color: .black, location: 0.84),
+                            .init(color: .clear, location: 1.0)
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: d / 2
+                    )
+                )
+        )
+        .shadow(color: .black.opacity(0.40), radius: 32, x: 0, y: 18)
+        .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 2)
+    }
+
+    /// Base glass disc. Liquid Glass on macOS 26+, `NSVisualEffectView`
+    /// (`.hudWindow` / `.behindWindow`) elsewhere. The wheel's signature
+    /// finish — depth gradient, weight shadow, rim stroke, specular arc —
+    /// is rendered on top in `wheelBackground`, regardless of OS.
+    @ViewBuilder
+    private func glassDisc(diameter d: CGFloat) -> some View {
+        if #available(macOS 26.0, *) {
+            Circle()
+                .fill(.clear)
+                .glassEffect(in: Circle())
+                .frame(width: d, height: d)
+        } else {
+            VisualEffectBackground(
+                material: .hudWindow,
+                blendingMode: .behindWindow,
+                state: .active
+            )
+            .clipShape(Circle())
+            .frame(width: d, height: d)
+        }
+    }
+
+    // MARK: - Sector
+
+    private func sectorView(slot: HaloSlot) -> some View {
+        let isHovered    = isHovered(slot.id)
+        let isPreviewing = isPreviewing(slot.id)
+        let isCommitting = isCommitting(slot.id)
+        let isActive     = isHovered || isPreviewing
+        let accent       = slot.identityColor.swiftUIColor
+
+        // Idle sectors: near-invisible glass. The only thing separating them
+        // from neighbours is the 1° angular gap in SectorShape, not a stroke.
+        let idleFill    = Color.white.opacity(0.015)
+        let hoverMix: Double = isPreviewing ? 0.16 : 0.10
+        let fill: Color = isActive ? accent.opacity(hoverMix) : idleFill
+        let strokeColor: Color = isActive ? accent : Color.white.opacity(0.03)
+        let strokeWidth: CGFloat = isActive ? 1.4 : 0.5
+
+        let sector = SectorShape(
+            index: slot.id,
+            sectorCount: state.slotCount,
+            gapDegrees: HaloUI.Geometry.slotGapDegrees
+        )
+
+        return ZStack {
+            sector
+                .fill(fill)
+                .overlay(sector.stroke(strokeColor, lineWidth: strokeWidth))
+                // Inner glow on active sectors: blurred accent stroke masked
+                // back into the sector shape. Gives the petal a lit-glass
+                // interior instead of a flat fill.
+                .overlay {
+                    if isActive {
+                        sector
+                            .stroke(accent.opacity(0.55), lineWidth: 6)
+                            .blur(radius: 4)
+                            .mask(sector)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .frame(
+                    width: HaloUI.Geometry.hudDiameter,
+                    height: HaloUI.Geometry.hudDiameter
+                )
+
+            sectorContent(slot: slot, isActive: isActive, accent: accent)
+                .allowsHitTesting(false)
+        }
+        .scaleEffect(isCommitting ? 1.06 : 1.0)
+        .animation(
+            reduceMotion ? .easeOut(duration: 0.05) : .easeOut(duration: 0.14),
+            value: isActive
+        )
+        .animation(
+            reduceMotion ? .easeOut(duration: 0.05) : .easeOut(duration: 0.12),
+            value: isCommitting
+        )
+    }
+
+    private func sectorContent(slot: HaloSlot, isActive: Bool, accent: Color) -> some View {
+        let center = RadialGeometry.center(
+            of: slot.id,
+            sectorCount: state.slotCount,
+            radius: HaloUI.Geometry.iconRadius
+        )
+        return SlotContent(slot: slot, isActive: isActive, accent: accent)
+            .frame(width: HaloUI.Geometry.iconSize,
+                   height: HaloUI.Geometry.iconSize)
+            .offset(x: center.x, y: -center.y)
+    }
+
+    // MARK: - Center hub (recessed lens)
+
+    private var centerHub: some View {
+        let d = HaloUI.Geometry.deadzoneDiameter
+        return ZStack {
+            // Recessed base. Darker than the outer glass so the hub reads as
+            // a depression, not a raised button.
+            Circle()
+                .fill(Color.black.opacity(0.48))
+
+            // Inner shadow at the top edge. Fakes the "looking down into a
+            // hole" effect: a dark, blurred stroke whose gradient is opaque
+            // at 12 o'clock and clear by 6 o'clock, bleeding inward via the
+            // blur so the upper interior reads as recessed.
+            Circle()
+                .stroke(
+                    LinearGradient(
+                        colors: [
+                            Color.black.opacity(0.55),
+                            Color.clear
+                        ],
+                        startPoint: .top,
+                        endPoint: .center
+                    ),
+                    lineWidth: 3
+                )
+                .blur(radius: 2.6)
+                .allowsHitTesting(false)
+
+            // Lens rim. Hairline around the edge, brighter up top.
+            Circle()
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(0.24),
+                            Color.white.opacity(0.06)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 0.8
+                )
+
+            // (The mini lens specular at -120°/-60° used to live here. It
+            // harmonised with the disc's hard rim stroke. Now that the disc
+            // edge is a feathered alpha mask the lens specular reads as a
+            // stray white sliver, so the lens rim's top-bright gradient
+            // carries the "light from above" cue on its own.)
+
+            centerHubIcon
+                .allowsHitTesting(false)
+        }
+        .frame(width: d, height: d)
+        .shadow(color: .black.opacity(0.42), radius: 6, x: 0, y: 3)
+        .allowsHitTesting(false)
+    }
+
+    @ViewBuilder
+    private var centerHubIcon: some View {
+        let iconSide = HaloUI.Geometry.deadzoneDiameter * 0.62
+        if let previewed = hoveredSlot?.app,
+           let icon = AppIconResolver.icon(for: previewed.bundleID) {
+            Image(nsImage: icon)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: iconSide, height: iconSide)
+                .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                .id(previewed.bundleID)
+        } else if let front = AppIconResolver.frontmostIcon() {
+            Image(nsImage: front)
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+                .frame(width: iconSide, height: iconSide)
+        } else {
+            Image(systemName: "circle.dotted")
+                .font(.system(size: 28, weight: .light))
+                .foregroundStyle(Color.white.opacity(0.40))
+        }
+    }
+
+    // MARK: - Label chip (glass capsule)
+
+    private func labelChip(for slot: HaloSlot) -> some View {
+        let center = RadialGeometry.center(
+            of: slot.id,
+            sectorCount: state.slotCount,
+            radius: HaloUI.Geometry.labelRadius
+        )
+        return Text(slot.app?.name ?? "")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Color.white.opacity(0.96))
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .modifier(GlassChipBackground(namespace: glassNamespace, slotID: slot.id))
+            .shadow(color: .black.opacity(0.38), radius: 10, x: 0, y: 5)
+            .frame(maxWidth: HaloUI.Geometry.labelMaxWidth)
+            .fixedSize(horizontal: true, vertical: false)
+            .offset(x: center.x, y: -center.y)
+            .transition(.opacity.combined(with: .scale(scale: 0.94)))
+            .animation(.easeOut(duration: 0.14), value: slot.id)
+    }
+
+    // MARK: - Phase helpers
+
+    private var hoveredSlot: HaloSlot? {
+        guard let id = state.currentHoverSlot else { return nil }
+        return state.slots.first { $0.id == id }
+    }
+
+    private func isHovered(_ id: Int) -> Bool {
+        if case .hovering(let i) = state.phase, i == id { return true }
+        return false
+    }
+
+    private func isPreviewing(_ id: Int) -> Bool {
+        if case .previewing(let i) = state.phase, i == id { return true }
+        return false
+    }
+
+    private func isCommitting(_ id: Int) -> Bool {
+        if case .committing(let i) = state.phase, i == id { return true }
+        return false
+    }
+
+    // MARK: - Hit testing
+
+    private var hoverGesture: some Gesture {
+        // DragGesture(minimumDistance: 0) serves both hover tracking (onChanged
+        // fires on every cursor update once the mouse is inside the view) and
+        // click-to-commit (onEnded fires on mouse-up). A sibling
+        // `.onTapGesture` gets swallowed by this drag on the mouseDown, which
+        // is why menu-bar-summon → click never committed before — the tap
+        // recogniser never won.
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                state.updateHover(slot: sectorIndex(at: value.location))
+            }
+            .onEnded { value in
+                if let i = sectorIndex(at: value.location) {
+                    state.phase = .previewing(i)
+                    state.onCommit?()
+                }
+            }
+    }
+
+    private func sectorIndex(at location: CGPoint) -> Int? {
+        // location is in view-local coords (origin top-left, y-down).
+        // Convert to center-origin, y-up.
+        let centered = CGPoint(
+            x: location.x - HaloUI.Geometry.totalDiameter / 2,
+            y: HaloUI.Geometry.totalDiameter / 2 - location.y
+        )
+        return RadialGeometry.sectorIndex(
+            for: centered,
+            sectorCount: state.slotCount,
+            innerRadius: HaloUI.Geometry.deadzoneDiameter / 2,
+            outerRadius: HaloUI.Geometry.hudDiameter / 2
+        )
+    }
+}
+
+// MARK: - Slot content (icon / empty mark / status)
+
+private struct SlotContent: View {
+    let slot: HaloSlot
+    let isActive: Bool
+    let accent: Color
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            iconCanvas
+                .scaleEffect(isActive ? 1.08 : 1.0)
+                .overlay {
+                    if isActive {
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .stroke(accent, lineWidth: 1.4)
+                    }
+                }
+                .animation(.easeOut(duration: 0.12), value: isActive)
+
+            statusBadge
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(accessibilityLabel))
+        .accessibilityAddTraits(.isButton)
+    }
+
+    @ViewBuilder
+    private var iconCanvas: some View {
+        if let app = slot.app {
+            if let icon = AppIconResolver.icon(for: app.bundleID) {
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .frame(
+                        width: HaloUI.Geometry.iconSize - 6,
+                        height: HaloUI.Geometry.iconSize - 6
+                    )
+                    .opacity(iconOpacity)
+                    .overlay {
+                        if slot.runState == .launching {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .controlSize(.small)
+                                .scaleEffect(0.85)
+                        }
+                    }
+            } else {
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .fill(accent)
+                    .overlay {
+                        Text(app.name.prefix(1).uppercased())
+                            .font(.system(size: 20, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color.black.opacity(0.78))
+                    }
+                    .frame(
+                        width: HaloUI.Geometry.iconSize - 6,
+                        height: HaloUI.Geometry.iconSize - 6
+                    )
+            }
+        } else {
+            EmptySlotMark()
+                .frame(width: HaloUI.Geometry.iconSize,
+                       height: HaloUI.Geometry.iconSize)
+        }
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        switch slot.runState {
+        case .running:
+            StatusDot(color: Color(red: 0.11, green: 0.73, blue: 0.33))
+                .offset(x: 4, y: -4)
+        case .failed:
+            StatusDot(color: Color(red: 1.00, green: 0.27, blue: 0.23))
+                .offset(x: 4, y: -4)
+        case .empty, .launchable, .launching:
+            EmptyView()
+        }
+    }
+
+    private var iconOpacity: Double {
+        switch slot.runState {
+        case .launchable, .launching: return 0.62
+        case .failed:                 return 0.55
+        default:                      return 1.0
+        }
+    }
+
+    private var accessibilityLabel: String {
+        if let app = slot.app { return "Switch to \(app.name)" }
+        return "Empty slot — tap to pin an app"
+    }
+}
+
+private struct StatusDot: View {
+    let color: Color
+    var body: some View {
+        Circle()
+            .fill(color)
+            .frame(width: 8, height: 8)
+            .overlay {
+                Circle().stroke(Color.black.opacity(0.55), lineWidth: 0.6)
+            }
+    }
+}
+
+private struct EmptySlotMark: View {
+    @State private var animating = false
+    var body: some View {
+        ZStack {
+            Circle()
+                .strokeBorder(
+                    Color.white.opacity(animating ? 0.30 : 0.18),
+                    style: StrokeStyle(lineWidth: 1, dash: [3, 3])
+                )
+            Text("+")
+                .font(.system(size: 20, weight: .light, design: .rounded))
+                .foregroundStyle(Color.white.opacity(animating ? 0.55 : 0.35))
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+                animating = true
+            }
+        }
+    }
+}
+
+// MARK: - Glass chip background
+
+/// Capsule background for the floating label chip. macOS 26+ uses
+/// `glassEffect` + `glassEffectID` so the chip morphs between slots inside
+/// the shared `GlassEffectContainer`. Older systems fall back to the manual
+/// `VisualEffectBackground` + capsule rim composition.
+private struct GlassChipBackground: ViewModifier {
+    let namespace: Namespace.ID
+    let slotID: Int
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+                .glassEffect(.regular, in: Capsule(style: .continuous))
+                .glassEffectID("halo.label.\(slotID)", in: namespace)
+        } else {
+            content.background {
+                Capsule(style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+                    .background(
+                        VisualEffectBackground(
+                            material: .hudWindow,
+                            blendingMode: .behindWindow,
+                            state: .active
+                        )
+                        .clipShape(Capsule(style: .continuous))
+                    )
+                    .overlay {
+                        Capsule(style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [
+                                        Color.white.opacity(0.28),
+                                        Color.white.opacity(0.04)
+                                    ],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                ),
+                                lineWidth: 0.6
+                            )
+                    }
+            }
+        }
+    }
+}

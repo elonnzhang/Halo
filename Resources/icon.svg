@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Halo app icon: dark glass disc with a thin identity-color ring + a single petal lit -->
+  <defs>
+    <radialGradient id="disc" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#2a2a32"/>
+      <stop offset="100%" stop-color="#101014"/>
+    </radialGradient>
+    <linearGradient id="petal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#26A5E4"/>
+      <stop offset="100%" stop-color="#3B5BDB"/>
+    </linearGradient>
+    <radialGradient id="haloRing" cx="50%" cy="50%" r="50%">
+      <stop offset="80%" stop-color="rgba(38,165,228,0)"/>
+      <stop offset="100%" stop-color="rgba(38,165,228,0.4)"/>
+    </radialGradient>
+  </defs>
+
+  <!-- macOS app icon "squircle" — using superellipse approximation via rounded rect -->
+  <rect x="92" y="92" width="840" height="840" rx="186" ry="186" fill="url(#disc)"/>
+
+  <!-- outer thin halo (cyan-leaning) -->
+  <circle cx="512" cy="512" r="372" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="2"/>
+  <circle cx="512" cy="512" r="372" fill="url(#haloRing)"/>
+
+  <!-- 8 slot petals, just one lit to show the "selected" moment -->
+  <g transform="translate(512 512)">
+    <!-- backdrop ring of dim petal arcs -->
+    <g stroke="rgba(255,255,255,0.07)" fill="none" stroke-width="2">
+      <path d="M 0,-340 A 340,340 0 0 1 240.4,-240.4"/>
+      <path d="M 240.4,-240.4 A 340,340 0 0 1 340,0"/>
+      <path d="M 340,0 A 340,340 0 0 1 240.4,240.4"/>
+      <path d="M 240.4,240.4 A 340,340 0 0 1 0,340"/>
+      <path d="M 0,340 A 340,340 0 0 1 -240.4,240.4"/>
+      <path d="M -240.4,240.4 A 340,340 0 0 1 -340,0"/>
+      <path d="M -340,0 A 340,340 0 0 1 -240.4,-240.4"/>
+      <path d="M -240.4,-240.4 A 340,340 0 0 1 0,-340"/>
+    </g>
+
+    <!-- lit petal at slot 1 (NE) -->
+    <path d="M 0,-340 A 340,340 0 0 1 240.4,-240.4 L 122,-122 A 172,172 0 0 0 0,-172 Z"
+          fill="url(#petal)" opacity="0.92"/>
+
+    <!-- central dead-zone -->
+    <circle r="120" fill="rgba(255,255,255,0.05)"/>
+    <circle r="120" fill="none" stroke="rgba(255,255,255,0.18)" stroke-width="1.5"/>
+
+    <!-- center dot / "selected" mark -->
+    <circle r="14" fill="#26A5E4"/>
+  </g>
+</svg>

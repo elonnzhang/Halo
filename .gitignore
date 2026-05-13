@@ -1,0 +1,28 @@
+# macOS
+.DS_Store
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Xcode
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Build harness output
+dist/
+
+# Local agent state (Claude / draft plans)
+.claude/
+.agents/
+plans/

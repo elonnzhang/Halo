@@ -1,0 +1,986 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Halo · Interactive Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============ TOKENS ============ */
+:root{
+  --bg-page:#0a0a0d;
+  --bg-card:#111114;
+  --hud-glass:rgba(18,18,22,0.74);
+  --hud-stroke:rgba(255,255,255,0.06);
+  --slot-bg:rgba(255,255,255,0.035);
+  --slot-stroke:rgba(255,255,255,0.08);
+  --deadzone-bg:rgba(255,255,255,0.05);
+  --deadzone-stroke:rgba(255,255,255,0.08);
+  --text-primary:rgba(255,255,255,0.95);
+  --text-secondary:rgba(255,255,255,0.55);
+  --text-tertiary:rgba(255,255,255,0.30);
+  --border-subtle:rgba(255,255,255,0.07);
+  --border-card:rgba(255,255,255,0.06);
+
+  --c0:#26A5E4; --c1:#A259FF; --c2:#E01E5A; --c3:#FF453A;
+  --c4:#F7B500; --c5:#1DB954; --c6:#3B82F6; --c7:#5E6AD2;
+
+  --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px;
+  --sp-5:24px; --sp-6:32px; --sp-7:48px; --sp-8:64px;
+
+  --r-card:14px; --r-pill:999px;
+
+  --ff-display:'Geist',-apple-system,system-ui,sans-serif;
+  --ff-mono:'JetBrains Mono',ui-monospace,'SF Mono',Menlo,monospace;
+
+  --ease-out:cubic-bezier(0.16,1,0.3,1);
+  --ease-spring:cubic-bezier(0.34,1.56,0.64,1);
+}
+
+/* ============ BASE ============ */
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg-page);color:var(--text-primary)}
+body{
+  font-family:var(--ff-display);
+  font-weight:400;
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+  letter-spacing:-0.01em;
+  line-height:1.4;
+}
+kbd{font:inherit}
+button{font:inherit;color:inherit;background:none;border:none;cursor:pointer}
+code{font-family:var(--ff-mono);font-size:0.9em}
+ul{list-style:none}
+
+/* ============ TOPBAR ============ */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:var(--sp-4) var(--sp-6);
+  border-bottom:1px solid var(--border-subtle);
+  position:sticky;top:0;
+  background:rgba(10,10,13,0.85);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  z-index:100;
+}
+.brand{display:flex;align-items:center;gap:var(--sp-3)}
+.brand-mark{
+  width:22px;height:22px;border-radius:50%;
+  background:conic-gradient(from -90deg,
+    var(--c0),var(--c1),var(--c2),var(--c3),
+    var(--c4),var(--c5),var(--c6),var(--c7),var(--c0));
+  position:relative;
+}
+.brand-mark::after{
+  content:'';position:absolute;inset:7px;background:var(--bg-page);border-radius:50%;
+}
+.brand-name{font-weight:700;font-size:15px;letter-spacing:-0.02em}
+.brand-tag{
+  font-family:var(--ff-mono);font-size:10.5px;
+  color:var(--text-tertiary);
+  margin-left:var(--sp-2);padding-left:var(--sp-3);
+  border-left:1px solid var(--border-subtle);
+  letter-spacing:0.04em;
+}
+.hotkey-hint{display:flex;align-items:center;gap:var(--sp-2);font-size:12px;color:var(--text-secondary)}
+.hotkey-hint kbd{
+  font-family:var(--ff-mono);font-size:11px;
+  padding:3px 7px;border-radius:5px;
+  background:var(--bg-card);
+  border:1px solid var(--border-subtle);
+  border-bottom-width:2px;
+  color:var(--text-primary);
+}
+.hotkey-hint span{margin-left:var(--sp-2)}
+
+/* ============ MAIN ============ */
+main{max-width:1180px;margin:0 auto;padding:var(--sp-8) var(--sp-6)}
+section{margin:var(--sp-8) 0}
+.section-title{
+  font-family:var(--ff-mono);font-size:11px;font-weight:500;
+  letter-spacing:0.10em;text-transform:uppercase;
+  color:var(--text-tertiary);margin-bottom:var(--sp-2);
+}
+.section-sub{font-size:14px;color:var(--text-secondary);margin-bottom:var(--sp-5);max-width:580px}
+
+/* ============ HERO ============ */
+.hero{margin-bottom:var(--sp-7);max-width:780px}
+.hero h1{
+  font-size:clamp(40px,5vw,64px);
+  font-weight:600;line-height:0.96;letter-spacing:-0.04em;
+  margin-bottom:var(--sp-5);
+}
+.hero h1 .accent{
+  background:linear-gradient(120deg,var(--c0),var(--c1) 35%,var(--c2) 65%,var(--c4));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.hero-sub{font-size:17px;line-height:1.55;color:var(--text-secondary);max-width:540px}
+
+/* ============ STAGE ============ */
+.stage{
+  height:600px;border-radius:18px;position:relative;overflow:hidden;
+  border:1px solid var(--border-card);
+  background:
+    radial-gradient(ellipse 800px 600px at 30% 20%,rgba(94,106,210,0.18),transparent 70%),
+    radial-gradient(ellipse 600px 400px at 70% 80%,rgba(38,165,228,0.12),transparent 70%),
+    radial-gradient(ellipse 500px 500px at 50% 100%,rgba(162,89,255,0.10),transparent 70%),
+    #050507;
+}
+.stage::after{
+  content:"";position:absolute;inset:0;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence baseFrequency='0.85' numOctaves='2' seed='3'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.035 0'/></filter><rect width='180' height='180' filter='url(%23n)'/></svg>");
+  opacity:0.7;pointer-events:none;mix-blend-mode:overlay;
+}
+.stage-hint{
+  position:absolute;bottom:var(--sp-6);left:50%;transform:translateX(-50%);
+  font-family:var(--ff-mono);font-size:10.5px;
+  color:var(--text-tertiary);letter-spacing:0.10em;text-transform:uppercase;
+  pointer-events:none;
+}
+
+/* ============ HALO HUD ============ */
+.halo{
+  position:absolute;top:50%;left:50%;
+  width:320px;height:320px;
+  transform:translate(-50%,-50%);
+}
+.halo-bg{
+  position:absolute;inset:20px;border-radius:50%;
+  background:var(--hud-glass);
+  backdrop-filter:blur(28px) saturate(120%);
+  -webkit-backdrop-filter:blur(28px) saturate(120%);
+  border:0.5px solid var(--hud-stroke);
+  box-shadow:
+    0 30px 80px rgba(0,0,0,0.5),
+    inset 0 1px 0 rgba(255,255,255,0.04),
+    inset 0 -1px 0 rgba(0,0,0,0.3);
+  z-index:1;
+}
+.halo-svg{
+  position:absolute;inset:20px;width:280px;height:280px;
+  z-index:2;overflow:visible;
+}
+.slot{
+  fill:var(--slot-bg);
+  stroke:var(--slot-stroke);stroke-width:0.5;
+  cursor:pointer;
+  transition:fill 160ms var(--ease-out),stroke 160ms var(--ease-out),stroke-width 160ms var(--ease-out);
+}
+.slot.is-active{
+  fill:color-mix(in oklch,var(--hover-color,white) 8%,var(--slot-bg));
+  stroke:var(--hover-color,white);stroke-width:2;
+}
+.halo[data-preview] .slot.is-active{
+  fill:color-mix(in oklch,var(--hover-color) 14%,var(--slot-bg));
+}
+.deadzone{
+  fill:var(--deadzone-bg);
+  stroke:var(--deadzone-stroke);stroke-width:1;
+  pointer-events:none;
+}
+
+.glyphs{position:absolute;inset:20px;width:280px;height:280px;z-index:3;pointer-events:none}
+.glyph{
+  position:absolute;
+  font-family:var(--ff-display);
+  font-size:22px;font-weight:500;
+  color:rgba(255,255,255,0.78);
+  width:34px;height:34px;
+  display:grid;place-items:center;
+  transform:translate(-50%,-50%);
+  transition:color 160ms var(--ease-out),transform 160ms var(--ease-out);
+  letter-spacing:0;
+}
+.glyph.is-active{color:white;transform:translate(-50%,-50%) scale(1.08)}
+
+.center{
+  position:absolute;top:50%;left:50%;
+  transform:translate(-50%,-50%);
+  width:72px;height:72px;
+  display:grid;place-items:center;
+  z-index:4;pointer-events:none;
+}
+.center-glyph{
+  font-family:var(--ff-display);
+  font-size:30px;font-weight:500;
+  color:white;
+  transition:opacity 200ms var(--ease-out),transform 200ms var(--ease-out);
+}
+.center-glyph.swap-out{opacity:0;transform:scale(0.92)}
+.center-label{
+  position:absolute;bottom:-22px;
+  font-family:var(--ff-mono);font-size:10px;
+  letter-spacing:0.10em;color:var(--text-tertiary);
+  text-transform:uppercase;
+  opacity:0;
+  transition:opacity 200ms var(--ease-out);
+  white-space:nowrap;
+}
+.halo[data-preview] .center-label{opacity:1}
+
+.halo-glow{
+  position:absolute;inset:-20px;border-radius:50%;
+  pointer-events:none;opacity:0;
+  transition:opacity 200ms var(--ease-out);
+  z-index:0;
+  background:radial-gradient(circle at center,var(--hover-color,transparent) 0%,transparent 55%);
+  filter:blur(18px);
+}
+.halo[data-hover] .halo-glow,
+.halo[data-preview] .halo-glow{opacity:0.32}
+
+/* COMMIT */
+.ripple{
+  position:absolute;top:50%;left:50%;
+  width:600px;height:600px;border-radius:50%;
+  background:radial-gradient(circle at center,var(--ripple-color) 0%,transparent 55%);
+  transform:translate(-50%,-50%) scale(0.46);
+  opacity:0;pointer-events:none;z-index:5;
+  animation:ripple-fire 700ms var(--ease-out) forwards;
+}
+@keyframes ripple-fire{
+  0%{transform:translate(-50%,-50%) scale(0.46);opacity:0}
+  35%{opacity:0.18}
+  100%{transform:translate(-50%,-50%) scale(1.0);opacity:0}
+}
+.halo.is-committing .halo-bg,
+.halo.is-committing .halo-svg,
+.halo.is-committing .glyphs,
+.halo.is-committing .center{
+  animation:halo-fade 200ms var(--ease-out) forwards;
+}
+@keyframes halo-fade{to{opacity:0}}
+.halo.is-committing .slot.is-active{
+  transform-origin:center;transform-box:fill-box;
+  animation:slot-pop 200ms var(--ease-out) forwards;
+}
+@keyframes slot-pop{to{transform:scale(1.10)}}
+
+/* EMPTY */
+.halo.is-empty .slot{
+  fill:transparent;
+  stroke:rgba(255,255,255,0.18);stroke-width:1;
+  stroke-dasharray:4 3;
+  animation:empty-breath 2400ms ease-in-out infinite;
+}
+.halo.is-empty .glyph{color:rgba(255,255,255,0.30);font-size:22px;font-weight:300}
+.halo.is-empty .center-glyph{color:rgba(255,255,255,0.40);font-size:22px}
+@keyframes empty-breath{0%,100%{opacity:0.55}50%{opacity:1}}
+
+/* TUTORIAL OVERLAY */
+.tutorial{
+  position:absolute;inset:0;
+  background:rgba(0,0,0,0.45);
+  display:none;align-items:center;justify-content:center;
+  z-index:6;pointer-events:none;
+  backdrop-filter:blur(1.5px);-webkit-backdrop-filter:blur(1.5px);
+}
+.halo.is-tutorial + .tutorial{display:flex}
+.tutorial-inner{
+  display:flex;flex-direction:column;align-items:center;gap:var(--sp-4);
+  padding:var(--sp-6);text-align:center;
+}
+.tutorial-arrows{
+  width:240px;height:240px;position:relative;
+}
+.tutorial-arrows span{
+  position:absolute;color:rgba(255,255,255,0.7);font-size:28px;
+  animation:arrow-pulse 1.6s ease-in-out infinite;
+}
+.tutorial-arrows span:nth-child(1){top:0;left:50%;transform:translateX(-50%);animation-delay:0s}
+.tutorial-arrows span:nth-child(2){right:0;top:50%;transform:translateY(-50%);animation-delay:0.4s}
+.tutorial-arrows span:nth-child(3){bottom:0;left:50%;transform:translateX(-50%);animation-delay:0.8s}
+.tutorial-arrows span:nth-child(4){left:0;top:50%;transform:translateY(-50%);animation-delay:1.2s}
+@keyframes arrow-pulse{0%,100%{opacity:0.3}50%{opacity:0.9}}
+.tutorial-text{
+  font-size:14px;color:rgba(255,255,255,0.88);line-height:1.55;
+  max-width:280px;margin-top:var(--sp-3);
+}
+.tutorial-keys{
+  font-family:var(--ff-mono);font-size:11px;
+  color:rgba(255,255,255,0.50);letter-spacing:0.10em;
+}
+
+/* ============ STATE CONTROLS ============ */
+.state-controls{
+  display:flex;flex-wrap:wrap;gap:var(--sp-2);
+  margin-top:var(--sp-5);justify-content:center;
+}
+.state-controls button{
+  font-family:var(--ff-mono);font-size:11.5px;font-weight:500;
+  padding:7px var(--sp-4);
+  border-radius:var(--r-pill);
+  border:1px solid var(--border-subtle);
+  background:transparent;
+  color:var(--text-secondary);
+  letter-spacing:0.04em;
+  transition:all 160ms var(--ease-out);
+}
+.state-controls button:hover:not(:disabled){
+  color:var(--text-primary);
+  border-color:rgba(255,255,255,0.18);
+  background:rgba(255,255,255,0.03);
+}
+.state-controls button.active{
+  background:rgba(255,255,255,0.10);
+  color:var(--text-primary);
+  border-color:rgba(255,255,255,0.24);
+}
+.state-controls button:disabled{
+  opacity:0.28;cursor:not-allowed;
+}
+
+/* slot count row */
+.slot-count-row{
+  display:flex;align-items:center;gap:var(--sp-2);
+  margin-top:var(--sp-4);justify-content:center;flex-wrap:wrap;
+}
+.slot-count-row .label{
+  font-family:var(--ff-mono);font-size:10.5px;letter-spacing:0.12em;
+  color:var(--text-tertiary);text-transform:uppercase;
+  margin-right:var(--sp-2);
+}
+.slot-count-row button{
+  font-family:var(--ff-mono);font-size:12px;font-weight:500;
+  width:38px;height:30px;
+  border-radius:8px;
+  border:1px solid var(--border-subtle);
+  background:transparent;
+  color:var(--text-secondary);
+  transition:all 160ms var(--ease-out);
+}
+.slot-count-row button:hover{
+  color:var(--text-primary);
+  border-color:rgba(255,255,255,0.18);
+  background:rgba(255,255,255,0.03);
+}
+.slot-count-row button.active{
+  background:rgba(255,255,255,0.10);
+  color:var(--text-primary);
+  border-color:rgba(255,255,255,0.24);
+}
+
+/* ============ GALLERY ============ */
+.gallery{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:var(--sp-4);
+}
+.gallery figure{
+  background:var(--bg-card);
+  border:1px solid var(--border-card);
+  border-radius:var(--r-card);
+  padding:var(--sp-5);
+  display:flex;flex-direction:column;align-items:center;gap:var(--sp-4);
+  position:relative;overflow:hidden;
+}
+.gallery .halo-frame{
+  width:220px;height:220px;position:relative;
+  overflow:visible;
+}
+.gallery .halo{
+  width:320px;height:320px;
+  transform:translate(-50%,-50%) scale(0.62);
+  transform-origin:center center;
+}
+.gallery figcaption{
+  font-family:var(--ff-mono);font-size:10.5px;
+  letter-spacing:0.12em;color:var(--text-secondary);
+  text-transform:uppercase;
+}
+.gallery .caption-detail{
+  font-family:var(--ff-display);font-size:12px;
+  color:var(--text-tertiary);
+  margin-top:-8px;
+}
+.gallery .ripple-frozen{
+  position:absolute;top:50%;left:50%;
+  width:600px;height:600px;border-radius:50%;
+  background:radial-gradient(circle at center,var(--ripple-color) 0%,transparent 55%);
+  transform:translate(-50%,-50%) scale(0.85);
+  opacity:0.15;pointer-events:none;z-index:5;
+}
+
+/* ============ SPEC ============ */
+.spec-grid{
+  display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:var(--sp-4);
+}
+.spec-card{
+  background:var(--bg-card);
+  border:1px solid var(--border-card);
+  border-radius:var(--r-card);
+  padding:var(--sp-5);
+}
+.spec-card h3{
+  font-family:var(--ff-mono);font-size:10.5px;font-weight:500;
+  letter-spacing:0.12em;text-transform:uppercase;
+  color:var(--text-tertiary);
+  margin-bottom:var(--sp-4);
+}
+.palette{display:flex;flex-direction:column;gap:var(--sp-2)}
+.palette li{
+  display:grid;
+  grid-template-columns:24px auto 1fr auto;
+  align-items:center;gap:var(--sp-3);
+  font-family:var(--ff-mono);font-size:12px;
+  padding:5px 0;
+  border-bottom:1px solid var(--border-subtle);
+}
+.palette li:last-child{border-bottom:none}
+.swatch{
+  width:22px;height:22px;border-radius:6px;
+  border:1px solid rgba(255,255,255,0.10);
+}
+.palette li .pname{font-weight:500;color:var(--text-primary)}
+.palette li .papp{color:var(--text-tertiary);font-size:11px}
+.palette li .phex{color:var(--text-secondary);text-align:right;font-size:11px}
+
+.timing{width:100%;border-collapse:collapse;font-family:var(--ff-mono);font-size:11.5px}
+.timing td{padding:6px 0;border-top:1px solid var(--border-subtle)}
+.timing tr:first-child td{border-top:none}
+.timing td:first-child{color:var(--text-primary);padding-right:var(--sp-3)}
+.timing td:nth-child(2){color:var(--text-tertiary);text-align:right;white-space:nowrap}
+
+.type-list{display:flex;flex-direction:column;gap:var(--sp-3)}
+.type-list dt{
+  font-family:var(--ff-mono);font-size:10.5px;
+  letter-spacing:0.06em;color:var(--text-tertiary);
+  text-transform:uppercase;
+  margin-bottom:3px;
+}
+.type-list dd{font-size:14px;color:var(--text-primary)}
+.type-list dd code{color:var(--text-secondary)}
+
+/* ============ FOOTER ============ */
+footer{
+  margin-top:var(--sp-8);
+  padding:var(--sp-6);
+  border-top:1px solid var(--border-subtle);
+  display:flex;gap:var(--sp-5);justify-content:center;align-items:center;flex-wrap:wrap;
+  font-family:var(--ff-mono);font-size:10.5px;
+  color:var(--text-tertiary);letter-spacing:0.08em;
+}
+footer a{color:var(--text-secondary);text-decoration:none;transition:color 160ms var(--ease-out)}
+footer a:hover{color:var(--text-primary)}
+footer .sep{color:var(--border-subtle)}
+
+/* ============ RESPONSIVE ============ */
+@media (max-width:880px){
+  .gallery{grid-template-columns:repeat(2,1fr)}
+  .spec-grid{grid-template-columns:1fr;}
+  .topbar .brand-tag{display:none}
+  .hotkey-hint span{display:none}
+}
+@media (max-width:520px){
+  main{padding:var(--sp-6) var(--sp-4)}
+  .gallery{grid-template-columns:1fr}
+  .stage{height:480px}
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <span class="brand-name">Halo</span>
+    <span class="brand-tag">INTERACTIVE MOCKUP · v0</span>
+  </div>
+  <div class="hotkey-hint">
+    <kbd>⌘</kbd><kbd>⌥</kbd><kbd>Space</kbd>
+    <span>长按召唤 · 松开提交 · ESC 取消</span>
+  </div>
+</header>
+
+<main>
+
+  <section class="hero">
+    <h1>方位 <span class="accent">×</span> 色相,<br>构成你最快的一次切换。</h1>
+    <p class="hero-sub">
+      8 个高频应用按方位钉死，每个应用一种身份色。闭眼也能选对，松开 hotkey 即切过去。Halo 不是命令面板，不是 Dock，不是 ⌘Tab。它是介于这三者之间，被肌肉记忆驱动的那个 1 秒。
+    </p>
+  </section>
+
+  <section class="stage-section">
+    <div class="section-title">Live demo</div>
+    <div class="section-sub">移动指针进入瓣 / 按数字键 1–8 → 选择 · 按 Enter 或点击瓣 → 提交 · ESC → 取消</div>
+    <div class="stage" id="stage">
+      <div class="halo" id="halo"></div>
+      <div class="tutorial">
+        <div class="tutorial-inner">
+          <div class="tutorial-arrows">
+            <span>↑</span><span>→</span><span>↓</span><span>←</span>
+          </div>
+          <div class="tutorial-text">移动鼠标或按方向键 → 选择<br>松开 hotkey → 切换 · ESC → 取消</div>
+          <div class="tutorial-keys">⌘⌥Space · 1–8 · Enter · Esc</div>
+        </div>
+      </div>
+      <div class="stage-hint" id="stage-hint">悬停瓣或按 1–8</div>
+    </div>
+    <div class="state-controls" id="state-controls">
+      <button data-state="idle" class="active">Idle</button>
+      <button data-state="hover-2">Hover Slack</button>
+      <button data-state="preview-4">Preview Sketch</button>
+      <button data-state="commit-5">Commit Spotify</button>
+      <button data-state="empty">Empty Top-N</button>
+      <button data-state="tutorial">Tutorial</button>
+    </div>
+    <div class="slot-count-row" id="slot-count-row">
+      <span class="label">槽位数 N</span>
+      <button data-count="4">4</button>
+      <button data-count="6">6</button>
+      <button data-count="8" class="active">8</button>
+      <button data-count="10">10</button>
+      <button data-count="12">12</button>
+    </div>
+  </section>
+
+  <section class="gallery-section">
+    <div class="section-title">状态画廊</div>
+    <div class="section-sub">每个状态独立渲染，便于对照 INTERACTION.md §3</div>
+    <div class="gallery">
+      <figure>
+        <div class="halo-frame"><div class="halo" data-gallery="idle"></div></div>
+        <figcaption>Idle</figcaption>
+        <div class="caption-detail">无 hover，仅默认玻璃 + 8 槽</div>
+      </figure>
+      <figure>
+        <div class="halo-frame"><div class="halo" data-gallery="hover"></div></div>
+        <figcaption>Hovering</figcaption>
+        <div class="caption-detail">瓣描边 + 微染身份色（&lt;120ms）</div>
+      </figure>
+      <figure>
+        <div class="halo-frame"><div class="halo" data-gallery="preview"></div></div>
+        <figcaption>Preview</figcaption>
+        <div class="caption-detail">中心图标已换 + 外圈光晕</div>
+      </figure>
+      <figure>
+        <div class="halo-frame"><div class="halo" data-gallery="commit"></div></div>
+        <figcaption>Committing</figcaption>
+        <div class="caption-detail">瓣放大 + vignette ripple 扩散</div>
+      </figure>
+      <figure>
+        <div class="halo-frame"><div class="halo" data-gallery="empty"></div></div>
+        <figcaption>Empty Top-8</figcaption>
+        <div class="caption-detail">虚线 + 呼吸动画，提交即 Pin</div>
+      </figure>
+      <figure>
+        <div class="halo-frame"><div class="halo" data-gallery="tutorial"></div></div>
+        <figcaption>Tutorial Overlay</figcaption>
+        <div class="caption-detail">仅首次召唤显示 8s</div>
+      </figure>
+    </div>
+  </section>
+
+  <section class="spec-section">
+    <div class="section-title">设计 Token</div>
+    <div class="section-sub">所有可视维度都对应一个具名 Token，便于实现端 1:1 翻译</div>
+    <div class="spec-grid">
+      <div class="spec-card">
+        <h3>身份色调色板</h3>
+        <ul class="palette">
+          <li><span class="swatch" style="background:#26A5E4"></span><span class="pname">aqua</span><span class="papp">Telegram</span><span class="phex">#26A5E4</span></li>
+          <li><span class="swatch" style="background:#A259FF"></span><span class="pname">purple</span><span class="papp">Figma</span><span class="phex">#A259FF</span></li>
+          <li><span class="swatch" style="background:#E01E5A"></span><span class="pname">pink</span><span class="papp">Slack</span><span class="phex">#E01E5A</span></li>
+          <li><span class="swatch" style="background:#FF453A"></span><span class="pname">red</span><span class="papp">Things</span><span class="phex">#FF453A</span></li>
+          <li><span class="swatch" style="background:#F7B500"></span><span class="pname">yellow</span><span class="papp">Sketch</span><span class="phex">#F7B500</span></li>
+          <li><span class="swatch" style="background:#1DB954"></span><span class="pname">green</span><span class="papp">Spotify</span><span class="phex">#1DB954</span></li>
+          <li><span class="swatch" style="background:#3B82F6"></span><span class="pname">blue</span><span class="papp">Safari</span><span class="phex">#3B82F6</span></li>
+          <li><span class="swatch" style="background:#5E6AD2"></span><span class="pname">indigo</span><span class="papp">Linear</span><span class="phex">#5E6AD2</span></li>
+        </ul>
+      </div>
+      <div class="spec-card">
+        <h3>动效与时长</h3>
+        <table class="timing">
+          <tr><td>召唤淡入</td><td>150ms · spring(0.7)</td></tr>
+          <tr><td>瓣 hover 亮起</td><td>120ms · ease-out</td></tr>
+          <tr><td>中心图标交换</td><td>200ms · 0.95→1.0</td></tr>
+          <tr><td>外圈光晕</td><td>200ms · ease-out</td></tr>
+          <tr><td>提交瓣放大</td><td>150ms · 1.0→1.1</td></tr>
+          <tr><td>Vignette 扩散</td><td>180ms · 280→600pt</td></tr>
+          <tr><td>HUD 淡出（提交）</td><td>150ms · ease-out</td></tr>
+          <tr><td>HUD 淡出（取消）</td><td>100ms · ease-in</td></tr>
+          <tr><td>二级弧展开</td><td>180ms · 路径动画</td></tr>
+        </table>
+      </div>
+      <div class="spec-card">
+        <h3>字体 / 圆角 / 尺寸</h3>
+        <dl class="type-list">
+          <dt>HUD UI</dt><dd>SF Pro <code>· 系统</code></dd>
+          <dt>Mockup display</dt><dd>Geist 500/700</dd>
+          <dt>Mockup mono</dt><dd>JetBrains Mono 400/500</dd>
+          <dt>HUD 直径</dt><dd>280 pt</dd>
+          <dt>Deadzone 直径</dt><dd>72 pt</dd>
+          <dt>单瓣角度</dt><dd>45° · 间隙 2 pt</dd>
+          <dt>瓣外角圆角</dt><dd>4 pt</dd>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <span>Halo · DESIGN v0 · 2026-05-12</span>
+  <span class="sep">·</span>
+  <a href="../docs/PRODUCT.md">PRODUCT</a>
+  <a href="../docs/INTERACTION.md">INTERACTION</a>
+  <a href="../docs/VISUAL.md">VISUAL</a>
+  <span class="sep">·</span>
+  <a href="https://en.wikipedia.org/wiki/Hue_(video_game)" target="_blank" rel="noopener">Inspired by Hue (2016)</a>
+</footer>
+
+<script>
+const APPS = [
+  { id:0,  name:'Telegram', glyph:'✈', color:'#26A5E4' },
+  { id:1,  name:'Figma',    glyph:'F', color:'#A259FF' },
+  { id:2,  name:'Slack',    glyph:'#', color:'#E01E5A' },
+  { id:3,  name:'Things',   glyph:'✓', color:'#FF453A' },
+  { id:4,  name:'Sketch',   glyph:'◇', color:'#F7B500' },
+  { id:5,  name:'Spotify',  glyph:'♫', color:'#1DB954' },
+  { id:6,  name:'Safari',   glyph:'◎', color:'#3B82F6' },
+  { id:7,  name:'Linear',   glyph:'▷', color:'#5E6AD2' },
+  { id:8,  name:'Notion',   glyph:'N', color:'#F97316' },
+  { id:9,  name:'Cursor',   glyph:'*', color:'#22D3EE' },
+  { id:10, name:'Music',    glyph:'♪', color:'#FA243C' },
+  { id:11, name:'Mail',     glyph:'✉', color:'#0066CC' },
+];
+let slotCount = 8;
+const CENTER_DEFAULT = '◐';
+const GAP_DEG = 1.2;
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function slicePath(cx, cy, rOuter, rInner, startDeg, endDeg){
+  const toRad = d => d * Math.PI / 180;
+  const sr = toRad(startDeg), er = toRad(endDeg);
+  const x1 = cx + rInner*Math.cos(sr), y1 = cy + rInner*Math.sin(sr);
+  const x2 = cx + rOuter*Math.cos(sr), y2 = cy + rOuter*Math.sin(sr);
+  const x3 = cx + rOuter*Math.cos(er), y3 = cy + rOuter*Math.sin(er);
+  const x4 = cx + rInner*Math.cos(er), y4 = cy + rInner*Math.sin(er);
+  const largeArc = (endDeg - startDeg) > 180 ? 1 : 0;
+  return `M ${x1.toFixed(2)} ${y1.toFixed(2)} L ${x2.toFixed(2)} ${y2.toFixed(2)} A ${rOuter} ${rOuter} 0 ${largeArc} 1 ${x3.toFixed(2)} ${y3.toFixed(2)} L ${x4.toFixed(2)} ${y4.toFixed(2)} A ${rInner} ${rInner} 0 ${largeArc} 0 ${x1.toFixed(2)} ${y1.toFixed(2)} Z`;
+}
+
+function renderHalo(haloEl, opts = {}){
+  const n = opts.n || slotCount;
+  const size = 280;
+  const cx = size/2, cy = size/2;
+  const rOuter = size/2 - 4;
+  const rInner = 36;
+  const empty = !!opts.empty;
+  const slotSpan = 360 / n;
+
+  haloEl.innerHTML = '';
+  haloEl.classList.remove('is-empty', 'is-tutorial', 'is-committing');
+  haloEl.removeAttribute('data-hover');
+  haloEl.removeAttribute('data-preview');
+  haloEl.setAttribute('data-n', n);
+
+  const glow = document.createElement('div');
+  glow.className = 'halo-glow';
+  haloEl.appendChild(glow);
+
+  const bg = document.createElement('div');
+  bg.className = 'halo-bg';
+  haloEl.appendChild(bg);
+
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.classList.add('halo-svg');
+  svg.setAttribute('viewBox', `0 0 ${size} ${size}`);
+  for (let i = 0; i < n; i++) {
+    const startDeg = i*slotSpan - 90 - slotSpan/2 + GAP_DEG;
+    const endDeg = i*slotSpan - 90 + slotSpan/2 - GAP_DEG;
+    const path = document.createElementNS(SVG_NS, 'path');
+    path.setAttribute('d', slicePath(cx, cy, rOuter, rInner, startDeg, endDeg));
+    path.setAttribute('class', 'slot');
+    path.setAttribute('data-slot', i);
+    svg.appendChild(path);
+  }
+  const dz = document.createElementNS(SVG_NS, 'circle');
+  dz.setAttribute('cx', cx); dz.setAttribute('cy', cy);
+  dz.setAttribute('r', rInner - 2);
+  dz.setAttribute('class', 'deadzone');
+  svg.appendChild(dz);
+  haloEl.appendChild(svg);
+
+  const glyphs = document.createElement('div');
+  glyphs.className = 'glyphs';
+  for (let i = 0; i < n; i++) {
+    const midDeg = i*slotSpan - 90;
+    const midRad = midDeg * Math.PI / 180;
+    const rMid = (rOuter + rInner) / 2;
+    const x = cx + rMid * Math.cos(midRad);
+    const y = cy + rMid * Math.sin(midRad);
+    const g = document.createElement('div');
+    g.className = 'glyph';
+    g.setAttribute('data-slot', i);
+    g.style.left = `${(x/size)*100}%`;
+    g.style.top = `${(y/size)*100}%`;
+    g.textContent = empty ? '+' : APPS[i].glyph;
+    glyphs.appendChild(g);
+  }
+  haloEl.appendChild(glyphs);
+
+  const center = document.createElement('div');
+  center.className = 'center';
+  const cg = document.createElement('div');
+  cg.className = 'center-glyph';
+  cg.textContent = empty ? '+' : CENTER_DEFAULT;
+  const cl = document.createElement('div');
+  cl.className = 'center-label';
+  cl.textContent = 'CURRENT';
+  center.appendChild(cg); center.appendChild(cl);
+  haloEl.appendChild(center);
+
+  if (empty) haloEl.classList.add('is-empty');
+}
+
+/* ===== Interactive HUD ===== */
+const halo = document.getElementById('halo');
+const stage = document.getElementById('stage');
+const hint = document.getElementById('stage-hint');
+renderHalo(halo);
+
+let hoverTimer = null;
+let currentHover = null;
+
+function clearAllSlots(){
+  halo.querySelectorAll('.slot.is-active, .glyph.is-active').forEach(el => el.classList.remove('is-active'));
+}
+
+function setHover(idx){
+  clearAllSlots();
+  if (idx == null) {
+    halo.removeAttribute('data-hover');
+    halo.style.removeProperty('--hover-color');
+    setPreview(null);
+    hint.textContent = '悬停瓣或按 1–8';
+    return;
+  }
+  const app = APPS[idx];
+  halo.style.setProperty('--hover-color', app.color);
+  halo.setAttribute('data-hover', idx);
+  halo.querySelector(`.slot[data-slot="${idx}"]`).classList.add('is-active');
+  halo.querySelector(`.glyph[data-slot="${idx}"]`).classList.add('is-active');
+  hint.textContent = `${app.name.toUpperCase()} · 松开 / 点击 / Enter 提交`;
+}
+
+function setPreview(idx){
+  if (idx == null) {
+    halo.removeAttribute('data-preview');
+    const cg = halo.querySelector('.center-glyph');
+    const cl = halo.querySelector('.center-label');
+    if (cg) { cg.textContent = CENTER_DEFAULT; cg.classList.remove('swap-out'); }
+    if (cl) cl.textContent = 'CURRENT';
+    return;
+  }
+  const app = APPS[idx];
+  halo.setAttribute('data-preview', idx);
+  const cg = halo.querySelector('.center-glyph');
+  const cl = halo.querySelector('.center-label');
+  cg.classList.add('swap-out');
+  setTimeout(() => {
+    cg.textContent = app.glyph;
+    cl.textContent = app.name;
+    cg.classList.remove('swap-out');
+  }, 100);
+}
+
+function commit(idx){
+  if (idx == null) return;
+  const app = APPS[idx];
+  halo.classList.add('is-committing');
+
+  const ripple = document.createElement('div');
+  ripple.className = 'ripple';
+  ripple.style.setProperty('--ripple-color', app.color);
+  stage.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 750);
+
+  hint.textContent = `→ ${app.name.toUpperCase()}`;
+  setTimeout(() => {
+    halo.classList.remove('is-committing');
+    currentHover = null;
+    renderHalo(halo);
+    wireInteractiveHalo();
+    hint.textContent = '悬停瓣或按 1–8';
+  }, 900);
+}
+
+function wireInteractiveHalo(){
+  halo.querySelectorAll('.slot').forEach(path => {
+    const idx = parseInt(path.getAttribute('data-slot'));
+    path.addEventListener('mouseenter', () => {
+      if (halo.classList.contains('is-empty') || halo.classList.contains('is-tutorial')) return;
+      setHover(idx);
+      clearTimeout(hoverTimer);
+      hoverTimer = setTimeout(() => setPreview(idx), 120);
+      currentHover = idx;
+    });
+    path.addEventListener('mouseleave', () => {
+      if (halo.classList.contains('is-empty') || halo.classList.contains('is-tutorial')) return;
+      clearTimeout(hoverTimer);
+      setHover(null);
+      currentHover = null;
+    });
+    path.addEventListener('click', () => {
+      if (halo.classList.contains('is-empty') || halo.classList.contains('is-tutorial')) return;
+      commit(idx);
+    });
+  });
+}
+wireInteractiveHalo();
+
+document.addEventListener('keydown', (e) => {
+  if (halo.classList.contains('is-committing')) return;
+  if (e.key === 'Escape') {
+    clearTimeout(hoverTimer);
+    setHover(null);
+    if (halo.classList.contains('is-tutorial')) {
+      halo.classList.remove('is-tutorial');
+      setActiveControl('idle');
+    }
+    return;
+  }
+  if (/^[0-9]$/.test(e.key)) {
+    e.preventDefault();
+    let idx;
+    if (e.key === '0') idx = 9;              // 0 → slot 10 (index 9)
+    else idx = parseInt(e.key) - 1;          // 1–9 → slot 1–9 (index 0–8)
+    if (idx >= slotCount) return;            // beyond current N, ignore
+    setHover(idx);
+    setPreview(idx);
+    currentHover = idx;
+  }
+  if ((e.key === 'Enter' || e.key === ' ') && currentHover != null) {
+    e.preventDefault();
+    commit(currentHover);
+  }
+});
+
+/* ===== State control pills ===== */
+function setActiveControl(state){
+  document.querySelectorAll('#state-controls button').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-state') === state);
+  });
+}
+document.querySelectorAll('#state-controls button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const state = btn.getAttribute('data-state');
+    setActiveControl(state);
+
+    halo.classList.remove('is-empty', 'is-tutorial', 'is-committing');
+    renderHalo(halo);
+    wireInteractiveHalo();
+    setHover(null);
+
+    if (state === 'idle') {
+      hint.textContent = '悬停瓣或按 1–8';
+      return;
+    }
+    if (state === 'empty') {
+      renderHalo(halo, { empty: true });
+      wireInteractiveHalo();
+      hint.textContent = 'TOP-8 待 PIN';
+      return;
+    }
+    if (state === 'tutorial') {
+      halo.classList.add('is-tutorial');
+      hint.textContent = '首次召唤教学覆盖（8s）';
+      return;
+    }
+    const m = state.match(/^(\w+)-(\d)$/);
+    if (m) {
+      const action = m[1], idx = parseInt(m[2]);
+      setHover(idx);
+      currentHover = idx;
+      if (action === 'preview') setTimeout(() => setPreview(idx), 50);
+      if (action === 'commit') setTimeout(() => commit(idx), 200);
+    }
+  });
+});
+
+/* ===== Slot count switching ===== */
+function updateDemoButtonsForN(n){
+  document.querySelectorAll('#state-controls button[data-state]').forEach(btn => {
+    const m = btn.getAttribute('data-state').match(/-(\d+)$/);
+    btn.disabled = m ? parseInt(m[1]) >= n : false;
+  });
+}
+
+document.querySelectorAll('#slot-count-row button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#slot-count-row button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    slotCount = parseInt(btn.getAttribute('data-count'));
+    renderHalo(halo);
+    wireInteractiveHalo();
+    updateDemoButtonsForN(slotCount);
+    setActiveControl('idle');
+    currentHover = null;
+    const maxKey = slotCount <= 9 ? slotCount : (slotCount === 10 ? '10' : '10 + 方向键');
+    hint.textContent = `N = ${slotCount} · 悬停或数字键 1–${maxKey}`;
+  });
+});
+
+updateDemoButtonsForN(slotCount);
+
+/* ===== Gallery ===== */
+function renderGallery(){
+  document.querySelectorAll('.halo[data-gallery]').forEach(h => {
+    const kind = h.getAttribute('data-gallery');
+    if (kind === 'empty') {
+      renderHalo(h, { empty: true });
+      return;
+    }
+    renderHalo(h);
+    if (kind === 'idle') return;
+    if (kind === 'hover') {
+      h.style.setProperty('--hover-color', APPS[2].color);
+      h.setAttribute('data-hover', 2);
+      h.querySelector('.slot[data-slot="2"]').classList.add('is-active');
+      h.querySelector('.glyph[data-slot="2"]').classList.add('is-active');
+    }
+    if (kind === 'preview') {
+      h.style.setProperty('--hover-color', APPS[4].color);
+      h.setAttribute('data-hover', 4);
+      h.setAttribute('data-preview', 4);
+      h.querySelector('.slot[data-slot="4"]').classList.add('is-active');
+      h.querySelector('.glyph[data-slot="4"]').classList.add('is-active');
+      h.querySelector('.center-glyph').textContent = APPS[4].glyph;
+      h.querySelector('.center-label').textContent = APPS[4].name;
+    }
+    if (kind === 'commit') {
+      h.style.setProperty('--hover-color', APPS[5].color);
+      h.setAttribute('data-hover', 5);
+      h.setAttribute('data-preview', 5);
+      h.querySelector('.slot[data-slot="5"]').classList.add('is-active');
+      h.querySelector('.glyph[data-slot="5"]').classList.add('is-active');
+      h.querySelector('.center-glyph').textContent = APPS[5].glyph;
+      h.querySelector('.center-label').textContent = APPS[5].name;
+      const r = document.createElement('div');
+      r.className = 'ripple-frozen';
+      r.style.setProperty('--ripple-color', APPS[5].color);
+      h.parentElement.appendChild(r);
+    }
+    if (kind === 'tutorial') {
+      h.classList.add('is-tutorial');
+      const t = document.createElement('div');
+      t.className = 'tutorial';
+      t.style.display = 'flex';
+      t.style.position = 'absolute';
+      t.style.inset = '0';
+      t.innerHTML = `<div class="tutorial-inner" style="transform:scale(0.62);transform-origin:center">
+        <div class="tutorial-arrows"><span>↑</span><span>→</span><span>↓</span><span>←</span></div>
+        <div class="tutorial-text">移动 / 方向键 → 选择<br>松开 → 切换</div>
+      </div>`;
+      h.parentElement.appendChild(t);
+    }
+  });
+}
+renderGallery();
+</script>
+</body>
+</html>
