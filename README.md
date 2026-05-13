@@ -10,7 +10,7 @@ Single, self-contained macOS app. **No Accessibility permission** required for t
 
 ## Install
 
-Requires macOS 14 (Sonoma) or later. The Liquid Glass surfaces light up on macOS 26 (Tahoe).
+Requires **macOS 12 (Monterey) or later**. Ships as a **universal binary** (Apple Silicon + Intel). The Liquid Glass surfaces light up on macOS 26 (Tahoe); macOS 12 / 13 / 14 / 15 fall back to `NSVisualEffectView` with the same visual recipe.
 
 ```sh
 make install      # release-build + ad-hoc sign + copy into /Applications

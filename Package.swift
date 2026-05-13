@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Halo",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v12)],
     products: [
         .executable(name: "Halo", targets: ["HaloApp"]),
         .library(name: "HaloCore", targets: ["HaloCore"]),

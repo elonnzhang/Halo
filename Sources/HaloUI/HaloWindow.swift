@@ -69,6 +69,10 @@ public final class HaloWindow {
         previousFrontApp = NSWorkspace.shared.frontmostApplication.flatMap { app in
             app.bundleIdentifier == Bundle.main.bundleIdentifier ? nil : app
         }
+        // Publish to the view layer so the centre hub can render the
+        // pre-summon app's icon. Captured BEFORE NSApp.activate flips
+        // frontmost to Halo itself.
+        state.summonOriginBundleID = previousFrontApp?.bundleIdentifier
 
         panel.alphaValue = 0
         panel.orderFrontRegardless()
@@ -88,6 +92,7 @@ public final class HaloWindow {
     public func dismiss(animated: Bool = true, restorePreviousFront: Bool = false) {
         uninstallCursorTimer()
         state.phase = .hidden
+        state.summonOriginBundleID = nil
         let restore = restorePreviousFront ? previousFrontApp : nil
         previousFrontApp = nil
 

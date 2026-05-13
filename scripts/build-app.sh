@@ -2,12 +2,13 @@
 # Package Halo as a proper macOS .app bundle.
 #
 # Steps:
-#   1. swift build -c release
-#   2. Assemble dist/Halo.app/Contents/{MacOS,Resources}
-#   3. Copy executable + Info.plist + Halo.icns
-#   4. Ad-hoc codesign (so Gatekeeper at least lets the user open it once)
+#   1. swift build -c release for arm64 + x86_64
+#   2. lipo the two slices into a universal Mach-O
+#   3. Assemble dist/Halo.app/Contents/{MacOS,Resources}
+#   4. Copy executable + Info.plist + Halo.icns
+#   5. Ad-hoc codesign (so Gatekeeper at least lets the user open it once)
 #
-# Output: dist/Halo.app
+# Output: dist/Halo.app (universal: arm64 + x86_64, macOS 12+)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -23,23 +24,24 @@ RESOURCES="${CONTENTS}/Resources"
 
 CONFIG="${BUILD_CONFIG:-release}"
 
-echo "==> swift build (${CONFIG})"
-swift build -c "$CONFIG"
+echo "==> swift build (${CONFIG}) for arm64"
+swift build -c "$CONFIG" --arch arm64
+ARM_BIN=".build/arm64-apple-macosx/${CONFIG}/${APP_NAME}"
+[[ -x "$ARM_BIN" ]] || { echo "error: arm64 build missing at $ARM_BIN" >&2; exit 1; }
 
-BIN_PATH=".build/${CONFIG}/${APP_NAME}"
-if [[ ! -x "$BIN_PATH" ]]; then
-    # Apple silicon places binaries under arm64-apple-macosx
-    BIN_PATH=".build/arm64-apple-macosx/${CONFIG}/${APP_NAME}"
-fi
-if [[ ! -x "$BIN_PATH" ]]; then
-    echo "error: cannot find built executable" >&2
-    exit 1
-fi
+echo "==> swift build (${CONFIG}) for x86_64"
+swift build -c "$CONFIG" --arch x86_64
+X86_BIN=".build/x86_64-apple-macosx/${CONFIG}/${APP_NAME}"
+[[ -x "$X86_BIN" ]] || { echo "error: x86_64 build missing at $X86_BIN" >&2; exit 1; }
 
 echo "==> assemble ${APP_PATH}"
 rm -rf "$APP_PATH"
 mkdir -p "$MACOS" "$RESOURCES"
-cp "$BIN_PATH" "$MACOS/$APP_NAME"
+
+echo "==> lipo arm64 + x86_64 → universal Mach-O"
+lipo -create "$ARM_BIN" "$X86_BIN" -output "$MACOS/$APP_NAME"
+lipo -info "$MACOS/$APP_NAME" | sed 's/^/    /'
+
 cp Resources/Info.plist "$CONTENTS/Info.plist"
 
 # Make sure the icon exists. If not, regenerate it.

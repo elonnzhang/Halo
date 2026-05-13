@@ -22,6 +22,12 @@ public final class HaloState: ObservableObject {
     @Published public var center: CGPoint = .zero
     /// Active ripple, when any.
     @Published public var activeRipple: RippleSignal?
+    /// Bundle ID of the app that was frontmost *before* Halo summoned itself.
+    /// RadialView renders this as the centre-hub icon when no slot is hovered,
+    /// so the user sees "where you came from" rather than Halo's own icon
+    /// (Halo activates itself on summon to receive ESC/arrow keystrokes, which
+    /// makes `NSWorkspace.shared.frontmostApplication` return Halo).
+    @Published public var summonOriginBundleID: String?
 
     /// Invoked when the user decides to commit — mouse click, keyboard Return,
     /// digit hotkey, or hotkey release. Set by the AppDelegate; not @Published

@@ -352,12 +352,17 @@ public struct RadialView: View {
                 .frame(width: iconSide, height: iconSide)
                 .transition(.opacity.combined(with: .scale(scale: 0.94)))
                 .id(previewed.bundleID)
-        } else if let front = AppIconResolver.frontmostIcon() {
-            Image(nsImage: front)
+        } else if let originID = state.summonOriginBundleID,
+                  let icon = AppIconResolver.icon(for: originID) {
+            // Pre-summon frontmost app — "where you came from". We can't call
+            // `NSWorkspace.shared.frontmostApplication` here because Halo has
+            // already activated itself by the time the HUD is rendering.
+            Image(nsImage: icon)
                 .resizable()
                 .interpolation(.high)
                 .scaledToFit()
                 .frame(width: iconSide, height: iconSide)
+                .id(originID)
         } else {
             Image(systemName: "circle.dotted")
                 .font(.system(size: 28, weight: .light))

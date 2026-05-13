@@ -47,7 +47,9 @@ First public release.
 
 ### Build / distribute
 
-- Pure Swift Package, single `Package.swift`. Builds on Xcode 17+ targeting macOS 14.
+- Pure Swift Package, single `Package.swift`. Deployment target **macOS 12**.
+- Ships as a **universal binary** (`arm64` + `x86_64`) via `lipo` inside `scripts/build-app.sh`.
+- Settings UI uses macOS-13-and-up APIs (`formStyle(.grouped)`, `NavigationStack`, two-arg `onChange`) where available, with compat shims in `Sources/HaloUI/PlatformCompat.swift` for macOS 12.
 - `make app` produces an ad-hoc-signed `dist/Halo.app`.
 - `make dist` packages a redistributable zip.
 - `make install` copies into `/Applications`.

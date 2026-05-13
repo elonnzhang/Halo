@@ -141,7 +141,7 @@ private struct BehaviorTab: View {
                 prefs.resetOnboarding()
             }
         }
-        .formStyle(.grouped)
+        .compatGroupedFormStyle()
     }
 }
 
@@ -200,7 +200,7 @@ private struct HotkeyTab: View {
                     .font(.callout)
             }
         }
-        .formStyle(.grouped)
+        .compatGroupedFormStyle()
     }
 }
 
@@ -272,7 +272,7 @@ private struct PinsTab: View {
                 }
             }
         }
-        .formStyle(.grouped)
+        .compatGroupedFormStyle()
     }
 }
 
@@ -337,7 +337,7 @@ private struct AppPickerSheet: View {
     @State private var search = ""
 
     var body: some View {
-        NavigationStack {
+        CompatNavigationContainer {
             List(filtered, id: \.bundleID) { item in
                 Button {
                     onPick(item.bundleID)
@@ -416,7 +416,7 @@ private struct ColorsTab: View {
                     .foregroundStyle(.secondary).font(.callout)
             }
         }
-        .formStyle(.grouped)
+        .compatGroupedFormStyle()
     }
 }
 
@@ -435,7 +435,7 @@ private struct ColorRow: View {
             Spacer()
             ColorPicker("", selection: $swatch, supportsOpacity: false)
                 .labelsHidden()
-                .onChange(of: swatch) { _, new in
+                .compatOnChange(of: swatch) { new in
                     if let identity = IdentityColor.fromSwiftUI(new) {
                         prefs.setIdentityOverride(identity, for: bundleID)
                         onChange()
