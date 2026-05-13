@@ -68,6 +68,12 @@ public final class AppPreferences: ObservableObject {
         static let haloDiameter    = "halo.prefs.layout.hudDiameter"
         static let iconSize        = "halo.prefs.layout.iconSize"
         static let iconRadius      = "halo.prefs.layout.iconRadius"
+        static let panelScale      = "halo.prefs.layout.panelScale"
+        static let scrollToSwitch  = "halo.prefs.scrollToSwitch"
+        static let numberKeyCommit = "halo.prefs.numberKeyCommit"
+        static let highlightFront  = "halo.prefs.highlightFrontmostOnSummon"
+        static let doubleTapTrigger = "halo.prefs.doubleTapTrigger"
+        static let whitelist       = "halo.prefs.whitelist.v1"
         static let onboardingShown = "halo.onboarding.shown"
     }
 
@@ -100,6 +106,11 @@ public final class AppPreferences: ObservableObject {
             Keys.cmdHoldDuration: 1.5,
             Keys.cmdDoubleTapGap: 0.30,
             Keys.autostart: false,
+            Keys.panelScale: 1.0,
+            Keys.scrollToSwitch: true,
+            Keys.numberKeyCommit: true,
+            Keys.highlightFront: true,
+            Keys.doubleTapTrigger: DoubleTapTrigger.command.rawValue,
         ])
     }
 
@@ -217,6 +228,51 @@ public final class AppPreferences: ObservableObject {
         set {
             objectWillChange.send()
             defaults.set(newValue, forKey: Keys.autostart)
+        }
+    }
+
+    /// Which physical key (or button) drives the auxiliary double-tap
+    /// trigger. The Carbon hotkey chord is independent of this; see
+    /// `DoubleTapTrigger` for the available paths.
+    public var doubleTapTrigger: DoubleTapTrigger {
+        get {
+            let raw = defaults.string(forKey: Keys.doubleTapTrigger) ?? DoubleTapTrigger.command.rawValue
+            return DoubleTapTrigger(rawValue: raw) ?? .command
+        }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue.rawValue, forKey: Keys.doubleTapTrigger)
+        }
+    }
+
+    /// When true, the scroll wheel / two-finger swipe rotates Halo's
+    /// highlighted slot while Halo is summoned. Off makes scrolls inert.
+    public var scrollToSwitch: Bool {
+        get { defaults.bool(forKey: Keys.scrollToSwitch) }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue, forKey: Keys.scrollToSwitch)
+        }
+    }
+
+    /// When true, pressing a digit / `0` / `-` / `=` commits the matching
+    /// slot directly.
+    public var numberKeyCommit: Bool {
+        get { defaults.bool(forKey: Keys.numberKeyCommit) }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue, forKey: Keys.numberKeyCommit)
+        }
+    }
+
+    /// When true, Halo seeds its highlight on summon to the slot index of
+    /// the frontmost app (if pinned), so a "Halo → scroll once → switch
+    /// back" gesture is one tick away. Falls back to slot 0.
+    public var highlightFrontmostOnSummon: Bool {
+        get { defaults.bool(forKey: Keys.highlightFront) }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue, forKey: Keys.highlightFront)
         }
     }
 
@@ -389,13 +445,63 @@ public final class AppPreferences: ObservableObject {
         return (lower, upper)
     }
 
-    /// Restore all three layout values to their defaults.
+    /// Renderer-time uniform multiplier applied at the Halo panel root —
+    /// scales every layout dimension together so visually-impaired users
+    /// can enlarge the wheel without re-tuning the three base sliders.
+    /// Clamped to 0.80–1.50: smaller breaks sector hit-test precision;
+    /// larger overflows a 13" display.
+    public var panelScale: CGFloat {
+        get {
+            let raw = CGFloat(defaults.double(forKey: Keys.panelScale))
+            let value = raw == 0 ? 1.0 : raw
+            return max(0.80, min(1.50, value))
+        }
+        set {
+            objectWillChange.send()
+            let clamped = max(0.80, min(1.50, newValue))
+            defaults.set(Double(clamped), forKey: Keys.panelScale)
+        }
+    }
+
+    /// Restore all layout values (including panelScale) to their defaults.
     public func resetLayout() {
         objectWillChange.send()
         defaults.removeObject(forKey: Keys.haloDiameter)
         defaults.removeObject(forKey: Keys.iconSize)
         defaults.removeObject(forKey: Keys.iconRadius)
+        defaults.removeObject(forKey: Keys.panelScale)
         HaloLog.settings.info("Reset wheel layout to defaults")
+    }
+
+    // MARK: - Whitelist
+
+    /// Bundle IDs of frontmost apps where Halo's triggers (chord +
+    /// double-tap) are suppressed entirely. Edits dedupe in stable order
+    /// so the UI's row order matches storage order.
+    public var whitelistedBundleIDs: [String] {
+        get {
+            guard let data = defaults.data(forKey: Keys.whitelist),
+                  let arr = try? JSONDecoder().decode([String].self, from: data)
+            else { return [] }
+            return arr
+        }
+        set {
+            objectWillChange.send()
+            var seen: Set<String> = []
+            let deduped = newValue.filter { seen.insert($0).inserted }
+            if let data = try? JSONEncoder().encode(deduped) {
+                defaults.set(data, forKey: Keys.whitelist)
+            }
+        }
+    }
+
+    /// O(1) suppression check for the event-tap hot path. Frontmost may
+    /// be `nil` during transitions (lockscreen, app launch); treat that
+    /// as "not whitelisted" so we don't drop the trigger when the user
+    /// is trying to recover focus.
+    public func isHaloSuppressed(forFrontmost bundleID: String?) -> Bool {
+        guard let bundleID = bundleID else { return false }
+        return whitelistedBundleIDs.contains(bundleID)
     }
 
     // MARK: - Bindings

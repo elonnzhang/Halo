@@ -92,4 +92,52 @@ final class AppPreferencesTests: XCTestCase {
         prefs.resetOnboarding()
         XCTAssertFalse(defaults.bool(forKey: "halo.onboarding.shown"))
     }
+
+    // MARK: - v1.1 fields
+
+    func test_navigationToggles_defaultToOn() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        XCTAssertTrue(prefs.scrollToSwitch)
+        XCTAssertTrue(prefs.numberKeyCommit)
+        XCTAssertTrue(prefs.highlightFrontmostOnSummon)
+    }
+
+    func test_navigationToggles_persist() {
+        let defaults = freshDefaults()
+        let prefs = AppPreferences(defaults: defaults)
+        prefs.scrollToSwitch = false
+        prefs.numberKeyCommit = false
+        prefs.highlightFrontmostOnSummon = false
+
+        let reloaded = AppPreferences(defaults: defaults)
+        XCTAssertFalse(reloaded.scrollToSwitch)
+        XCTAssertFalse(reloaded.numberKeyCommit)
+        XCTAssertFalse(reloaded.highlightFrontmostOnSummon)
+    }
+
+    func test_panelScale_defaultsToOne_andClamps() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        XCTAssertEqual(prefs.panelScale, 1.0, accuracy: 0.001)
+        prefs.panelScale = 0.5
+        XCTAssertEqual(prefs.panelScale, 0.80, accuracy: 0.001)
+        prefs.panelScale = 2.0
+        XCTAssertEqual(prefs.panelScale, 1.50, accuracy: 0.001)
+        prefs.panelScale = 1.25
+        XCTAssertEqual(prefs.panelScale, 1.25, accuracy: 0.001)
+    }
+
+    func test_resetLayout_clearsPanelScale() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        prefs.panelScale = 1.40
+        prefs.resetLayout()
+        XCTAssertEqual(prefs.panelScale, 1.0, accuracy: 0.001)
+    }
+
+    func test_doubleTapTrigger_defaultsToCommand_andPersists() {
+        let defaults = freshDefaults()
+        let prefs = AppPreferences(defaults: defaults)
+        XCTAssertEqual(prefs.doubleTapTrigger, .command)
+        prefs.doubleTapTrigger = .leftOption
+        XCTAssertEqual(AppPreferences(defaults: defaults).doubleTapTrigger, .leftOption)
+    }
 }
