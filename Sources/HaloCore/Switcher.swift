@@ -24,10 +24,15 @@ public struct Switcher: Sendable {
 
     @discardableResult
     public func switchTo(bundleID: String) -> SwitchOutcome {
-        if runtime.isRunning(bundleID: bundleID) {
-            return runtime.activate(bundleID: bundleID) ? .activated : .failed
+        let running = runtime.isRunning(bundleID: bundleID)
+        if running {
+            let ok = runtime.activate(bundleID: bundleID)
+            HaloLog.switcher.info("activate \(bundleID) → \(ok ? "ok" : "FAILED")")
+            return ok ? .activated : .failed
         }
-        return runtime.launch(bundleID: bundleID) ? .launched : .failed
+        let ok = runtime.launch(bundleID: bundleID)
+        HaloLog.switcher.info("launch \(bundleID) → \(ok ? "ok" : "FAILED")")
+        return ok ? .launched : .failed
     }
 }
 

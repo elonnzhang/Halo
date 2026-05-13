@@ -15,8 +15,14 @@ public final class HaloState: ObservableObject {
 
     @Published public var phase: Phase = .hidden
     @Published public var slots: [HaloSlot] = []
+    /// Effective slot count for the current draw. Pulled from
+    /// `AppPreferences.slotCount` (the user-configured max, 4...12) by
+    /// default, but `AppDelegate.refreshSlots` may shrink it dynamically
+    /// down to `apps + 1` (and as low as 1) when the user has no pinned
+    /// apps and fewer history apps than the configured max — so the wheel
+    /// shows only one "+" rather than a ring of empty placeholders.
     @Published public var slotCount: Int = 8 {
-        didSet { precondition((4...12).contains(slotCount)) }
+        didSet { precondition((1...12).contains(slotCount)) }
     }
     /// HUD origin on screen, in window coordinates.
     @Published public var center: CGPoint = .zero

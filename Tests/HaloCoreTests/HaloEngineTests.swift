@@ -99,4 +99,40 @@ final class HaloEngineTests: XCTestCase {
         let engine = HaloEngine(profile: .balanced)
         XCTAssertEqual(engine.top(n: 4, from: []), [])
     }
+
+    func test_duplicateBundleIDs_collapseToSingleSlot() {
+        // Regression: the previous dedupe filter used `Set<AppRef>` which
+        // hashed bundleID+name together, so the same app activated under
+        // two different localized names (system language change, app
+        // rename) produced two slots in the HUD. Engine should canonicalise
+        // by bundleID only.
+        let calendarV1 = AppRef(bundleID: "com.apple.iCal", name: "Calendar")
+        let calendarV2 = AppRef(bundleID: "com.apple.iCal", name: "日历")
+        let records = [
+            UsageRecord(app: calendarV1, activations: 3, lastUsed: Date(timeIntervalSince1970: 1000)),
+            UsageRecord(app: calendarV2, activations: 5, lastUsed: Date(timeIntervalSince1970: 2000)),
+        ]
+        let engine = HaloEngine(profile: .balanced)
+        let result = engine.top(n: 4, from: records)
+        XCTAssertEqual(result.count, 1, "duplicate bundleIDs must collapse to one slot")
+        // Canonical AppRef should be the one with the most recent activation.
+        XCTAssertEqual(result.first?.name, "日历")
+    }
+
+    func test_pinnedAndRecord_sameBundleID_doNotDoubleUp() {
+        // Pin and frequency-record for the same app shouldn't show twice.
+        let calendar = AppRef(bundleID: "com.apple.iCal", name: "Calendar")
+        // Different `name` to deliberately stress the name-based hash:
+        let calendarPin = AppRef(bundleID: "com.apple.iCal", name: "Calendar")
+        let safari = AppRef(bundleID: "com.apple.Safari", name: "Safari")
+        let records = [
+            UsageRecord(app: calendar, activations: 10, lastUsed: Date()),
+            UsageRecord(app: safari, activations: 5, lastUsed: Date()),
+        ]
+        let engine = HaloEngine(profile: .balanced, pinned: [calendarPin])
+        let result = engine.top(n: 4, from: records)
+        XCTAssertEqual(result.count, 2, "pinned + recorded same bundleID must dedupe")
+        XCTAssertEqual(result.first?.bundleID, "com.apple.iCal")
+        XCTAssertEqual(result.last?.bundleID,  "com.apple.Safari")
+    }
 }

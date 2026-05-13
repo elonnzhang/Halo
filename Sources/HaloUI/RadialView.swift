@@ -393,16 +393,23 @@ public struct RadialView: View {
             radius: HaloUI.Geometry.labelRadius
         )
         return Text(slot.app?.name ?? "")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(Color.white.opacity(0.96))
-            .lineLimit(1)
+            .font(.system(size: 13, weight: .bold))
+            .foregroundStyle(Color.white)
+            .lineLimit(2)
+            .minimumScaleFactor(0.82)
+            .multilineTextAlignment(.center)
             .truncationMode(.tail)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            // Tight dark shadow on the text glyphs themselves (not the
+            // capsule). Liquid Glass vibrancy can desaturate white text
+            // against a coloured disc; the shadow restores legibility
+            // without darkening the capsule background.
+            .shadow(color: .black.opacity(0.55), radius: 1.5, x: 0, y: 0.5)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
             .modifier(GlassChipBackground(namespace: glassNamespace, slotID: slot.id))
             .shadow(color: .black.opacity(0.38), radius: 10, x: 0, y: 5)
             .frame(maxWidth: HaloUI.Geometry.labelMaxWidth)
-            .fixedSize(horizontal: true, vertical: false)
+            .fixedSize(horizontal: false, vertical: true)
             .offset(x: center.x, y: -center.y)
             .transition(.opacity.combined(with: .scale(scale: 0.94)))
             .animation(.easeOut(duration: 0.14), value: slot.id)
@@ -528,9 +535,12 @@ private struct SlotContent: View {
                     )
             }
         } else {
+            // Match the on-screen size of real app icons (iconCanvas above
+            // draws into `iconSize - 6`) so the dashed placeholder shares
+            // the wheel's visual rhythm.
             EmptySlotMark()
-                .frame(width: HaloUI.Geometry.iconSize,
-                       height: HaloUI.Geometry.iconSize)
+                .frame(width: HaloUI.Geometry.iconSize - 6,
+                       height: HaloUI.Geometry.iconSize - 6)
         }
     }
 
@@ -576,9 +586,15 @@ private struct StatusDot: View {
 
 private struct EmptySlotMark: View {
     @State private var animating = false
+    /// macOS app icons follow a squircle with ~22 % corner radius. For our
+    /// 42 pt drawn-icon footprint that's ~9 pt; rounding to 11 keeps it in
+    /// step with the `RoundedRectangle(cornerRadius: 11)` fallback used by
+    /// `iconCanvas` for apps whose icon failed to resolve.
+    private let cornerRadius: CGFloat = 11
+
     var body: some View {
         ZStack {
-            Circle()
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .strokeBorder(
                     Color.white.opacity(animating ? 0.30 : 0.18),
                     style: StrokeStyle(lineWidth: 1, dash: [3, 3])

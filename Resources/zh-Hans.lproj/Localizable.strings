@@ -17,7 +17,11 @@
 "MRU only" = "最近用";
 "Startup" = "启动";
 "Launch Halo at login" = "登录时启动 Halo";
-"Reset onboarding overlay" = "重置引导提示";
+"Replay welcome guide" = "再看一次欢迎引导";
+"Reset onboarding overlay" = "重置首次使用提示";
+"Export diagnostic log…" = "导出诊断日志…";
+"Could not export diagnostic log" = "无法导出诊断日志";
+"OK" = "好";
 "Language" = "语言";
 "Display language" = "界面语言";
 "System" = "跟随系统";
@@ -42,6 +46,12 @@
 "Reset color" = "重置颜色";
 "Each slot is either Auto (frequency picks the app) or pinned to a specific app. Pinned apps can have their identity colour overridden inline." = "每个槽位可设为「自动」(按使用频率挑选应用) 或手动选择指定应用。已选择的应用可在右侧覆盖识别色。";
 "Hidden pins (slot count too low)" = "已选择但隐藏的应用 (当前槽位不足)";
+"Default binding" = "默认绑定";
+"%d pinned · %d slots" = "已选 %d 个 · 共 %d 槽位";
+"Clear all" = "全部清空";
+"Clear all pinned apps?" = "确认清空所有已选择的应用?";
+"All slot pins and identity-colour overrides will be reset. This cannot be undone." = "所有槽位选择和识别色覆盖都将被重置,无法撤销。";
+"Clear" = "清空";
 
 /* App picker sheet */
 "Search apps" = "搜索应用";
@@ -51,3 +61,17 @@
 "Radial app launcher for macOS — point a direction, switch apps." = "macOS 环形启动器——指一个方向,切换应用。";
 "GitHub" = "GitHub";
 "License (MIT)" = "许可证 (MIT)";
+
+/* Welcome window */
+"Welcome to Halo" = "欢迎使用 Halo";
+"Summon" = "召唤";
+"Press ⌘⌥Space or double-tap ⌘ to bring up the HUD." = "按 ⌘⌥Space 或双击 ⌘ 即可打开环形 HUD。";
+"Navigate" = "选择";
+"Point the cursor at a slot and release the hotkey to switch. ESC cancels." = "把光标移到某个槽位,松开快捷键即切换;按 ESC 取消。";
+"Customize" = "定制";
+"Click the Halo icon in the menu bar to open Settings — pin apps, rebind the hotkey, switch language." = "点击菜单栏的 Halo 图标打开「设置」——可选择应用、重绑快捷键、切换语言。";
+"Get Started" = "开始使用";
+"Hotkey detected ✓" = "已检测到快捷键 ✓";
+"Try it: press %@ now" = "现在试试:按 %@";
+"Point a direction, release to switch" = "指方向后松开即切换";
+"cancels · digit keys jump" = "取消 · 数字键直选";

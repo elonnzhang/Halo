@@ -296,6 +296,21 @@ public final class AppPreferences: ObservableObject {
         }
     }
 
+    // MARK: - Bindings
+
+    // TODO: Apps 布局支持多 profile —— 把 pinnedSlots / overflowPins /
+    // identityOverride 都按 profile name 分桶（"default" / "work" /
+    // "gaming" ...），Settings 上加 profile 切换器。当前所有键都隐含在
+    // "default" 这一个 profile 下；未来重构时只需把 storage key 改成
+    // `halo.prefs.bindings.<profile>.<key>` 并把 currentProfile 持久化。
+    public func clearAllBindings() {
+        objectWillChange.send()
+        let n = slotCount
+        savePinned(Array(repeating: nil, count: n), overflow: [])
+        defaults.removeObject(forKey: Keys.identityOver)
+        HaloLog.settings.info("Cleared all pins + identity overrides (slot count \(n))")
+    }
+
     // MARK: - Onboarding
 
     public func resetOnboarding() {

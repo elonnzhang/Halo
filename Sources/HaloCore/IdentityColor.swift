@@ -85,8 +85,13 @@ private func linearToSRGB(_ c: Double) -> Double {
 
 public enum IdentityPalette {
     /// Equal-arc fallback ring; base hue is 230° (aqua) per VISUAL §4.2.
+    ///
+    /// Range is now 1...12 (was 4...12) so the wheel can render a small
+    /// `apps + 1` display when the user has fewer than four apps in
+    /// rotation — the visible slot count is dynamic in that case and may
+    /// drop as low as 1.
     public static func fallback(n: Int) -> [IdentityColor] {
-        precondition((4...12).contains(n))
+        precondition((1...12).contains(n))
         let step = 360.0 / Double(n)
         return (0..<n).map { i in
             IdentityColor(lightness: 0.65, chroma: 0.18, hue: 230 + Double(i) * step)

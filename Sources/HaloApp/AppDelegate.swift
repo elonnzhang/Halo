@@ -12,6 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBar: MenuBarController!
     private var hotkey: HaloHotkey!
     private var onboarding = OnboardingOverlay()
+    private var welcome = WelcomeWindowController()
     private var settingsWindowController: SettingsWindowController?
 
     private var lastFrontmostBundleID: String?
@@ -29,6 +30,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var commandLongPress: CommandLongPressMonitor?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        HaloLog.lifecycle.info("Halo \(Halo.version) launching")
         installActivationObserver()
 
         state.slotCount = prefs.slotCount
@@ -60,6 +62,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         monitor.onReleased = { [weak self] in self?.commitSelection() }
         monitor.start()
         commandLongPress = monitor
+
+        // First-launch welcome card. Deferred one runloop tick so the menu
+        // bar item finishes mounting and the user sees it referenced from
+        // the card's "Customize" tip without it being absent from the bar.
+        DispatchQueue.main.async { [weak self] in
+            self?.welcome.showIfNeeded()
+        }
+    }
+
+    /// Public so Settings → General can replay the welcome card on demand.
+    func replayWelcome() {
+        welcome.showAgain()
+    }
+
+    /// Suspend global hotkey + double-tap-⌘ processing while the welcome
+    /// card is up. Otherwise pressing the configured chord summons the HUD
+    /// and steals focus from the welcome window. Called by `WelcomeView`'s
+    /// `onAppear` / `onDisappear`.
+    func pauseHotkeyForOnboarding() {
+        hotkey.unregister()
+        commandLongPress?.stop()
+    }
+
+    func resumeHotkey() {
+        registerHotkey()
+        commandLongPress?.start()
     }
 
     // MARK: - Preferences sync
@@ -84,8 +112,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .holdReleased:  self.commitSelection()
             }
         }
-        if !ok {
-            NSLog("Halo: failed to register hotkey \(prefs.hotkeyModifiers.symbols)+\(prefs.hotkeyKeyCode)")
+        let chord = "\(self.prefs.hotkeyModifiers.symbols)key:\(self.prefs.hotkeyKeyCode)"
+        if ok {
+            HaloLog.hotkey.info("Registered hotkey \(chord)")
+        } else {
+            HaloLog.hotkey.error("Failed to register hotkey \(chord)")
         }
     }
 
@@ -138,16 +169,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ]
 
     private func refreshSlots() {
-        let n = prefs.slotCount
+        let userMaxN = prefs.slotCount
         let records = usageStore.allRecords().filter {
             !Self.systemBundleBlocklist.contains($0.app.bundleID)
         }
         let pinned = pinnedAppRefs(from: prefs.pinnedBundleIDs)
 
         let engine = HaloEngine(profile: prefs.frequencyProfile, pinned: pinned)
-        let topApps = engine.top(n: n, from: records)
+        let topApps = engine.top(n: userMaxN, from: records)
 
-        let candidates: [IdentityColor?] = topApps.indices.map { i in
+        // Dynamic display slot count, always: `apps + 1` (the "+" hint)
+        // until the user reaches their configured max, after which the
+        // "+" disappears. Pinned apps are part of `topApps` (engine puts
+        // them first) so this naturally counts them along with frequency
+        // picks — the wheel grows one slot at a time as the user pins or
+        // activates a new app, up to `userMaxN`.
+        let displayN = max(1, min(topApps.count + 1, userMaxN))
+
+        let candidates: [IdentityColor?] = (0..<displayN).map { i in
+            guard i < topApps.count else { return nil }
             let app = topApps[i]
             if let override = prefs.identityOverride(for: app.bundleID) {
                 return override
@@ -162,17 +202,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return nil
         }
-        let usageOrder = Array(0..<topApps.count)
-        let padded = candidates + Array(repeating: nil as IdentityColor?, count: max(0, n - candidates.count))
         let palette = resolver.resolve(
-            candidates: padded,
-            usageOrder: usageOrder + Array(usageOrder.count..<n),
-            n: n,
-            useHue8: n == 8
+            candidates: candidates,
+            usageOrder: Array(0..<displayN),
+            n: displayN,
+            useHue8: displayN == 8
         )
 
+        if state.slotCount != displayN {
+            state.slotCount = displayN
+        }
+
         let runningIDs = Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier })
-        state.slots = (0..<n).map { i in
+        state.slots = (0..<displayN).map { i in
             if i < topApps.count {
                 let app = topApps[i]
                 let runState: HaloSlot.RunState = runningIDs.contains(app.bundleID) ? .running : .launchable
@@ -201,6 +243,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Hotkey handlers
 
     private func summon() {
+        HaloLog.summon.info("summon position=\(self.prefs.summonPosition.rawValue)")
         // Slots are kept current by the activation observer and by prefs
         // changes; we don't need to re-extract dominant colors here — that
         // burns ~100ms/icon and makes the HUD feel sluggish.
@@ -232,6 +275,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func commitSelection() {
+        // Tear down the first-summon onboarding chip as soon as the user
+        // commits — the lesson is over, no need to keep the hint floating.
+        onboarding.dismiss()
+        HaloLog.summon.debug("commit phase=\(String(describing: self.state.phase)) hover=\(String(describing: self.state.currentHoverSlot))")
         guard let i = state.currentHoverSlot,
               let slot = state.slots.first(where: { $0.id == i })
         else {
@@ -290,6 +337,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func cancel() {
+        HaloLog.summon.debug("cancel")
+        onboarding.dismiss()
         window.dismiss(animated: true, restorePreviousFront: true)
     }
 

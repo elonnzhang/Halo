@@ -117,6 +117,28 @@ struct SettingsRootView: View {
 private struct GeneralTab: View {
     @ObservedObject var prefs: AppPreferences
 
+    /// Pulls the last hour of unified-log entries under the Halo
+    /// subsystem into `~/Downloads/Halo-diagnostic-<timestamp>.log` and
+    /// reveals it in Finder. Bound to the Settings button; surfaces any
+    /// error via an `NSAlert` so the user knows what to attach to a bug
+    /// report instead of getting a silent failure.
+    private func exportDiagnostics() {
+        do {
+            let url = try DiagnosticLog.export()
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } catch {
+            let alert = NSAlert()
+            alert.messageText = NSLocalizedString(
+                "Could not export diagnostic log",
+                comment: "Alert title shown when log export fails"
+            )
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: NSLocalizedString("OK", comment: ""))
+            alert.runModal()
+        }
+    }
+
     var body: some View {
         Form {
             Section("Layout") {
@@ -158,8 +180,14 @@ private struct GeneralTab: View {
                     set: { prefs.autostart = $0; LaunchAgentManager.apply(enabled: $0) }
                 ))
 
+                Button("Replay welcome guide") {
+                    (NSApp.delegate as? AppDelegate)?.replayWelcome()
+                }
                 Button("Reset onboarding overlay") {
                     prefs.resetOnboarding()
+                }
+                Button("Export diagnostic log…") {
+                    exportDiagnostics()
                 }
             }
 
@@ -211,7 +239,7 @@ private struct HotkeyTab: View {
                         capturing = false
                     }
                 }
-                Button("Reset to ⌘⌥Space") {
+                Button("Reset to ⌘ ⌥ Space") {
                     prefs.hotkeyKeyCode = 49
                     prefs.hotkeyModifiers = [.command, .option]
                 }
@@ -248,11 +276,19 @@ private struct HotkeyTab: View {
 
 // MARK: - Apps (merged Pins + Colors)
 
+// TODO: Apps 布局支持多 profile —— 现在只渲染单个 "Default" 绑定，
+// 未来需要一个 profile 列表 + 切换器（"Default" / "Work" / "Gaming"...），
+// 每个 profile 独立维护 pinnedBundleIDs / identityOverride。AppPreferences
+// 已留了 `clearAllBindings()` 入口，以后按 profile 维度切桶即可。
 private struct AppsTab: View {
     @ObservedObject var prefs: AppPreferences
 
+    @State private var confirmingClear = false
+
     var body: some View {
         Form {
+            bindingHeader
+
             Section {
                 ForEach(0..<prefs.slotCount, id: \.self) { i in
                     AppRowView(slot: i, prefs: prefs)
@@ -281,6 +317,59 @@ private struct AppsTab: View {
             }
         }
         .compatGroupedFormStyle()
+        .alert("Clear all pinned apps?", isPresented: $confirmingClear) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear", role: .destructive) {
+                prefs.clearAllBindings()
+            }
+        } message: {
+            Text("All slot pins and identity-colour overrides will be reset. This cannot be undone.")
+        }
+    }
+
+    /// "Halo binding" card at the top of the Apps tab. Looks like a small
+    /// app/profile chip — name, slot count, pinned count, and a Clear
+    /// button. Today there's only ever one profile ("Default"); see the
+    /// TODO above the type for the multi-profile shape we'll grow into.
+    private var bindingHeader: some View {
+        Section {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color.accentColor.opacity(0.18))
+                    Image(systemName: "circle.dashed.inset.filled")
+                        .font(.system(size: 18, weight: .regular))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .frame(width: 36, height: 36)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Default binding")
+                        .font(.headline)
+                    Text(bindingSummary)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button("Clear all", role: .destructive) {
+                    confirmingClear = true
+                }
+                .controlSize(.regular)
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private var bindingSummary: String {
+        let pinned = prefs.pinnedBundleIDs.compactMap { $0 }.count
+        let slots = prefs.slotCount
+        return String(
+            format: NSLocalizedString("%d pinned · %d slots", comment: "Apps tab binding summary"),
+            pinned,
+            slots
+        )
     }
 
     private func displayName(for bundleID: String) -> String {
@@ -517,7 +606,7 @@ private final class KeyCaptureView: NSView {
     }
 }
 
-private extension HotkeyModifiers {
+extension HotkeyModifiers {
     init(nsEventFlags flags: NSEvent.ModifierFlags) {
         var s: HotkeyModifiers = []
         if flags.contains(.command) { s.insert(.command) }

@@ -9,16 +9,22 @@ public enum HaloUI {
     /// panel sizing can't drift.
     public enum Geometry {
         /// Outer donut diameter.
-        public static let hudDiameter: CGFloat = 320
+        public static let hudDiameter: CGFloat = 380
         /// Center hub (deadzone) diameter. Hit-tests inside are inert.
         public static let deadzoneDiameter: CGFloat = 112
         /// Where each slot icon's center sits along the donut's radius.
-        public static let iconRadius: CGFloat = (hudDiameter + deadzoneDiameter) / 4
+        /// The wheel uses a feathered alpha mask that starts fading at 84 %
+        /// of the geometric radius, so the *visible* outer rim is at
+        /// `hudDiameter / 2 × 0.84`. Centre the icons between that visible
+        /// rim and the hub edge, not between the geometric rim and the hub,
+        /// otherwise icons look like they're hugging the fade-out.
+        public static let visibleOuterRadius: CGFloat = hudDiameter / 2 * 0.84
+        public static let iconRadius: CGFloat = (visibleOuterRadius + deadzoneDiameter / 2) / 2
         /// App icon size inside a sector.
         public static let iconSize: CGFloat = 48
         /// Where the curved tooltip label floats outside the wheel.
         public static let labelRadius: CGFloat = hudDiameter / 2 + 28
-        public static let labelMaxWidth: CGFloat = 220
+        public static let labelMaxWidth: CGFloat = 260
         /// Breathing room so the halo glow + label + shadow all fit in the
         /// panel without clipping.
         public static let totalDiameter: CGFloat = hudDiameter + 120

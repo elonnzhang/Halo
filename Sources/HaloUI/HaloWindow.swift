@@ -19,6 +19,11 @@ public final class HaloWindow {
     private var cursorTimer: Timer?
     private var previousFrontApp: NSRunningApplication?
     private var rippleWindow: NSWindow?
+    /// Halo windows other than the HUD panel that were visible at summon
+    /// time and have been ordered-out to keep them from riding up with the
+    /// overlay on macOS 12 / 13. macOS 14+ uses the targeted `NSApp.activate()`
+    /// instead and leaves this empty. Restored on cancel; cleared on commit.
+    private var hiddenForSummon: [NSWindow] = []
 
     public init(state: HaloState) {
         self.state = state
@@ -76,7 +81,22 @@ public final class HaloWindow {
 
         panel.alphaValue = 0
         panel.orderFrontRegardless()
-        NSApp.activate(ignoringOtherApps: true)
+        // Activate without pulling every Halo window to the front. On
+        // macOS 14+ the new `NSApp.activate()` honours that intent —
+        // local NSEvent monitors still fire (we need ESC / arrow / digit)
+        // but an open Settings window stays where it was. macOS 12 / 13
+        // only have the older `activate(ignoringOtherApps:)` which raises
+        // ALL windows, so on those systems we explicitly order other Halo
+        // windows out around the activation and restore them on cancel.
+        if #available(macOS 14.0, *) {
+            NSApp.activate()
+        } else {
+            hiddenForSummon = NSApp.windows.filter {
+                $0 !== panel && $0.isVisible
+            }
+            for win in hiddenForSummon { win.orderOut(nil) }
+            NSApp.activate(ignoringOtherApps: true)
+        }
 
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.12
@@ -95,6 +115,14 @@ public final class HaloWindow {
         state.summonOriginBundleID = nil
         let restore = restorePreviousFront ? previousFrontApp : nil
         previousFrontApp = nil
+
+        // Restore any Halo windows we hid on summon (macOS 12 / 13 path).
+        // Only restore on cancel — on commit the user is switching to a
+        // target app and we don't want Settings popping back into view.
+        if restorePreviousFront {
+            for win in hiddenForSummon { win.orderFront(nil) }
+        }
+        hiddenForSummon.removeAll()
 
         if animated {
             let panel = self.panel

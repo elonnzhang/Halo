@@ -23,10 +23,27 @@ final class PinPickerWindowController {
         w.title = "Pin to slot \(slot)"
         w.contentViewController = host
         w.isReleasedWhenClosed = false
-        w.center()
-        w.makeKeyAndOrderFront(nil)
+
+        // Centre on the screen the cursor is currently on — multi-display
+        // users expect the picker to land on their active display, not
+        // always on `NSScreen.main`.
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
+        if let visible = screen?.visibleFrame {
+            let size = w.frame.size
+            w.setFrameOrigin(NSPoint(
+                x: visible.midX - size.width / 2,
+                y: visible.midY - size.height / 2
+            ))
+        }
+
         NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        w.makeKeyAndOrderFront(nil)
+        if #available(macOS 14.0, *) {
+            NSApp.activate()
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
         self.window = w
     }
 
@@ -79,6 +96,11 @@ private struct PinPickerView: View {
                 .buttonStyle(.plain)
             }
         }
+        // Without an explicit frame the NSHostingController collapses to
+        // its content's intrinsic size — for an empty List that's zero,
+        // and the window winds up showing nothing but the traffic-light
+        // chrome and a single search-field row.
+        .frame(width: 480, height: 520)
         .onAppear(perform: load)
     }
 

@@ -17,7 +17,11 @@
 "MRU only" = "MRU only";
 "Startup" = "Startup";
 "Launch Halo at login" = "Launch Halo at login";
+"Replay welcome guide" = "Replay welcome guide";
 "Reset onboarding overlay" = "Reset onboarding overlay";
+"Export diagnostic log…" = "Export diagnostic log…";
+"Could not export diagnostic log" = "Could not export diagnostic log";
+"OK" = "OK";
 "Language" = "Language";
 "Display language" = "Display language";
 "System" = "System";
@@ -42,6 +46,12 @@
 "Reset color" = "Reset color";
 "Each slot is either Auto (frequency picks the app) or pinned to a specific app. Pinned apps can have their identity colour overridden inline." = "Each slot is either Auto (frequency picks the app) or pinned to a specific app. Pinned apps can have their identity colour overridden inline.";
 "Hidden pins (slot count too low)" = "Hidden pins (slot count too low)";
+"Default binding" = "Default binding";
+"%d pinned · %d slots" = "%d pinned · %d slots";
+"Clear all" = "Clear all";
+"Clear all pinned apps?" = "Clear all pinned apps?";
+"All slot pins and identity-colour overrides will be reset. This cannot be undone." = "All slot pins and identity-colour overrides will be reset. This cannot be undone.";
+"Clear" = "Clear";
 
 /* App picker sheet */
 "Search apps" = "Search apps";
@@ -51,3 +61,17 @@
 "Radial app launcher for macOS — point a direction, switch apps." = "Radial app launcher for macOS — point a direction, switch apps.";
 "GitHub" = "GitHub";
 "License (MIT)" = "License (MIT)";
+
+/* Welcome window */
+"Welcome to Halo" = "Welcome to Halo";
+"Summon" = "Summon";
+"Press ⌘⌥Space or double-tap ⌘ to bring up the HUD." = "Press ⌘⌥Space or double-tap ⌘ to bring up the HUD.";
+"Navigate" = "Navigate";
+"Point the cursor at a slot and release the hotkey to switch. ESC cancels." = "Point the cursor at a slot and release the hotkey to switch. ESC cancels.";
+"Customize" = "Customize";
+"Click the Halo icon in the menu bar to open Settings — pin apps, rebind the hotkey, switch language." = "Click the Halo icon in the menu bar to open Settings — pin apps, rebind the hotkey, switch language.";
+"Get Started" = "Get Started";
+"Hotkey detected ✓" = "Hotkey detected ✓";
+"Try it: press %@ now" = "Try it: press %@ now";
+"Point a direction, release to switch" = "Point a direction, release to switch";
+"cancels · digit keys jump" = "cancels · digit keys jump";
