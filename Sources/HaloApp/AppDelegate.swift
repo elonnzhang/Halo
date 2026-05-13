@@ -124,6 +124,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .holdReleased:  self.commitSelection()
             }
         }
+        // Wire the whitelist gate on every (re)registration — Carbon
+        // recreates the hotkey ref each time so the gate has to be
+        // re-installed alongside the new listener.
+        hotkey.suppressionGate = { [weak self] in
+            guard let self = self else { return false }
+            let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            return self.prefs.isHaloSuppressed(forFrontmost: frontmost)
+        }
         let chord = "\(self.prefs.hotkeyModifiers.symbols)key:\(self.prefs.hotkeyKeyCode)"
         if ok {
             HaloLog.hotkey.info("Registered hotkey \(chord)")

@@ -285,24 +285,6 @@ struct AppPickerSheet: View {
     }
 }
 
-// MARK: - Whitelist tab placeholder
-
-/// Real implementation lives in `WhitelistTab.swift` (Phase 5). Kept here
-/// only because `SettingsRootView` routes to it; Phase 5 deletes this stub.
-struct WhitelistTab: View {
-    @ObservedObject var prefs: AppPreferences
-    var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "shield")
-                .font(.system(size: 32))
-                .foregroundStyle(.tertiary)
-            Text("Whitelist UI lands in Phase 5")
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}
-
 private extension Array {
     subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }
