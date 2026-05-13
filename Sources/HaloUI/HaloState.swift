@@ -53,6 +53,18 @@ public final class HaloState: ObservableObject {
     /// transitions from a single "what slot is under the cursor right now"
     /// input. Owned here so both the cursor timer (HaloWindow) and the
     /// fallback DragGesture (RadialView) push through the same gate.
+
+    /// Move the highlighted slot by `delta` (positive = clockwise, in
+    /// natural slot-index order), wrapping modulo `slotCount`. Called by
+    /// AppDelegate's scrollWheel monitor when Settings → Navigation →
+    /// Scroll to switch slots is on. No-op when Halo is hidden or empty.
+    public func advanceSelection(by delta: Int) {
+        guard slotCount > 0, phase != .hidden else { return }
+        let current = currentHoverSlot ?? 0
+        let next = ((current + delta) % slotCount + slotCount) % slotCount
+        phase = .hovering(next)
+    }
+
     public func updateHover(slot: Int?) {
         switch (phase, slot) {
         case (.hidden, _):

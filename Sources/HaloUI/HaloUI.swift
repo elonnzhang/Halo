@@ -58,6 +58,18 @@ public enum HaloUI {
         public static var totalDiameter: CGFloat {
             haloDiameter + 200
         }
+        /// User-tunable renderer-time scale (Settings → Appearance →
+        /// Panel size). Multiplies every layout dimension at draw time so
+        /// users can enlarge the whole wheel without re-tuning diameter /
+        /// icon size individually.
+        public static var panelScale: CGFloat {
+            AppPreferences.shared.panelScale
+        }
+        /// `totalDiameter` post-scale. Used by `HaloWindow` to size the
+        /// host NSPanel so the scaled SwiftUI root has somewhere to draw.
+        public static var scaledTotalDiameter: CGFloat {
+            totalDiameter * panelScale
+        }
         /// Gap between adjacent sectors (degrees).
         public static let slotGapDegrees: Double = 1.0
         public static let originAngleDegrees: Double = -90
