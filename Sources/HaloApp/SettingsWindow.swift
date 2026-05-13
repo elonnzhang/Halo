@@ -3,18 +3,20 @@ import SwiftUI
 import HaloCore
 import HaloUI
 
+// MARK: - NSWindow controller
+
+/// Hosts `SettingsRootView` inside a `NSHostingController` and manages the
+/// activation-policy dance: bumps Halo to `.regular` so the Settings window
+/// promotes to the foreground, then reverts to `.accessory` (menu-bar only)
+/// when the window closes.
 @MainActor
 final class SettingsWindowController {
-    let window: NSWindow
+    private let window: NSWindow
     private let prefs: AppPreferences
-    private let refresh: () -> Void
 
-    init(prefs: AppPreferences, refreshHandler: @escaping () -> Void) {
+    init(prefs: AppPreferences) {
         self.prefs = prefs
-        self.refresh = refreshHandler
-
-        let host = NSHostingController(rootView: SettingsRootView(prefs: prefs,
-                                                                  onChange: refreshHandler))
+        let host = NSHostingController(rootView: SettingsRootView(prefs: prefs))
         let w = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 560, height: 540),
             styleMask: [.titled, .closable, .miniaturizable],
@@ -24,23 +26,37 @@ final class SettingsWindowController {
         w.title = "Halo · Settings"
         w.contentViewController = host
         w.isReleasedWhenClosed = false
-        w.center()
         self.window = w
     }
 
     func show() {
-        NSApp.setActivationPolicy(.regular)  // make window appear & take focus
+        NSApp.setActivationPolicy(.regular)
+        centerOnCurrentScreen()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
         WindowCloseObserver.attach(window: window) {
-            // Return to menu-bar-only once Settings closes.
             NSApp.setActivationPolicy(.accessory)
         }
     }
+
+    /// Centres on the screen the cursor is currently on, not on `NSScreen.main`.
+    /// On multi-display setups the user expects Settings to land where they're
+    /// looking — usually the same display as the menu-bar item they just
+    /// clicked — rather than always on the primary display.
+    private func centerOnCurrentScreen() {
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
+        guard let visible = screen?.visibleFrame else { return }
+        let size = window.frame.size
+        window.setFrameOrigin(NSPoint(
+            x: visible.midX - size.width / 2,
+            y: visible.midY - size.height / 2
+        ))
+    }
 }
 
-/// Watches an NSWindow for its close notification so we can flip the
-/// activation policy back to .accessory without subclassing the window.
+/// Watches an NSWindow for its close notification so we can flip activation
+/// policy back to `.accessory` without subclassing the window.
 @MainActor
 private final class WindowCloseObserver {
     static var observers: [ObjectIdentifier: WindowCloseObserver] = [:]
@@ -67,83 +83,91 @@ private final class WindowCloseObserver {
             }
         }
     }
-
-    // No deinit: willCloseNotification is a single-shot event and removing the
-    // dictionary entry frees this instance; the NotificationCenter token's only
-    // remaining ref is from inside the handler block, which has already run.
 }
 
 // MARK: - SwiftUI root
 
+/// Settings UI hosted inside `SettingsWindowController`. Four tabs:
+/// General, Hotkey, Apps (merged Pins + Colors), About.
+///
+/// Mutations on `prefs` propagate automatically — `AppDelegate.prefsObserver`
+/// sinks `objectWillChange` and re-applies the snapshot to the running HUD —
+/// so no `onChange` callback is threaded through.
 struct SettingsRootView: View {
     @ObservedObject var prefs: AppPreferences
-    let onChange: () -> Void
 
     var body: some View {
         TabView {
-            BehaviorTab(prefs: prefs, onChange: onChange)
-                .tabItem { Label("Behavior", systemImage: "slider.horizontal.3") }
+            GeneralTab(prefs: prefs)
+                .tabItem { Label("General", systemImage: "gearshape") }
             HotkeyTab(prefs: prefs)
                 .tabItem { Label("Hotkey", systemImage: "command") }
-            PinsTab(prefs: prefs, onChange: onChange)
-                .tabItem { Label("Pins", systemImage: "pin") }
-            ColorsTab(prefs: prefs, onChange: onChange)
-                .tabItem { Label("Colors", systemImage: "paintpalette") }
+            AppsTab(prefs: prefs)
+                .tabItem { Label("Apps", systemImage: "square.grid.3x3.fill") }
             AboutTab()
                 .tabItem { Label("About", systemImage: "info.circle") }
         }
-        .padding(20)
+        .padding(16)
         .frame(width: 560, height: 540)
     }
 }
 
-private struct BehaviorTab: View {
+// MARK: - General
+
+private struct GeneralTab: View {
     @ObservedObject var prefs: AppPreferences
-    let onChange: () -> Void
 
     var body: some View {
         Form {
-            Picker("Slot count (N)", selection: Binding(
-                get: { prefs.slotCount },
-                set: { prefs.slotCount = $0; onChange() }
-            )) {
-                ForEach([4, 6, 8, 10, 12], id: \.self) { n in
-                    Text("\(n)").tag(n)
+            Section("Layout") {
+                Picker("Slot count", selection: Binding(
+                    get: { prefs.slotCount },
+                    set: { prefs.slotCount = $0 }
+                )) {
+                    ForEach([4, 6, 8, 10, 12], id: \.self) { n in
+                        Text("\(n)").tag(n)
+                    }
                 }
+                .pickerStyle(.segmented)
+
+                Picker("Summon position", selection: Binding(
+                    get: { prefs.summonPosition },
+                    set: { prefs.summonPosition = $0 }
+                )) {
+                    Text("At cursor").tag(SummonPosition.mouse)
+                    Text("Screen center").tag(SummonPosition.center)
+                }
+                .pickerStyle(.segmented)
             }
-            .pickerStyle(.segmented)
 
-            Picker("Frequency profile", selection: Binding(
-                get: { prefs.frequencyProfile },
-                set: { prefs.frequencyProfile = $0; onChange() }
-            )) {
-                Text("MFU only").tag(FrequencyProfile.mfuOnly)
-                Text("Balanced").tag(FrequencyProfile.balanced)
-                Text("MRU only").tag(FrequencyProfile.mruOnly)
+            Section("Ranking") {
+                Picker("Frequency profile", selection: Binding(
+                    get: { prefs.frequencyProfile },
+                    set: { prefs.frequencyProfile = $0 }
+                )) {
+                    Text("MFU only").tag(FrequencyProfile.mfuOnly)
+                    Text("Balanced").tag(FrequencyProfile.balanced)
+                    Text("MRU only").tag(FrequencyProfile.mruOnly)
+                }
+                .pickerStyle(.segmented)
             }
-            .pickerStyle(.segmented)
 
-            Picker("Summon position", selection: Binding(
-                get: { prefs.summonPosition },
-                set: { prefs.summonPosition = $0 }
-            )) {
-                Text("At cursor").tag(SummonPosition.mouse)
-                Text("Screen center").tag(SummonPosition.center)
-            }
-            .pickerStyle(.segmented)
+            Section("Startup") {
+                Toggle("Launch Halo at login", isOn: Binding(
+                    get: { prefs.autostart },
+                    set: { prefs.autostart = $0; LaunchAgentManager.apply(enabled: $0) }
+                ))
 
-            Toggle("Launch Halo at login", isOn: Binding(
-                get: { prefs.autostart },
-                set: { prefs.autostart = $0; LaunchAgentManager.apply(enabled: $0) }
-            ))
-
-            Button("Reset onboarding overlay") {
-                prefs.resetOnboarding()
+                Button("Reset onboarding overlay") {
+                    prefs.resetOnboarding()
+                }
             }
         }
         .compatGroupedFormStyle()
     }
 }
+
+// MARK: - Hotkey
 
 private struct HotkeyTab: View {
     @ObservedObject var prefs: AppPreferences
@@ -204,94 +228,75 @@ private struct HotkeyTab: View {
     }
 }
 
-private struct HotkeyCaptureView: NSViewRepresentable {
-    let prefs: AppPreferences
-    let onCapture: () -> Void
+// MARK: - Apps (merged Pins + Colors)
 
-    func makeNSView(context: Context) -> KeyCaptureView {
-        let v = KeyCaptureView()
-        v.onCapture = { code, mods in
-            prefs.hotkeyKeyCode = code
-            prefs.hotkeyModifiers = mods
-            onCapture()
-        }
-        return v
-    }
-
-    func updateNSView(_ nsView: KeyCaptureView, context: Context) {
-        DispatchQueue.main.async { nsView.window?.makeFirstResponder(nsView) }
-    }
-}
-
-private final class KeyCaptureView: NSView {
-    var onCapture: ((UInt32, HotkeyModifiers) -> Void)?
-
-    override var acceptsFirstResponder: Bool { true }
-
-    override func keyDown(with event: NSEvent) {
-        let modifiers = HotkeyModifiers(nsEventFlags: event.modifierFlags)
-        guard !modifiers.isEmpty else {
-            NSSound.beep()
-            return
-        }
-        onCapture?(UInt32(event.keyCode), modifiers)
-    }
-}
-
-private extension HotkeyModifiers {
-    init(nsEventFlags flags: NSEvent.ModifierFlags) {
-        var s: HotkeyModifiers = []
-        if flags.contains(.command) { s.insert(.command) }
-        if flags.contains(.option)  { s.insert(.option) }
-        if flags.contains(.control) { s.insert(.control) }
-        if flags.contains(.shift)   { s.insert(.shift) }
-        self = s
-    }
-}
-
-private struct PinsTab: View {
+private struct AppsTab: View {
     @ObservedObject var prefs: AppPreferences
-    let onChange: () -> Void
 
     var body: some View {
         Form {
             Section {
                 ForEach(0..<prefs.slotCount, id: \.self) { i in
-                    PinRow(slot: i, prefs: prefs, onChange: onChange)
+                    AppRowView(slot: i, prefs: prefs)
                 }
             } header: {
-                Text("Pin a specific app to a slot, or leave Auto to let frequency choose.")
+                Text("Each slot is either Auto (frequency picks the app) or pinned to a specific app. Pinned apps can have their identity colour overridden inline.")
                     .foregroundStyle(.secondary)
                     .font(.callout)
             }
+
             if !prefs.overflowPinnedBundleIDs.isEmpty {
                 Section("Hidden pins (slot count too low)") {
                     ForEach(prefs.overflowPinnedBundleIDs, id: \.self) { id in
-                        Text(id).font(.system(.callout, design: .monospaced))
+                        HStack {
+                            if let icon = AppIconResolver.icon(for: id) {
+                                Image(nsImage: icon).resizable().frame(width: 18, height: 18)
+                            }
+                            Text(displayName(for: id))
+                            Spacer()
+                            Text(id)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
         }
         .compatGroupedFormStyle()
     }
+
+    private func displayName(for bundleID: String) -> String {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
+        else { return bundleID }
+        return (url.lastPathComponent as NSString).deletingPathExtension
+    }
 }
 
-private struct PinRow: View {
+/// Single row in the Apps tab: pin status + colour override side-by-side so
+/// the user can manage a slot without tab-hopping. Replaces the old
+/// `PinRow` + `ColorRow` split.
+private struct AppRowView: View {
     let slot: Int
     @ObservedObject var prefs: AppPreferences
-    let onChange: () -> Void
+
     @State private var pickerOpen = false
+    @State private var swatch: Color = .gray
+
+    private var currentBundleID: String? {
+        prefs.pinnedBundleIDs[safe: slot] ?? nil
+    }
 
     var body: some View {
-        HStack {
-            Text("Slot \(slot)")
+        HStack(spacing: 10) {
+            Text("\(slot)")
                 .font(.system(.body, design: .monospaced))
-                .frame(width: 60, alignment: .leading)
+                .foregroundStyle(.secondary)
+                .frame(width: 18, alignment: .trailing)
 
-            let current = prefs.pinnedBundleIDs[safe: slot] ?? nil
-            if let id = current,
-               let icon = AppIconResolver.icon(for: id) {
-                Image(nsImage: icon).resizable().frame(width: 20, height: 20)
+            if let id = currentBundleID, let icon = AppIconResolver.icon(for: id) {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 22, height: 22)
                 Text(displayName(for: id))
             } else {
                 Image(systemName: "circle.dashed")
@@ -301,22 +306,50 @@ private struct PinRow: View {
             }
 
             Spacer()
-            Button("Pick…") { pickerOpen = true }
-            if current != nil {
+
+            if currentBundleID != nil {
+                ColorPicker("", selection: $swatch, supportsOpacity: false)
+                    .labelsHidden()
+                    .compatOnChange(of: swatch) { new in
+                        if let identity = IdentityColor.fromSwiftUI(new) {
+                            prefs.setIdentityOverride(identity, for: currentBundleID!)
+                        }
+                    }
+                Button("Reset color") {
+                    if let id = currentBundleID {
+                        prefs.setIdentityOverride(nil, for: id)
+                        loadSwatch()
+                    }
+                }
+                .buttonStyle(.borderless)
+            }
+
+            Button(currentBundleID == nil ? "Pin…" : "Change") { pickerOpen = true }
+            if currentBundleID != nil {
                 Button("Clear") {
                     prefs.setPinnedBundleID(nil, at: slot)
-                    onChange()
                 }
+                .buttonStyle(.borderless)
             }
         }
         .sheet(isPresented: $pickerOpen) {
             AppPickerSheet { picked in
                 if let id = picked {
                     prefs.setPinnedBundleID(id, at: slot)
-                    onChange()
+                    loadSwatch()
                 }
                 pickerOpen = false
             }
+        }
+        .onAppear(perform: loadSwatch)
+    }
+
+    private func loadSwatch() {
+        guard let id = currentBundleID else { swatch = .gray; return }
+        if let override = prefs.identityOverride(for: id) {
+            swatch = override.swiftUIColor
+        } else {
+            swatch = .gray
         }
     }
 
@@ -327,9 +360,7 @@ private struct PinRow: View {
     }
 }
 
-private extension Array {
-    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
-}
+// MARK: - App picker sheet
 
 private struct AppPickerSheet: View {
     let onPick: (String?) -> Void
@@ -395,89 +426,92 @@ private struct AppPickerSheet: View {
     }
 }
 
-private struct ColorsTab: View {
-    @ObservedObject var prefs: AppPreferences
-    let onChange: () -> Void
-
-    var body: some View {
-        let pinned = prefs.pinnedBundleIDs.compactMap { $0 }
-        Form {
-            Section {
-                if pinned.isEmpty {
-                    Text("Pin apps under Pins to override their identity color.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(pinned, id: \.self) { id in
-                        ColorRow(bundleID: id, prefs: prefs, onChange: onChange)
-                    }
-                }
-            } header: {
-                Text("Override the auto-extracted identity color for any pinned app. Click the swatch to pick; Reset returns to the icon-derived color.")
-                    .foregroundStyle(.secondary).font(.callout)
-            }
-        }
-        .compatGroupedFormStyle()
-    }
-}
-
-private struct ColorRow: View {
-    let bundleID: String
-    @ObservedObject var prefs: AppPreferences
-    let onChange: () -> Void
-    @State private var swatch: Color = .gray
-
-    var body: some View {
-        HStack {
-            if let icon = AppIconResolver.icon(for: bundleID) {
-                Image(nsImage: icon).resizable().frame(width: 20, height: 20)
-            }
-            Text(displayName)
-            Spacer()
-            ColorPicker("", selection: $swatch, supportsOpacity: false)
-                .labelsHidden()
-                .compatOnChange(of: swatch) { new in
-                    if let identity = IdentityColor.fromSwiftUI(new) {
-                        prefs.setIdentityOverride(identity, for: bundleID)
-                        onChange()
-                    }
-                }
-            Button("Reset") {
-                prefs.setIdentityOverride(nil, for: bundleID)
-                onChange()
-            }
-        }
-        .onAppear {
-            if let override = prefs.identityOverride(for: bundleID) {
-                swatch = override.swiftUIColor
-            } else {
-                swatch = .gray
-            }
-        }
-    }
-
-    private var displayName: String {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
-        else { return bundleID }
-        return (url.lastPathComponent as NSString).deletingPathExtension
-    }
-}
+// MARK: - About
 
 private struct AboutTab: View {
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 18) {
+            Spacer(minLength: 0)
+
             Image(systemName: "circle.dashed.inset.filled")
                 .font(.system(size: 64, weight: .light))
                 .foregroundStyle(.tint)
-            Text("Halo").font(.largeTitle).bold()
-            Text("v\(Halo.version) · radial app launcher for macOS")
-                .foregroundStyle(.secondary)
-            Text("Hold the hotkey, point a direction, release.")
-                .foregroundStyle(.secondary)
+
+            VStack(spacing: 4) {
+                Text("Halo").font(.largeTitle).bold()
+                Text("v\(Halo.version)")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("Radial app launcher for macOS — point a direction, switch apps.")
                 .font(.callout)
-                .padding(.top, 8)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 360)
+
+            HStack(spacing: 12) {
+                Link("GitHub", destination: URL(string: "https://github.com/elonnzhang/Halo")!)
+                Text("·").foregroundStyle(.tertiary)
+                Link("License (MIT)", destination: URL(string: "https://github.com/elonnzhang/Halo/blob/main/LICENSE")!)
+            }
+            .font(.callout)
+
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+}
+
+// MARK: - Hotkey capture
+
+private struct HotkeyCaptureView: NSViewRepresentable {
+    let prefs: AppPreferences
+    let onCapture: () -> Void
+
+    func makeNSView(context: Context) -> KeyCaptureView {
+        let v = KeyCaptureView()
+        v.onCapture = { code, mods in
+            prefs.hotkeyKeyCode = code
+            prefs.hotkeyModifiers = mods
+            onCapture()
+        }
+        return v
+    }
+
+    func updateNSView(_ nsView: KeyCaptureView, context: Context) {
+        DispatchQueue.main.async { nsView.window?.makeFirstResponder(nsView) }
+    }
+}
+
+private final class KeyCaptureView: NSView {
+    var onCapture: ((UInt32, HotkeyModifiers) -> Void)?
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        let modifiers = HotkeyModifiers(nsEventFlags: event.modifierFlags)
+        guard !modifiers.isEmpty else {
+            NSSound.beep()
+            return
+        }
+        onCapture?(UInt32(event.keyCode), modifiers)
+    }
+}
+
+private extension HotkeyModifiers {
+    init(nsEventFlags flags: NSEvent.ModifierFlags) {
+        var s: HotkeyModifiers = []
+        if flags.contains(.command) { s.insert(.command) }
+        if flags.contains(.option)  { s.insert(.option) }
+        if flags.contains(.control) { s.insert(.control) }
+        if flags.contains(.shift)   { s.insert(.shift) }
+        self = s
+    }
+}
+
+private extension Array {
+    subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
 }
 
 // MARK: - Glass chip
@@ -485,7 +519,8 @@ private struct AboutTab: View {
 /// Compact "key cap" surface for the hotkey display. macOS 26+ uses Liquid
 /// Glass; tinting the active state with the system accent color is semantic
 /// — it signals "press a chord now" rather than decorating the chip. Older
-/// systems fall back to the original gray fill.
+/// systems fall back to the original gray fill. Compile-time gated behind
+/// `#if compiler(>=6.3)` so CI runners with Xcode 16 still build.
 private struct KeyCapChip: ViewModifier {
     let active: Bool
 

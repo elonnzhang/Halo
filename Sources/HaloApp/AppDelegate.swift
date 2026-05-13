@@ -226,9 +226,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func openSettings() {
         if settingsWindowController == nil {
-            settingsWindowController = SettingsWindowController(prefs: prefs, refreshHandler: { [weak self] in
-                self?.refreshSlots()
-            })
+            settingsWindowController = SettingsWindowController(prefs: prefs)
         }
         settingsWindowController?.show()
     }

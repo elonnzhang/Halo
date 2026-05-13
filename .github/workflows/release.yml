@@ -48,17 +48,31 @@ jobs:
           VERSION="${TAG#v}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: Package zip
+      - name: Produce arch-thinned variants
         run: |
-          cd dist
-          ditto -c -k --sequesterRsrc --keepParent Halo.app "Halo-${{ steps.version.outputs.tag }}.zip"
-          ls -lh "Halo-${{ steps.version.outputs.tag }}.zip"
+          bash scripts/thin-app.sh arm64
+          bash scripts/thin-app.sh x86_64
+
+      - name: Package zips (universal + arm64 + x86_64)
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+
+          # Each zip extracts to a directory called "Halo.app" regardless of
+          # slice; the zip filename carries the arch suffix.
+          (cd dist && ditto -c -k --sequesterRsrc --keepParent Halo.app "Halo-${TAG}.zip")
+          (cd dist/thin-arm64 && ditto -c -k --sequesterRsrc --keepParent Halo.app "../Halo-${TAG}-arm64.zip")
+          (cd dist/thin-x86_64 && ditto -c -k --sequesterRsrc --keepParent Halo.app "../Halo-${TAG}-x86_64.zip")
+
+          ls -lh dist/Halo-${TAG}*.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Halo-${{ steps.version.outputs.tag }}
-          path: dist/Halo-${{ steps.version.outputs.tag }}.zip
+          name: Halo-${{ steps.version.outputs.tag }}-zips
+          path: |
+            dist/Halo-${{ steps.version.outputs.tag }}.zip
+            dist/Halo-${{ steps.version.outputs.tag }}-arm64.zip
+            dist/Halo-${{ steps.version.outputs.tag }}-x86_64.zip
           if-no-files-found: error
 
       - name: Create / update GitHub Release
@@ -66,14 +80,30 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.version.outputs.tag }}"
-          ZIP="dist/Halo-${TAG}.zip"
+          UNIVERSAL="dist/Halo-${TAG}.zip"
+          ARM64="dist/Halo-${TAG}-arm64.zip"
+          X86="dist/Halo-${TAG}-x86_64.zip"
+
+          NOTES=$(cat <<NOTES_EOF
+          Halo $TAG — macOS 12 (Monterey) or later.
+
+          ### Downloads
+
+          - **Halo-${TAG}.zip** — universal (arm64 + x86_64), ~1.4 MB compressed. Pick this if unsure.
+          - **Halo-${TAG}-arm64.zip** — Apple Silicon only. Smaller download.
+          - **Halo-${TAG}-x86_64.zip** — Intel only. Smaller download.
+
+          Each zip extracts a single \`Halo.app\`. See CHANGELOG.md for details.
+          NOTES_EOF
+          )
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "==> uploading asset to existing release $TAG"
-            gh release upload "$TAG" "$ZIP" --clobber
+            echo "==> uploading assets to existing release $TAG"
+            gh release upload "$TAG" "$UNIVERSAL" "$ARM64" "$X86" --clobber
+            gh release edit "$TAG" --notes "$NOTES"
           else
             echo "==> creating release $TAG"
-            gh release create "$TAG" "$ZIP" \
+            gh release create "$TAG" "$UNIVERSAL" "$ARM64" "$X86" \
               --title "Halo $TAG" \
-              --notes "Universal .app (arm64 + x86_64) for macOS 12+. See CHANGELOG.md for details."
+              --notes "$NOTES"
           fi
