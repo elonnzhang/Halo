@@ -1,0 +1,1183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Halo · Interaction & Color Spec (v1.1 redesign)</title>
+<style>
+  /* ============================================================
+     Halo redesign — interactive state map
+     Single-file mockup. Click a sector to hover, again to commit.
+     Sidebar buttons force discrete states for spec walkthrough.
+     ============================================================ */
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; min-height: 100%; }
+  body {
+    font-family: -apple-system, "SF Pro Text", "Segoe UI", "Helvetica Neue", system-ui, sans-serif;
+    background: var(--stage-bg);
+    color: var(--text-primary);
+    overflow-x: hidden;
+    transition: background 280ms ease, color 280ms ease;
+    -webkit-font-smoothing: antialiased;
+  }
+  code { font: 500 11px/1.3 ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace; }
+
+  /* ── Theme tokens ───────────────────────────────────────────── */
+  :root {
+    --t-hover:   140ms;
+    --t-preview: 220ms;
+    --t-commit:  150ms;
+    --t-cancel:  100ms;
+
+    --r-halo:    180px;
+    --r-deadzone: 56px;
+
+    /* Brand identity colors — kept raw, do NOT normalise */
+    --id-0: 38, 165, 228;    /* Telegram aqua  oklch(70% .13 230) */
+    --id-1: 162, 89, 255;    /* Figma  purple  oklch(60% .24 295) */
+    --id-2: 224, 30, 90;     /* Slack  pink    oklch(58% .24 5)   */
+    --id-3: 255, 69, 58;     /* Music  red     oklch(65% .22 22)  */
+    --id-4: 247, 181, 0;     /* Notion yellow  oklch(80% .15 80)  */
+    --id-5: 59, 91, 219;     /* Code   navy    oklch(52% .18 265) */
+    --id-6: 29, 185, 84;     /* Spotfy green   oklch(67% .18 145) */
+    --id-7: 249, 115, 22;    /* Cursor orange  oklch(70% .18 45)  */
+  }
+
+  body[data-theme="dark"] {
+    --stage-bg: linear-gradient(135deg, #1a2440 0%, #221a3a 50%, #11142a 100%);
+
+    --glass-base-bg:      rgba(20, 22, 28, 0.42);
+    --glass-depth-light:  rgba(255, 255, 255, 0.09);
+    --glass-depth-mid:    rgba(255, 255, 255, 0.02);
+    --glass-depth-edge:   rgba(0, 0, 0, 0.22);
+    --glass-weight:       rgba(0, 0, 0, 0.26);
+    --rim-top:            rgba(255, 255, 255, 0.34);
+    --rim-bot:            rgba(255, 255, 255, 0.02);
+    --specular-alpha:     0.78;
+
+    --hub-fill:           rgba(0, 0, 0, 0.48);
+    --hub-shadow-top:     rgba(0, 0, 0, 0.55);
+    --hub-rim-top:        rgba(255, 255, 255, 0.24);
+    --hub-rim-bot:        rgba(255, 255, 255, 0.06);
+
+    --slot-idle-fill:     rgba(255, 255, 255, 0.018);
+    --slot-idle-stroke:   rgba(255, 255, 255, 0.04);
+
+    --label-chip-bg:      rgba(255, 255, 255, 0.06);
+    --label-chip-rim:     rgba(255, 255, 255, 0.28);
+    --label-chip-text:    rgba(255, 255, 255, 0.96);
+
+    --text-primary:       rgba(255, 255, 255, 0.96);
+    --text-secondary:     rgba(255, 255, 255, 0.62);
+    --text-tertiary:      rgba(255, 255, 255, 0.32);
+    --panel-bg:           rgba(255, 255, 255, 0.04);
+    --panel-rim:          rgba(255, 255, 255, 0.10);
+    --kbd-bg:             rgba(255, 255, 255, 0.08);
+
+    /* Identity-color injection intensities (this theme) */
+    --hover-fill:    0.10;
+    --preview-fill:  0.16;
+    --inner-glow:    0.55;
+    --halo-glow:     0.32;
+    --tint:          0.05;
+  }
+
+  body[data-theme="light"] {
+    --stage-bg: linear-gradient(135deg, #e8eef9 0%, #f4f0fa 50%, #fff7ed 100%);
+
+    --glass-base-bg:      rgba(255, 255, 255, 0.42);
+    --glass-depth-light:  rgba(255, 255, 255, 0.85);
+    --glass-depth-mid:    rgba(255, 255, 255, 0.20);
+    --glass-depth-edge:   rgba(0, 0, 0, 0.10);
+    --glass-weight:       rgba(0, 0, 0, 0.08);
+    --rim-top:            rgba(255, 255, 255, 0.95);
+    --rim-bot:            rgba(0, 0, 0, 0.14);
+    --specular-alpha:     0.95;
+
+    --hub-fill:           rgba(255, 255, 255, 0.55);
+    --hub-shadow-top:     rgba(0, 0, 0, 0.10);
+    --hub-rim-top:        rgba(0, 0, 0, 0.12);
+    --hub-rim-bot:        rgba(0, 0, 0, 0.04);
+
+    --slot-idle-fill:     rgba(0, 0, 0, 0.028);
+    --slot-idle-stroke:   rgba(0, 0, 0, 0.06);
+
+    --label-chip-bg:      rgba(0, 0, 0, 0.04);
+    --label-chip-rim:     rgba(0, 0, 0, 0.16);
+    --label-chip-text:    rgba(0, 0, 0, 0.92);
+
+    --text-primary:       rgba(0, 0, 0, 0.92);
+    --text-secondary:     rgba(0, 0, 0, 0.58);
+    --text-tertiary:      rgba(0, 0, 0, 0.32);
+    --panel-bg:           rgba(0, 0, 0, 0.04);
+    --panel-rim:          rgba(0, 0, 0, 0.10);
+    --kbd-bg:             rgba(0, 0, 0, 0.06);
+
+    --hover-fill:    0.14;
+    --preview-fill:  0.22;
+    --inner-glow:    0.40;
+    --halo-glow:     0.28;
+    --tint:          0.06;
+  }
+
+  /* ── Header ─────────────────────────────────────────────────── */
+  header {
+    padding: 18px 28px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    border-bottom: 1px solid var(--panel-rim);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    position: sticky;
+    top: 0;
+    background: var(--panel-bg);
+    z-index: 10;
+  }
+  header .title { display: flex; align-items: baseline; gap: 10px; }
+  header h1 { margin: 0; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; }
+  header .v { font-size: 12px; color: var(--text-tertiary); font-weight: 400; }
+
+  /* ── Segmented controls ─────────────────────────────────────── */
+  .seg {
+    display: inline-flex;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-rim);
+    border-radius: 9px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .seg button {
+    background: transparent;
+    border: 0;
+    color: var(--text-secondary);
+    padding: 5px 11px;
+    border-radius: 6px;
+    font: 500 12px/1 inherit;
+    cursor: pointer;
+    transition: background 120ms, color 120ms;
+  }
+  .seg button:hover { color: var(--text-primary); }
+  .seg button.active {
+    background: var(--text-primary);
+    color: var(--stage-bg);
+    color: var(--panel-bg);
+  }
+  body[data-theme="dark"] .seg button.active { color: #0a0a0c; background: #fff; }
+  body[data-theme="light"] .seg button.active { color: #fff; background: #1a1a1a; }
+  .seg.seg-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; padding: 4px; width: 100%; }
+  .seg.seg-grid button { padding: 7px 10px; text-align: center; }
+
+  /* ── Layout ─────────────────────────────────────────────────── */
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 28px;
+    padding: 28px;
+    max-width: 1240px;
+    margin: 0 auto;
+  }
+  @media (max-width: 980px) {
+    main { grid-template-columns: 1fr; padding: 20px; }
+  }
+
+  /* ── Stage ──────────────────────────────────────────────────── */
+  .stage {
+    position: relative;
+    aspect-ratio: 1;
+    width: 100%;
+    max-width: 560px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 24px;
+    overflow: hidden;
+  }
+  .desktop-bg {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(118, 178, 255, 0.30), transparent 40%),
+      radial-gradient(circle at 80% 15%, rgba(255, 138, 187, 0.25), transparent 40%),
+      radial-gradient(circle at 70% 85%, rgba(255, 219, 128, 0.20), transparent 45%),
+      radial-gradient(circle at 25% 75%, rgba(178, 138, 255, 0.20), transparent 40%);
+  }
+  body[data-theme="dark"] .desktop-bg {
+    filter: brightness(0.55) saturate(1.2);
+  }
+
+  /* ── Wheel ──────────────────────────────────────────────────── */
+  .wheel-wrap {
+    position: relative;
+    width: 360px;
+    height: 360px;
+  }
+
+  /* Halo outer glow — shows only when hovering/previewing */
+  .halo-glow {
+    position: absolute;
+    inset: -40px;
+    border-radius: 50%;
+    opacity: 0;
+    pointer-events: none;
+    filter: blur(20px);
+    transition: opacity var(--t-hover) ease-out;
+  }
+  .halo-glow::before {
+    content: "";
+    position: absolute;
+    inset: 24px;
+    border-radius: 50%;
+    background: radial-gradient(
+      circle at center,
+      rgba(var(--accent-rgb, 255,255,255), var(--halo-glow)) 60%,
+      transparent 80%
+    );
+  }
+  [data-state="hover"]     .halo-glow,
+  [data-state="preview"]   .halo-glow,
+  [data-state="launching"] .halo-glow { opacity: 1; }
+  [data-state="preview"]   .halo-glow { filter: blur(24px); }
+
+  /* Glass disc — base material + depth + weight + soft edge mask */
+  .disc {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background:
+      linear-gradient(180deg, transparent 55%, var(--glass-weight) 100%),
+      radial-gradient(circle at 42% 34%,
+        var(--glass-depth-light) 0%,
+        var(--glass-depth-mid) 38%,
+        var(--glass-depth-edge) 100%),
+      var(--glass-base-bg);
+    backdrop-filter: blur(28px) saturate(140%);
+    -webkit-backdrop-filter: blur(28px) saturate(140%);
+    mask-image: radial-gradient(circle at center, black 0 84%, transparent 100%);
+    -webkit-mask-image: radial-gradient(circle at center, black 0 84%, transparent 100%);
+    box-shadow:
+      0 18px 40px rgba(0, 0, 0, 0.35),
+      0 2px 10px rgba(0, 0, 0, 0.20);
+  }
+
+  /* Content tint — accent @ 5% bleeds into the whole disc when hovering */
+  .tint {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgba(var(--accent-rgb, 255,255,255), var(--current-tint, 0));
+    mix-blend-mode: plus-lighter;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--t-preview) ease-out, background var(--t-preview) ease-out;
+    mask-image: radial-gradient(circle at center, black 0 84%, transparent 100%);
+    -webkit-mask-image: radial-gradient(circle at center, black 0 84%, transparent 100%);
+  }
+  [data-state="hover"]   .tint,
+  [data-state="preview"] .tint { opacity: 1; }
+  body[data-theme="light"] .tint { mix-blend-mode: multiply; }
+
+  /* SVG sectors layer */
+  .sectors {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .sectors path.sector {
+    fill: var(--slot-idle-fill);
+    stroke: var(--slot-idle-stroke);
+    stroke-width: 0.5;
+    transition: fill var(--t-hover) ease-out, stroke var(--t-hover) ease-out, stroke-width var(--t-hover) ease-out;
+    pointer-events: all;
+    cursor: pointer;
+  }
+  .sectors path.sector.hover {
+    fill: rgba(var(--accent-rgb), var(--hover-fill));
+    stroke: rgb(var(--accent-rgb));
+    stroke-width: 1.4;
+  }
+  .sectors path.sector.preview {
+    fill: rgba(var(--accent-rgb), var(--preview-fill));
+    stroke: rgb(var(--accent-rgb));
+    stroke-width: 2.0;
+  }
+  .sectors path.sector.commit {
+    fill: rgba(var(--accent-rgb), var(--preview-fill));
+    transform-origin: 180px 180px;
+    animation: commitPulse var(--t-commit) ease-out forwards;
+  }
+  @keyframes commitPulse {
+    0%   { transform: scale(1); }
+    100% { transform: scale(1.06); }
+  }
+
+  /* Inner glow — accent-coloured ring inside the sector */
+  .sectors path.glow {
+    fill: none;
+    stroke: rgb(var(--accent-rgb));
+    stroke-width: 6;
+    filter: blur(4px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--t-hover) ease-out;
+  }
+  [data-state="hover"]   .sectors path.glow.active,
+  [data-state="preview"] .sectors path.glow.active { opacity: var(--inner-glow); }
+
+  /* Specular arc — fixed 10:30→1:30 highlight */
+  .specular {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    mix-blend-mode: screen;
+  }
+  body[data-theme="light"] .specular { mix-blend-mode: overlay; }
+
+  /* Rim feathering — pseudo halo to soften the disc edge */
+  .rim {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    pointer-events: none;
+    box-shadow:
+      inset 0 1px 0 var(--rim-top),
+      inset 0 -1px 0 var(--rim-bot);
+    mask-image: radial-gradient(circle at center, transparent 0 80%, black 84%, transparent 100%);
+    -webkit-mask-image: radial-gradient(circle at center, transparent 0 80%, black 84%, transparent 100%);
+  }
+
+  /* Icon canvas — one per sector */
+  .icons {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .icon {
+    position: absolute;
+    width: 44px;
+    height: 44px;
+    border-radius: 11px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: -0.02em;
+    transform: translate(-50%, -50%) scale(1);
+    transition: transform var(--t-hover) ease-out, opacity var(--t-hover) ease-out, filter var(--t-hover) ease-out;
+    /* Icons keep full saturation — selected stands out via SECTOR tint, not icon dim */
+    box-shadow: 0 1px 2px rgba(0,0,0,0.25), inset 0 0 0 1px rgba(255,255,255,0.06);
+  }
+  .icon.hover, .icon.preview { transform: translate(-50%, -50%) scale(1.08); }
+  .icon.preview { box-shadow: 0 2px 4px rgba(0,0,0,0.30), inset 0 0 0 1.4px rgb(var(--accent-rgb)); }
+  .icon.empty {
+    background: transparent !important;
+    box-shadow: none;
+    border: 1px dashed var(--text-tertiary);
+    color: var(--text-tertiary);
+  }
+  .icon.launching::after,
+  .icon.failed::after {
+    content: "";
+    position: absolute;
+    top: -3px; right: -3px;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    border: 1.2px solid rgba(0,0,0,0.4);
+  }
+  .icon.launching::after { background: #1DB954; }
+  .icon.failed::after    { background: #FF453A; }
+  .icon.launching {
+    opacity: 0.62;
+  }
+  .icon.failed {
+    opacity: 0.55;
+  }
+
+  /* Center hub */
+  .hub {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 112px;
+    height: 112px;
+    margin: -56px 0 0 -56px;
+    border-radius: 50%;
+    pointer-events: none;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.42);
+  }
+  .hub-shadow {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: var(--hub-fill);
+    box-shadow: inset 0 3px 6px var(--hub-shadow-top);
+  }
+  .hub-rim {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    border: 0.8px solid transparent;
+    border-image: linear-gradient(180deg, var(--hub-rim-top), var(--hub-rim-bot)) 1;
+    pointer-events: none;
+    /* fallback for browsers without border-image radius support: */
+    background: linear-gradient(180deg, var(--hub-rim-top), var(--hub-rim-bot)) border-box;
+    mask:
+      linear-gradient(white 0 0) padding-box,
+      linear-gradient(white 0 0);
+    -webkit-mask:
+      linear-gradient(white 0 0) padding-box,
+      linear-gradient(white 0 0);
+    mask-composite: exclude;
+    -webkit-mask-composite: xor;
+  }
+  .hub-icon {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    transition: color var(--t-preview);
+  }
+  .hub-icon[data-bg]::before {
+    content: attr(data-glyph);
+    width: 64px;
+    height: 64px;
+    border-radius: 14px;
+    background: var(--hub-icon-bg, transparent);
+    color: var(--hub-icon-fg, var(--text-primary));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+  }
+
+  /* Floating label chip (curved label outside the wheel) */
+  .label {
+    position: absolute;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: var(--label-chip-bg);
+    border: 0.6px solid var(--label-chip-rim);
+    color: var(--label-chip-text);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    opacity: 0;
+    transition: opacity var(--t-hover) ease-out, left var(--t-hover) ease-out, top var(--t-hover) ease-out;
+    pointer-events: none;
+    box-shadow: 0 6px 12px rgba(0,0,0,0.30);
+    transform: translate(-50%, -50%);
+    white-space: nowrap;
+  }
+  [data-state="hover"]   .label,
+  [data-state="preview"] .label { opacity: 1; }
+
+  /* Commit ripple — radial pulse from centre */
+  .ripple {
+    position: absolute;
+    inset: 50% 50% 50% 50%;
+    width: 0; height: 0;
+    border-radius: 50%;
+    pointer-events: none;
+    opacity: 0;
+    background: radial-gradient(circle at center, rgba(var(--accent-rgb), 0.15) 0%, transparent 60%);
+  }
+  [data-state="committing"] .ripple {
+    animation: ripple 220ms ease-out forwards;
+  }
+  @keyframes ripple {
+    0%   { inset: 50% 50% 50% 50%; opacity: 0; }
+    30%  { opacity: 1; }
+    100% { inset: -120% -120% -120% -120%; opacity: 0; }
+  }
+
+  /* ── Side panel ─────────────────────────────────────────────── */
+  .panel { display: flex; flex-direction: column; gap: 24px; }
+  .panel h2 {
+    margin: 0 0 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-tertiary);
+  }
+  .hint {
+    margin: 8px 0 0;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+  }
+  .tokens {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 11.5px;
+  }
+  .tokens .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-rim);
+  }
+  .tokens .row .k { color: var(--text-secondary); }
+  .tokens .row .v { font-family: ui-monospace, "SF Mono", monospace; font-size: 10.5px; }
+  .tokens .swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    margin-right: 6px;
+    vertical-align: middle;
+    border: 0.5px solid var(--panel-rim);
+  }
+
+  /* ── Spec section below the fold ────────────────────────────── */
+  .spec {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 40px 28px 80px;
+    display: grid;
+    gap: 36px;
+  }
+  .spec h2 {
+    margin: 0 0 12px;
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+  }
+  .spec p { color: var(--text-secondary); font-size: 13px; line-height: 1.6; max-width: 720px; }
+  .spec table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 12px;
+  }
+  .spec th, .spec td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--panel-rim);
+    vertical-align: top;
+  }
+  .spec th {
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 10.5px;
+  }
+  .spec td.mono { font-family: ui-monospace, "SF Mono", monospace; font-size: 11.5px; color: var(--text-primary); }
+  .spec td .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: middle; border: 0.5px solid var(--panel-rim); }
+
+  /* Settings preview card */
+  .settings-card {
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-rim);
+    border-radius: 14px;
+    padding: 20px;
+    max-width: 480px;
+  }
+  .settings-card .row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--panel-rim);
+  }
+  .settings-card .row:last-child { border-bottom: 0; }
+  .settings-card .row .label-l { font-size: 13px; color: var(--text-primary); font-weight: 500; }
+  .settings-card .row .label-l small { display: block; font-size: 11px; color: var(--text-tertiary); font-weight: 400; margin-top: 2px; }
+
+  .theme-thumb {
+    position: relative;
+    width: 64px; height: 40px;
+    border-radius: 8px;
+    border: 1px solid var(--panel-rim);
+    overflow: hidden;
+    cursor: pointer;
+    transition: transform 120ms, border-color 120ms;
+  }
+  .theme-thumb.active { border-color: rgb(var(--id-0)); border-width: 1.5px; }
+  .theme-thumb:hover { transform: scale(1.04); }
+  .theme-thumb.dark { background: linear-gradient(135deg, #1a2440, #11142a); }
+  .theme-thumb.dark::after, .theme-thumb.light::after, .theme-thumb.auto::after { content: ""; position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: rgba(255,255,255,0.08); box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+  .theme-thumb.light { background: linear-gradient(135deg, #e8eef9, #fff7ed); }
+  .theme-thumb.light::after { background: rgba(0,0,0,0.04); box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+  .theme-thumb.auto { background: linear-gradient(135deg, #1a2440 50%, #fff7ed 50%); }
+  .thumb-row { display: flex; gap: 10px; }
+
+  .footnote {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    line-height: 1.6;
+    margin-top: 16px;
+  }
+  kbd {
+    background: var(--kbd-bg);
+    border-radius: 4px;
+    padding: 1px 5px;
+    font: 500 10.5px/1 ui-monospace, "SF Mono", monospace;
+    border: 0.5px solid var(--panel-rim);
+  }
+</style>
+</head>
+<body data-theme="dark">
+
+<header>
+  <div class="title">
+    <h1>Halo</h1>
+    <span class="v">interaction & color spec · v1.1 redesign</span>
+  </div>
+  <div class="seg" id="themeSeg">
+    <button data-theme-action="dark" class="active">Dark</button>
+    <button data-theme-action="light">Light</button>
+    <button data-theme-action="auto">Auto</button>
+  </div>
+</header>
+
+<main>
+  <section class="stage">
+    <div class="desktop-bg" aria-hidden="true"></div>
+    <div class="wheel-wrap" id="wheel" data-state="idle">
+      <div class="halo-glow"></div>
+      <div class="disc"></div>
+      <div class="tint"></div>
+
+      <svg class="sectors" viewBox="0 0 360 360" id="sectorsSvg" aria-hidden="true"></svg>
+      <svg class="specular" viewBox="0 0 360 360" aria-hidden="true">
+        <defs>
+          <linearGradient id="specGrad" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%"  stop-color="white" stop-opacity="0"/>
+            <stop offset="50%" stop-color="white" stop-opacity="0.78"/>
+            <stop offset="100%" stop-color="white" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d="M 79 79 A 143 143 0 0 1 281 79"
+              stroke="url(#specGrad)" stroke-width="1.4" fill="none" stroke-linecap="round"/>
+      </svg>
+      <div class="rim"></div>
+
+      <div class="icons" id="icons"></div>
+
+      <div class="hub">
+        <div class="hub-shadow"></div>
+        <div class="hub-rim"></div>
+        <div class="hub-icon" id="hubIcon"></div>
+      </div>
+
+      <div class="label" id="label"></div>
+      <div class="ripple"></div>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <section>
+      <h2>State</h2>
+      <div class="seg seg-grid" id="stateSeg">
+        <button data-state-action="idle" class="active">Idle</button>
+        <button data-state-action="hover">Hover</button>
+        <button data-state-action="preview">Preview</button>
+        <button data-state-action="committing">Commit + Ripple</button>
+        <button data-state-action="cancelling">Cancel</button>
+        <button data-state-action="empty">Empty slot</button>
+        <button data-state-action="launching">Launching</button>
+        <button data-state-action="failed">Failed</button>
+      </div>
+      <p class="hint">点击轮盘任意瓣 hover；hover 后 120ms 自动进入 preview；再次点击同瓣 = commit。<kbd>Esc</kbd> 取消。</p>
+    </section>
+
+    <section>
+      <h2>Active tokens</h2>
+      <div class="tokens" id="tokensList"></div>
+    </section>
+
+    <section>
+      <h2>Slot under cursor</h2>
+      <div class="tokens" id="slotInfo">
+        <div class="row"><span class="k">app</span><span class="v" id="kvName">—</span></div>
+        <div class="row"><span class="k">identity (OKLCH)</span><span class="v" id="kvOklch">—</span></div>
+        <div class="row"><span class="k">identity (sRGB)</span><span class="v" id="kvRgb">—</span></div>
+      </div>
+    </section>
+  </aside>
+</main>
+
+<section class="spec">
+
+  <div>
+    <h2>1 · 决策摘要</h2>
+    <p>
+      身份色 = app icon dominant color，保真不归一化。轮盘玻璃 = 中性 Token（Dark / Light 两套，用户在 Settings 选择）。
+      "选中独大"由"一瓣染色 vs 七瓣中性"承担——不再降饱和未选 icon。
+    </p>
+  </div>
+
+  <!-- Settings UI mockup -->
+  <div>
+    <h2>2 · Settings → Appearance（新增 panel）</h2>
+    <p>新建 Settings 第二个 tab "Appearance"，包含主题选择与色相显示偏好。</p>
+    <div class="settings-card">
+      <div class="row">
+        <div class="label-l">
+          Halo theme
+          <small>选 Dark / Light，或 Auto 跟随系统外观</small>
+        </div>
+        <div class="thumb-row">
+          <div class="theme-thumb dark active" title="Dark"></div>
+          <div class="theme-thumb light" title="Light"></div>
+          <div class="theme-thumb auto" title="Auto · follow system"></div>
+        </div>
+      </div>
+      <div class="row">
+        <div class="label-l">
+          Selection intensity
+          <small>选中瓣染色强度（hover / preview 同步）</small>
+        </div>
+        <div class="seg">
+          <button>Subtle</button>
+          <button class="active">Standard</button>
+          <button>Vivid</button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="label-l">
+          Use Hue-8 fallback at N=8
+          <small>app icon 取色失败时，用经典 8 色调色板兜底</small>
+        </div>
+        <div class="seg"><button class="active">On</button><button>Off</button></div>
+      </div>
+    </div>
+    <p class="footnote">
+      Auto 模式监听 <code>NSApp.effectiveAppearance</code>。NSPanel 默认不跟随系统外观，
+      需在 <code>HaloWindow.init</code> 把 <code>appearance = nil</code> 才生效。
+    </p>
+  </div>
+
+  <!-- Token tables -->
+  <div>
+    <h2>3 · 中性玻璃 Token（双主题）</h2>
+    <table>
+      <thead>
+        <tr><th>Token</th><th>Dark</th><th>Light</th><th>用途</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="mono">glass-base-bg</td><td class="mono"><span class="sw" style="background:rgba(20,22,28,0.42)"></span>rgba(20 22 28 / .42)</td><td class="mono"><span class="sw" style="background:rgba(255,255,255,0.42)"></span>rgba(255 255 255 / .42)</td><td>基底玻璃（NSVisualEffectView fallback / glassEffect base）</td></tr>
+        <tr><td class="mono">depth-radial-light</td><td class="mono"><span class="sw" style="background:rgba(255,255,255,0.09)"></span>white/9%</td><td class="mono"><span class="sw" style="background:rgba(255,255,255,0.85)"></span>white/85%</td><td>凸面光源端</td></tr>
+        <tr><td class="mono">depth-radial-edge</td><td class="mono"><span class="sw" style="background:rgba(0,0,0,0.22)"></span>black/22%</td><td class="mono"><span class="sw" style="background:rgba(0,0,0,0.10)"></span>black/10%</td><td>凸面暗端</td></tr>
+        <tr><td class="mono">weight-gradient</td><td class="mono"><span class="sw" style="background:rgba(0,0,0,0.26)"></span>black/26%</td><td class="mono"><span class="sw" style="background:rgba(0,0,0,0.08)"></span>black/8%</td><td>底部坠感</td></tr>
+        <tr><td class="mono">rim-top</td><td class="mono"><span class="sw" style="background:rgba(255,255,255,0.34)"></span>white/34%</td><td class="mono"><span class="sw" style="background:rgba(255,255,255,0.95)"></span>white/95%</td><td>顶部 specular 端口</td></tr>
+        <tr><td class="mono">rim-bot</td><td class="mono"><span class="sw" style="background:rgba(255,255,255,0.02)"></span>white/2%</td><td class="mono"><span class="sw" style="background:rgba(0,0,0,0.14)"></span>black/14%</td><td>底部阴影 rim</td></tr>
+        <tr><td class="mono">specular-peak</td><td class="mono">white/78%</td><td class="mono">white/95%</td><td>12 点高光弧中段</td></tr>
+        <tr><td class="mono">hub-fill</td><td class="mono"><span class="sw" style="background:rgba(0,0,0,0.48)"></span>black/48%</td><td class="mono"><span class="sw" style="background:rgba(255,255,255,0.55)"></span>white/55%</td><td>中心 lens 基色</td></tr>
+        <tr><td class="mono">slot-idle-fill</td><td class="mono"><span class="sw" style="background:rgba(255,255,255,0.018)"></span>white/1.8%</td><td class="mono"><span class="sw" style="background:rgba(0,0,0,0.028)"></span>black/2.8%</td><td>瓣默认填色（≈不可见）</td></tr>
+        <tr><td class="mono">slot-idle-stroke</td><td class="mono">white/4%</td><td class="mono">black/6%</td><td>瓣默认描边</td></tr>
+        <tr><td class="mono">text-primary</td><td class="mono">white/96%</td><td class="mono">black/92%</td><td>label 主文本</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div>
+    <h2>4 · 身份色注入强度（共用两主题，alpha 差异化）</h2>
+    <p>所有身份色注入点都派生自单一 <code>SelectionIntensity</code> 函数：身份色不变，仅 alpha / blendMode 切换。</p>
+    <table>
+      <thead>
+        <tr><th>注入点</th><th>Dark</th><th>Light</th><th>blendMode</th><th>触发态</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>瓣填色 hover</td><td class="mono">accent · 10%</td><td class="mono">accent · 14%</td><td class="mono">normal</td><td>hover</td></tr>
+        <tr><td>瓣填色 preview</td><td class="mono">accent · 16%</td><td class="mono">accent · 22%</td><td class="mono">normal</td><td>preview / committing</td></tr>
+        <tr><td>瓣描边 active</td><td class="mono">accent · 100%</td><td class="mono">accent · 100%</td><td class="mono">normal</td><td>hover (1.4pt) / preview (2pt)</td></tr>
+        <tr><td>瓣 inner glow</td><td class="mono">accent · 55%</td><td class="mono">accent · 40%</td><td class="mono">normal + blur(4)</td><td>hover / preview</td></tr>
+        <tr><td>整盘 tint</td><td class="mono">accent · 5%</td><td class="mono">accent · 6%</td><td class="mono">plus-lighter / multiply</td><td>hover / preview</td></tr>
+        <tr><td>外圈 halo</td><td class="mono">accent · 32% → 0</td><td class="mono">accent · 28% → 0</td><td class="mono">normal + blur(18)</td><td>hover / preview</td></tr>
+        <tr><td>commit ripple</td><td class="mono">accent · 15%</td><td class="mono">accent · 12%</td><td class="mono">normal</td><td>committing</td></tr>
+      </tbody>
+    </table>
+    <p class="footnote">
+      Light 模式下整盘 tint 必须用 <code>multiply</code>（plus-lighter 在白底会"打爆"成纯白），
+      其余注入点保持 normal blend。
+    </p>
+  </div>
+
+  <div>
+    <h2>5 · 8 个状态视觉差异</h2>
+    <table>
+      <thead><tr><th>状态</th><th>瓣 / 玻璃</th><th>Icon</th><th>外圈 halo</th><th>触发</th></tr></thead>
+      <tbody>
+        <tr><td><b>Idle</b></td><td>全瓣中性玻璃</td><td>原色，1.0x</td><td>无</td><td>召唤完成</td></tr>
+        <tr><td><b>Hover</b></td><td>选中瓣 = accent @ 10%；其他瓣不变</td><td>选中 1.08x；其他不变</td><td>accent @ 32% + blur(20)</td><td>光标进瓣</td></tr>
+        <tr><td><b>Preview</b></td><td>选中瓣 = accent @ 16% + inner glow</td><td>选中 1.08x + accent stroke 1.4pt</td><td>accent @ 32% + blur(24)</td><td>hover ≥ 120ms</td></tr>
+        <tr><td><b>Committing</b></td><td>选中瓣 scale 1.0→1.06</td><td>同 preview</td><td>halo 淡出 → ripple 全屏</td><td>松手 / click / 数字键</td></tr>
+        <tr><td><b>Cancelling</b></td><td>淡出 100ms</td><td>淡出</td><td>无 ripple</td><td>Esc / dead-zone</td></tr>
+        <tr><td><b>Empty slot</b></td><td>中性 dashed rect 占位</td><td>+ 字符呼吸</td><td>—</td><td>该槽未钉 / 无频次填入</td></tr>
+        <tr><td><b>Launching</b></td><td>瓣同 hover 但 icon @ 62%</td><td>62% + 绿点 + spinner</td><td>同 hover，可选</td><td>commit 后 app 启动中</td></tr>
+        <tr><td><b>Failed</b></td><td>瓣同 hover 但 icon @ 55%</td><td>55% + 红点 + 横向晃动</td><td>无</td><td>app 缺失 / 启动超时</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div>
+    <h2>6 · 落地分阶段</h2>
+    <table>
+      <thead><tr><th>Stage</th><th>内容</th><th>预计</th><th>风险</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td>修 P0 usageOrder 真频次 + 修 Hue-8 slot 5 hue 冲突 + 引入 <code>SelectionIntensity</code> 折叠 6 个 magic alpha（dark only，行为不变）+ Settings BindingWheelView 真实预览</td>
+          <td>~1.5 天</td>
+          <td>无 UX 变化，纯重构</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td>新增 Settings "Appearance" tab，Dark / Light / Auto 选择器，<code>SelectionIntensity</code> 接 <code>ColorScheme</code> 参数，所有玻璃 Token 双套</td>
+          <td>~2.5 天</td>
+          <td>NSPanel appearance 跟随、glassEffect (macOS 26) 自适应、label chip 在浅色下对比度</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td>OKLCH gamut-aware toSRGB（保 L+h，二分 C），ripple GPU 优化，commit 动画曲线统一</td>
+          <td>~1 天</td>
+          <td>少数高 chroma 品牌色会比之前略沉一档</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div>
+    <h2>7 · 不在本轮范围内</h2>
+    <ul style="color:var(--text-secondary); font-size:13px; line-height:1.7; margin:0; padding-left:18px;">
+      <li>未选瓣 icon saturation 降低（已被否决）</li>
+      <li>品牌色 L/C 标准化（已被否决）</li>
+      <li>macOS 26 system accent 注入 depth radial（推迟 v1.2）</li>
+      <li>双向 hue-push 冲突解算（保持现有"封顶一次"行为 + 回归测试）</li>
+      <li>Light/Dark 切换 cross-fade（系统主题切换瞬间硬跳）</li>
+    </ul>
+  </div>
+
+</section>
+
+<script>
+/* ============================================================
+   State machine
+   ============================================================ */
+const APPS = [
+  { name: 'Telegram', rgb: '38, 165, 228',  oklch: 'oklch(70% 0.13 230)', hex: '#26A5E4', bg: '#26A5E4', fg: '#fff',     glyph: '✈' },
+  { name: 'Figma',    rgb: '162, 89, 255',  oklch: 'oklch(60% 0.24 295)', hex: '#A259FF', bg: '#0E0E0E', fg: '#A259FF',  glyph: '◆' },
+  { name: 'Slack',    rgb: '224, 30, 90',   oklch: 'oklch(58% 0.24 5)',   hex: '#E01E5A', bg: '#FFFFFF', fg: '#E01E5A',  glyph: '#' },
+  { name: 'Music',    rgb: '255, 69, 58',   oklch: 'oklch(65% 0.22 22)',  hex: '#FF453A', bg: 'linear-gradient(135deg,#FF453A,#FF9F43)', fg: '#fff', glyph: '♫' },
+  { name: 'Notion',   rgb: '247, 181, 0',   oklch: 'oklch(80% 0.15 80)',  hex: '#F7B500', bg: '#FFFFFF', fg: '#1A1A1A',  glyph: 'N' },
+  { name: 'Code',     rgb: '59, 91, 219',   oklch: 'oklch(52% 0.18 265)', hex: '#3B5BDB', bg: '#1E1E1E', fg: '#3B82F6',  glyph: '⟨⟩' },
+  { name: 'Spotify',  rgb: '29, 185, 84',   oklch: 'oklch(67% 0.18 145)', hex: '#1DB954', bg: '#191414', fg: '#1DB954',  glyph: '♪' },
+  { name: 'Cursor',   rgb: '249, 115, 22',  oklch: 'oklch(70% 0.18 45)',  hex: '#F97316', bg: '#0E0E0E', fg: '#F97316',  glyph: '▷' }
+];
+
+const SLOTS = 8;
+const RAD = 360; // wheel viewBox size
+const CX = 180, CY = 180;
+const R_OUTER = 150;   // sector outer radius
+const R_INNER = 60;    // sector inner radius (deadzone)
+const GAP_DEG = 1.0;
+
+let state = 'idle';
+let hover = -1;
+let previewTimer = null;
+let frontmostIcon = APPS[5]; // "where you came from"
+const wheel = document.getElementById('wheel');
+const sectorsSvg = document.getElementById('sectorsSvg');
+const iconsEl = document.getElementById('icons');
+const labelEl = document.getElementById('label');
+const hubIconEl = document.getElementById('hubIcon');
+
+function deg2rad(d) { return (d - 90) * Math.PI / 180; }
+function pointOn(cx, cy, r, deg) {
+  const a = deg2rad(deg);
+  return [cx + r * Math.cos(a), cy + r * Math.sin(a)];
+}
+
+function sectorPath(i) {
+  const startDeg = (360 / SLOTS) * i - 180 / SLOTS + GAP_DEG / 2;
+  const endDeg   = (360 / SLOTS) * i + 180 / SLOTS - GAP_DEG / 2;
+  const [x1o, y1o] = pointOn(CX, CY, R_OUTER, startDeg);
+  const [x2o, y2o] = pointOn(CX, CY, R_OUTER, endDeg);
+  const [x1i, y1i] = pointOn(CX, CY, R_INNER, startDeg);
+  const [x2i, y2i] = pointOn(CX, CY, R_INNER, endDeg);
+  const large = (endDeg - startDeg) > 180 ? 1 : 0;
+  return `M ${x1o} ${y1o}
+          A ${R_OUTER} ${R_OUTER} 0 ${large} 1 ${x2o} ${y2o}
+          L ${x2i} ${y2i}
+          A ${R_INNER} ${R_INNER} 0 ${large} 0 ${x1i} ${y1i} Z`;
+}
+
+function renderSectors() {
+  let html = '';
+  for (let i = 0; i < SLOTS; i++) {
+    html += `<path class="sector" data-slot="${i}" d="${sectorPath(i)}"/>`;
+  }
+  // glow paths (inner-glow on active sector)
+  for (let i = 0; i < SLOTS; i++) {
+    html += `<path class="glow" data-slot-glow="${i}" d="${sectorPath(i)}"/>`;
+  }
+  sectorsSvg.innerHTML = html;
+  sectorsSvg.querySelectorAll('path.sector').forEach(p => {
+    p.addEventListener('click', (e) => { e.stopPropagation(); handleSlotClick(+p.dataset.slot); });
+    p.addEventListener('mouseenter', () => { if (state === 'idle' || state === 'hover' || state === 'preview') setHover(+p.dataset.slot); });
+  });
+}
+
+function renderIcons() {
+  iconsEl.innerHTML = '';
+  for (let i = 0; i < SLOTS; i++) {
+    const app = APPS[i];
+    const angle = (360 / SLOTS) * i;
+    const [x, y] = pointOn(CX, CY, (R_OUTER + R_INNER) / 2, angle);
+    const px = (x / RAD) * 100, py = (y / RAD) * 100;
+
+    const div = document.createElement('div');
+    div.className = 'icon';
+    div.dataset.slot = i;
+    div.style.left = px + '%';
+    div.style.top  = py + '%';
+    div.style.background = app.bg;
+    div.style.color = app.fg;
+    div.textContent = app.glyph;
+    iconsEl.appendChild(div);
+  }
+}
+
+function setHover(slot) {
+  if (slot === hover) return;
+  hover = slot;
+  if (slot >= 0) {
+    state = 'hover';
+    if (previewTimer) clearTimeout(previewTimer);
+    previewTimer = setTimeout(() => { if (state === 'hover') applyState('preview'); }, 320);
+  }
+  applyState(state);
+}
+
+function clearHover() {
+  if (previewTimer) clearTimeout(previewTimer);
+  hover = -1;
+  state = 'idle';
+  applyState('idle');
+}
+
+function applyState(s) {
+  state = s;
+  wheel.dataset.state = s;
+
+  // Set accent CSS var
+  if (hover >= 0) {
+    const app = APPS[hover];
+    wheel.style.setProperty('--accent-rgb', app.rgb);
+  } else if (s === 'launching' || s === 'failed') {
+    wheel.style.setProperty('--accent-rgb', APPS[4].rgb);
+  }
+
+  // Active class for sectors
+  sectorsSvg.querySelectorAll('path.sector').forEach(p => {
+    p.classList.remove('hover','preview','commit');
+    const i = +p.dataset.slot;
+    if (i === hover) {
+      if (s === 'hover')      p.classList.add('hover');
+      if (s === 'preview')    p.classList.add('preview');
+      if (s === 'committing') p.classList.add('commit');
+    }
+  });
+  sectorsSvg.querySelectorAll('path.glow').forEach(p => {
+    p.classList.remove('active');
+    if (+p.dataset.slotGlow === hover && (s === 'hover' || s === 'preview' || s === 'committing')) p.classList.add('active');
+  });
+
+  // Icons
+  iconsEl.querySelectorAll('.icon').forEach((el, i) => {
+    el.classList.remove('hover','preview','launching','failed','empty');
+    // Empty slot demo: slot 3 empty in "empty" state
+    if (s === 'empty' && i === 3) {
+      el.classList.add('empty');
+      el.textContent = '+';
+      el.style.background = 'transparent';
+      el.style.color = 'var(--text-tertiary)';
+    } else {
+      const app = APPS[i];
+      el.textContent = app.glyph;
+      el.style.background = app.bg;
+      el.style.color = app.fg;
+    }
+    if (i === hover) {
+      if (s === 'hover')   el.classList.add('hover');
+      if (s === 'preview' || s === 'committing') el.classList.add('preview');
+    }
+    if (s === 'launching' && i === 4) el.classList.add('launching');
+    if (s === 'failed'    && i === 4) el.classList.add('failed');
+  });
+
+  // Halo accent (via inline style for halo glow + tint)
+  wheel.style.setProperty('--current-tint',
+    (s === 'hover')   ? 'var(--tint)' :
+    (s === 'preview') ? 'var(--tint)' :
+    '0'
+  );
+
+  // Floating label
+  if ((s === 'hover' || s === 'preview') && hover >= 0) {
+    const angle = (360 / SLOTS) * hover;
+    const [x, y] = pointOn(CX, CY, 196, angle);
+    labelEl.style.left = (x / RAD * 100) + '%';
+    labelEl.style.top  = (y / RAD * 100) + '%';
+    labelEl.textContent = APPS[hover].name;
+  } else {
+    // hide
+  }
+
+  // Hub icon
+  if ((s === 'hover' || s === 'preview' || s === 'committing') && hover >= 0) {
+    renderHubIcon(APPS[hover]);
+  } else if (s === 'launching') {
+    renderHubIcon(APPS[4]);
+  } else {
+    renderHubIcon(frontmostIcon);
+  }
+
+  // Token list
+  updateTokens();
+  updateSlotInfo();
+
+  // Commit timeout → idle
+  if (s === 'committing') {
+    setTimeout(() => { clearHover(); }, 240);
+  }
+}
+
+function renderHubIcon(app) {
+  hubIconEl.innerHTML = '';
+  const inner = document.createElement('div');
+  inner.style.width = '64px';
+  inner.style.height = '64px';
+  inner.style.borderRadius = '14px';
+  inner.style.background = app.bg;
+  inner.style.color = app.fg;
+  inner.style.display = 'flex';
+  inner.style.alignItems = 'center';
+  inner.style.justifyContent = 'center';
+  inner.style.fontSize = '28px';
+  inner.style.fontWeight = '700';
+  inner.style.boxShadow = '0 1px 4px rgba(0,0,0,0.35)';
+  inner.textContent = app.glyph;
+  hubIconEl.appendChild(inner);
+}
+
+function handleSlotClick(slot) {
+  if (hover !== slot) {
+    setHover(slot);
+    return;
+  }
+  // Same slot clicked twice → commit
+  if (previewTimer) clearTimeout(previewTimer);
+  applyState('committing');
+}
+
+function updateTokens() {
+  const list = document.getElementById('tokensList');
+  const theme = document.body.dataset.theme === 'light' ? 'light' : 'dark';
+  const accent = wheel.style.getPropertyValue('--accent-rgb') || '—';
+
+  const rows = [
+    ['state', state],
+    ['theme', theme],
+    ['hover slot', hover >= 0 ? `${hover} · ${APPS[hover].name}` : '—'],
+    ['accent rgb', accent.trim() || '—'],
+    ['hover-fill α', getComputedStyle(document.body).getPropertyValue('--hover-fill').trim()],
+    ['preview-fill α', getComputedStyle(document.body).getPropertyValue('--preview-fill').trim()],
+    ['inner-glow α', getComputedStyle(document.body).getPropertyValue('--inner-glow').trim()],
+    ['halo-glow α', getComputedStyle(document.body).getPropertyValue('--halo-glow').trim()],
+    ['tint α', getComputedStyle(document.body).getPropertyValue('--tint').trim()]
+  ];
+  list.innerHTML = rows.map(([k,v]) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
+}
+
+function updateSlotInfo() {
+  if (hover < 0) {
+    document.getElementById('kvName').textContent = '—';
+    document.getElementById('kvOklch').textContent = '—';
+    document.getElementById('kvRgb').textContent = '—';
+    return;
+  }
+  const a = APPS[hover];
+  document.getElementById('kvName').textContent = a.name;
+  document.getElementById('kvOklch').textContent = a.oklch;
+  document.getElementById('kvRgb').textContent = a.hex;
+}
+
+/* ============================================================
+   UI wiring
+   ============================================================ */
+document.getElementById('themeSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#themeSeg button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  const t = b.dataset.themeAction;
+  if (t === 'auto') {
+    const mql = window.matchMedia('(prefers-color-scheme: dark)');
+    document.body.dataset.theme = mql.matches ? 'dark' : 'light';
+  } else {
+    document.body.dataset.theme = t;
+  }
+  applyState(state);
+});
+
+document.getElementById('stateSeg').addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#stateSeg button').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  const s = b.dataset.stateAction;
+  if (previewTimer) clearTimeout(previewTimer);
+  // Demo states need a default hover slot
+  if (['hover','preview','committing','launching','failed'].includes(s)) {
+    if (hover < 0) hover = (s === 'launching' || s === 'failed') ? 4 : 2;
+  } else if (s === 'idle' || s === 'cancelling' || s === 'empty') {
+    hover = -1;
+  }
+  applyState(s);
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') clearHover();
+});
+
+document.querySelector('.stage').addEventListener('mouseleave', () => {
+  if (state === 'hover' || state === 'preview') clearHover();
+});
+
+// Settings card click-thru (visual only)
+document.querySelectorAll('.theme-thumb').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.theme-thumb').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    const cls = [...t.classList].find(c => ['dark','light','auto'].includes(c));
+    document.querySelector(`#themeSeg button[data-theme-action="${cls}"]`).click();
+  });
+});
+
+renderSectors();
+renderIcons();
+applyState('idle');
+</script>
+</body>
+</html>

@@ -83,79 +83,55 @@ private func linearToSRGB(_ c: Double) -> Double {
         : 1.055 * pow(clamped, 1.0 / 2.4) - 0.055
 }
 
-public enum IdentityPalette {
-    /// Equal-arc fallback ring; base hue is 230° (aqua) per VISUAL §4.2.
-    ///
-    /// Range is now 1...12 (was 4...12) so the wheel can render a small
-    /// `apps + 1` display when the user has fewer than four apps in
-    /// rotation — the visible slot count is dynamic in that case and may
-    /// drop as low as 1.
-    public static func fallback(n: Int) -> [IdentityColor] {
-        precondition((1...12).contains(n))
-        let step = 360.0 / Double(n)
-        return (0..<n).map { i in
-            IdentityColor(lightness: 0.65, chroma: 0.18, hue: 230 + Double(i) * step)
-        }
-    }
-
-    /// Locked Hue-8 palette used when N=8 and the user opts to restore it.
-    public static func hue8() -> [IdentityColor] {
-        [
-            IdentityColor(lightness: 0.70, chroma: 0.13, hue: 230),
-            IdentityColor(lightness: 0.52, chroma: 0.18, hue: 265),
-            IdentityColor(lightness: 0.60, chroma: 0.24, hue: 295),
-            IdentityColor(lightness: 0.58, chroma: 0.24, hue: 5),
-            IdentityColor(lightness: 0.70, chroma: 0.18, hue: 45),
-            IdentityColor(lightness: 0.65, chroma: 0.22, hue: 22),
-            IdentityColor(lightness: 0.80, chroma: 0.15, hue: 80),
-            IdentityColor(lightness: 0.67, chroma: 0.18, hue: 145),
-        ]
-    }
-}
-
 public struct IdentityConflictResolver {
-    /// Chroma threshold below which an icon-extracted color is considered greyscale.
-    public static let saturationFloor: Double = 0.12
+    /// Neutral identity returned for slots where the extractor produced no
+    /// result (icon couldn't be loaded, fully greyscale icon with no
+    /// chromatic pixels). Chroma 0 means the sector won't tint with any
+    /// borrowed hue — the v1.1 rule is that every visible colour must come
+    /// from the app itself, never from a synthetic palette.
+    public static let neutral: IdentityColor = IdentityColor(
+        lightness: 0.65, chroma: 0.0, hue: 0
+    )
 
     public init() {}
 
-    /// Resolve a slate of candidate icon colors into the final per-slot identity palette.
+    /// Resolve a slate of candidate icon colours into the final per-slot identity
+    /// palette. Each app keeps its own extracted colour (no chroma-floor
+    /// substitution, no Hue-8 palette borrowing); nil candidates collapse to a
+    /// neutral chroma-0 entry.
     ///
     /// - Parameters:
-    ///   - candidates: per-slot extracted color (nil = extraction failed)
+    ///   - candidates: per-slot extracted colour (nil = extraction failed / empty slot)
     ///   - usageOrder: slot indices sorted from highest-frequency to lowest. Slots earlier
-    ///     in this list win conflicts.
+    ///     in this list win hue collisions.
     ///   - n: slot count, 4...12
-    ///   - useHue8: when true and n == 8, the Hue-8 palette replaces the fallback ring.
     public func resolve(
         candidates: [IdentityColor?],
         usageOrder: [Int],
-        n: Int,
-        useHue8: Bool
+        n: Int
     ) -> [IdentityColor] {
         precondition(candidates.count == n)
-        let fallback = (useHue8 && n == 8) ? IdentityPalette.hue8() : IdentityPalette.fallback(n: n)
 
-        // Initial pass: replace nil / low-chroma candidates with fallback for that slot.
-        var resolved: [IdentityColor] = (0..<n).map { i in
-            guard let c = candidates[i], c.chroma >= Self.saturationFloor else {
-                return fallback[i]
-            }
-            return c
-        }
+        // Trust whatever the extractor returned — every app wears its own
+        // icon-derived colour, however muted. nil → neutral chroma-0.
+        var resolved: [IdentityColor] = candidates.map { $0 ?? Self.neutral }
 
         let conflictThreshold = 360.0 / Double(n) * 0.6
         let pushAmount = 360.0 / Double(n) * 0.4
 
-        // Resolve conflicts by walking the usage order: higher-frequency slots
-        // are immovable. Each lower-frequency slot is allowed AT MOST ONE push
-        // per pass — without this cap, a slot can chain multiple +pushAmount
-        // shifts (one per previously-locked neighbour) and end up far from its
-        // icon-derived hue. For N=8 the cascade can reach +126° and turn a
-        // green icon into pink.
+        // Hue-collision push: when two extracted colours land within
+        // `conflictThreshold` of each other, the lower-frequency slot's hue is
+        // nudged by one `pushAmount`. Capped at one push per pass to prevent
+        // the cascading "green icon → pink" regression covered by
+        // `test_resolver_pushIsCappedAtOnePerPass…`.
+        //
+        // Neutral (chroma 0) slots have no hue identity, so they don't push
+        // and aren't pushed against.
         var locked: Set<Int> = []
         for slot in usageOrder {
-            for previous in locked {
+            defer { locked.insert(slot) }
+            guard resolved[slot].chroma > 0 else { continue }
+            for previous in locked where resolved[previous].chroma > 0 {
                 let d = IdentityColor.hueDistance(resolved[slot].hue, resolved[previous].hue)
                 if d < conflictThreshold {
                     let pushedHue = resolved[slot].hue + pushAmount
@@ -167,7 +143,6 @@ public struct IdentityConflictResolver {
                     break
                 }
             }
-            locked.insert(slot)
         }
         return resolved
     }

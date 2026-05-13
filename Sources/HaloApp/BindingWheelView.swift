@@ -26,6 +26,11 @@ struct BindingWheelView: View {
     private let iconVisualSize: CGFloat = 38
     private let iconBoxSize: CGFloat = 52      // tappable area, larger than the icon glyph
 
+    /// Cheap stateless extractor — same one AppDelegate uses for the live
+    /// wheel. Lets the Settings preview show the same icon-derived identity
+    /// colour the user will see when they summon Halo, not just overrides.
+    private let extractor = DominantColorExtractor()
+
     /// Visible outer rim (where the soft mask starts fading) divided by
     /// half the deadzone — same logic as `HaloUI.Geometry.iconRadius`.
     private var iconRadius: CGFloat {
@@ -186,11 +191,23 @@ struct BindingWheelView: View {
     // MARK: Helpers
 
     private func sectorFill(for slot: Int) -> Color {
-        guard let id = prefs.pinnedBundleIDs[safe: slot] ?? nil,
-              let override = prefs.identityOverride(for: id) else {
+        guard let id = prefs.pinnedBundleIDs[safe: slot] ?? nil else {
             return Color.primary.opacity(0.04)
         }
-        return override.swiftUIColor.opacity(0.10)
+        // 1. user-set colour wins
+        if let override = prefs.identityOverride(for: id) {
+            return override.swiftUIColor.opacity(0.10)
+        }
+        // 2. icon-derived identity colour — trusted as-is, no chroma floor.
+        // Matches the live wheel exactly: every app's sector reflects its
+        // own icon, never a borrowed palette entry.
+        if let icon = AppIconResolver.icon(for: id),
+           let extracted = extractor.extract(from: icon) {
+            return extracted.swiftUIColor.opacity(0.10)
+        }
+        // 3. extractor returned nil (greyscale icon, no chromatic pixels) →
+        // neutral, identical to the live wheel's chroma-0 fallback.
+        return Color.primary.opacity(0.04)
     }
 
     private func slotOffset(slot: Int) -> CGSize {

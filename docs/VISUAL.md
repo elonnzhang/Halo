@@ -245,44 +245,29 @@
 - 外圈 halo：`accent @ 32% → 0%` radial，`blur(18)`
 - commit vignette ripple：`accent`（见 §6）
 
-### 4.2 N 色 fallback 调色板
+### 4.2 取色策略（v1.1：移除 Hue-8 与饱和度兜底）
 
-当 app icon 取色失败、饱和度过低（< 12%）、或与相邻槽身份色冲突无法解算时，落到生成的兜底色。**通用公式（任意 N）：**
+> **每个 app 的身份色 = 它自己 icon 提取出来的颜色。** 不再有固定 Hue-8 调色板，不再有"饱和度过低就借色"的兜底。Spotify 永远是 Spotify 自己的绿，Slack 永远是 Slack 自己的粉；Dia / Notion / Terminal 这类柔和或近灰度的 icon 也展示它们提取出来的淡色，而不是被替换成 palette 里的鲜艳色。
 
-```
-fallback[i] = oklch(65%, 0.18, (230° + i × 360°/N) mod 360°)
-i ∈ [0, N)
-```
+提取算法（`DominantColorExtractor`）：24-bin 色相直方图，按 `chroma × alpha` 加权，排除：
+- alpha ≤ 0.5（透明边）
+- 像素 chroma ≤ 0.04（近灰度像素）
+- 像素 lightness ≤ 0.20 或 ≥ 0.92（纯黑/纯白背景）
 
-`base = 230°`（aqua 起点），N 槽自动均分色相环、保持 OKLCH 等距。
-
-**N = 8 特例**：保留 Hue 游戏原 8 色，向游戏致敬：
-
-| Slot | Name | Hex | OKLCH |
-| --- | --- | --- | --- |
-| 0 | aqua | `#26A5E4` | `oklch(70% 0.13 230)` |
-| 1 | navy | `#3B5BDB` | `oklch(52% 0.18 265)` |
-| 2 | purple | `#A259FF` | `oklch(60% 0.24 295)` |
-| 3 | pink | `#E01E5A` | `oklch(58% 0.24 5)` |
-| 4 | orange | `#F97316` | `oklch(70% 0.18 45)` |
-| 5 | red | `#FF453A` | `oklch(65% 0.22 22)` |
-| 6 | yellow | `#F7B500` | `oklch(80% 0.15 80)` |
-| 7 | green | `#1DB954` | `oklch(67% 0.18 145)` |
-
-其他 N（4 / 6 / 10 / 12）按上述 OKLCH 公式动态生成；不再手工列表。
+返回提取胜出 bin 的加权 RGB 平均值的 OKLCH 表示。
 
 ### 4.3 身份色注入规则
 
-- **默认源**：app icon dominant color via CoreImage k-means (k=3，取饱和度最高的簇)
-- **饱和度门**：< 12% → 走 fallback 槽位色
-- **冲突阈值**：相邻两槽身份色色相差 < `360°/N × 0.6` 即视为冲突
+- **默认源**：app icon dominant color（见 §4.2）
+- **空槽 / 提取彻底失败**：chroma-0 中性灰（`oklch(65% 0 0)`），sector 不带色相
+- **冲突阈值**：两槽身份色色相差 < `360°/N × 0.6` 即视为冲突
   - N=4 → 阈值 54°
   - N=6 → 阈值 36°
   - N=8 → 阈值 27°
   - N=10 → 阈值 21.6°
   - N=12 → 阈值 18°
-- **冲突解算**：高频保留原色，低频沿色相环推 `360°/N × 0.4` 度（仅推 hue，不动 lightness / chroma）
-- **用户覆盖**：Settings 中的 colorwell 始终最高优先级
+- **冲突解算**：按真实激活频次锁定，高频保留原色，低频沿色相环推 `360°/N × 0.4` 度（仅推 hue，不动 lightness / chroma）。chroma-0 中性槽不参与推送。
+- **用户覆盖**：Settings 中的 colorwell 始终最高优先级——任何 app 都可以手动指定身份色或重置回 icon 提取色
 
 ### 4.4 冲突解算示例
 

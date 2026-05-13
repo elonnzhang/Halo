@@ -226,11 +226,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             return nil
         }
+        // Rank slots by their app's real activation frequency, not slot
+        // index — the resolver locks earlier entries first, so a pinned but
+        // rarely-used app at slot 0 used to shadow a high-frequency app at
+        // slot 3 when their hues collided. `freqEngine.top` is preconditioned
+        // to N ∈ 4...12, and `userMaxN` is already clamped to that range;
+        // pinned apps that don't make it into the top-N (and empty slots)
+        // fall back to `Int.max`, tiebroken by slot index.
+        let frequencyRanking = freqEngine
+            .top(n: userMaxN, from: records)
+            .enumerated()
+            .reduce(into: [String: Int]()) { acc, pair in
+                acc[pair.element.bundleID] = pair.offset
+            }
+        let usageOrder = (0..<displayN).sorted { lhs, rhs in
+            let lr = placed[lhs].flatMap { frequencyRanking[$0.bundleID] } ?? Int.max
+            let rr = placed[rhs].flatMap { frequencyRanking[$0.bundleID] } ?? Int.max
+            return lr == rr ? lhs < rhs : lr < rr
+        }
         let palette = resolver.resolve(
             candidates: candidates,
-            usageOrder: Array(0..<displayN),
-            n: displayN,
-            useHue8: displayN == 8
+            usageOrder: usageOrder,
+            n: displayN
         )
 
         if state.slotCount != displayN {

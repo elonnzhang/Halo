@@ -25,7 +25,7 @@ make dist         # produces dist/Halo-v1.0.0.zip
 
 ## Use
 
-1. **Press `⌘⌥Space`** (or double-tap `⌘` alone) to summon Halo at the cursor.
+1. **Press `⌘ ⌥ Space`** (or double-tap `⌘` alone) to summon Halo at the cursor.
 2. **Move the cursor** — or press a direction / digit key — to highlight a slot.
 3. **Release the hotkey** — or click / press `Return` — to switch. `ESC` cancels.
 4. **Menu-bar icon** for keyboard-less summon and Settings.

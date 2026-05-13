@@ -44,15 +44,19 @@ public enum HaloUI {
         public static var iconSize: CGFloat {
             AppPreferences.shared.iconSize
         }
-        /// Where the curved tooltip label floats outside the wheel.
+        /// Where the curved tooltip label floats outside the wheel. Pushed
+        /// far enough out that the chip never lands on the wheel's halo glow
+        /// (which extends ~20pt past the disc rim) or shadow.
         public static var labelRadius: CGFloat {
-            haloDiameter / 2 + 28
+            haloDiameter / 2 + 56
         }
-        public static let labelMaxWidth: CGFloat = 260
+        public static let labelMaxWidth: CGFloat = 220
         /// Breathing room so the halo glow + label + shadow all fit in the
-        /// panel without clipping.
+        /// panel without clipping. Sized to contain a max-width label at the
+        /// diagonal slot positions (45°, 135°, …) where the chip extends
+        /// farthest from centre.
         public static var totalDiameter: CGFloat {
-            haloDiameter + 120
+            haloDiameter + 200
         }
         /// Gap between adjacent sectors (degrees).
         public static let slotGapDegrees: Double = 1.0

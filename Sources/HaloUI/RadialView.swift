@@ -128,9 +128,27 @@ public struct RadialView: View {
 
             // 2. Content-aware tint. Glass picks up ~5% of the hovered
             // sector's identity colour, like a prism catching a light source.
+            // Masked to the donut: the hub stays neutral so the selected
+            // colour reads on the ring only, not on the deadzone lens.
             Circle()
                 .fill(tint.opacity(isHovering ? 0.06 : 0))
                 .blendMode(.plusLighter)
+                .mask(
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                stops: [
+                                    .init(color: .clear, location: 0.0),
+                                    .init(color: .clear, location: HaloUI.Geometry.deadzoneDiameter / d),
+                                    .init(color: .black, location: HaloUI.Geometry.deadzoneDiameter / d),
+                                    .init(color: .black, location: 1.0),
+                                ],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: d / 2
+                            )
+                        )
+                )
                 .animation(
                     reduceMotion ? .easeOut(duration: 0.05) : .easeOut(duration: 0.22),
                     value: hoveredSlot?.id
@@ -239,10 +257,25 @@ public struct RadialView: View {
         // Idle sectors: near-invisible glass. The only thing separating them
         // from neighbours is the 1° angular gap in SectorShape, not a stroke.
         let idleFill    = Color.white.opacity(0.015)
-        let hoverMix: Double = isPreviewing ? 0.16 : 0.10
-        let fill: Color = isActive ? accent.opacity(hoverMix) : idleFill
         let strokeColor: Color = isActive ? accent : Color.white.opacity(0.03)
         let strokeWidth: CGFloat = isActive ? 1.4 : 0.5
+
+        // Sector fill is a radial gradient: bright accent at the inner edge
+        // (near the hub) bleeds outward to a subtle tint at the outer rim.
+        // The inner wedge picks up the same intensity as the sector stroke,
+        // giving the selected slot a "lit candle" feel.
+        let innerFill: Color
+        let outerFill: Color
+        if isPreviewing {
+            innerFill = accent.opacity(0.88)
+            outerFill = accent.opacity(0.16)
+        } else if isHovered {
+            innerFill = accent.opacity(0.70)
+            outerFill = accent.opacity(0.10)
+        } else {
+            innerFill = idleFill
+            outerFill = idleFill
+        }
 
         let sector = SectorShape(
             index: slot.id,
@@ -252,7 +285,19 @@ public struct RadialView: View {
 
         return ZStack {
             sector
-                .fill(fill)
+                .fill(
+                    RadialGradient(
+                        stops: [
+                            .init(color: innerFill, location: 0.0),
+                            .init(color: innerFill, location: 0.15),
+                            .init(color: outerFill, location: 0.55),
+                            .init(color: outerFill, location: 1.0),
+                        ],
+                        center: .center,
+                        startRadius: HaloUI.Geometry.deadzoneDiameter / 2,
+                        endRadius: HaloUI.Geometry.haloDiameter / 2
+                    )
+                )
                 .overlay(sector.stroke(strokeColor, lineWidth: strokeWidth))
                 // Inner glow on active sectors: blurred accent stroke masked
                 // back into the sector shape. Gives the petal a lit-glass
@@ -269,6 +314,24 @@ public struct RadialView: View {
                 .frame(
                     width: HaloUI.Geometry.haloDiameter,
                     height: HaloUI.Geometry.haloDiameter
+                )
+                // Same soft-edge mask the disc uses, so sector fill / stroke /
+                // inner glow fade out in lockstep with the visible disc rim
+                // instead of punching a hard wedge into the panel's halo area.
+                .mask(
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                stops: [
+                                    .init(color: .black, location: 0.0),
+                                    .init(color: .black, location: AppPreferences.visibleOuterFactor),
+                                    .init(color: .clear, location: 1.0),
+                                ],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: HaloUI.Geometry.haloDiameter / 2
+                            )
+                        )
                 )
 
             sectorContent(slot: slot, isActive: isActive, accent: accent)
