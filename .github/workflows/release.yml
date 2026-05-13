@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v1.0.1)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-universal:
+    name: Build universal .app
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          swift --version
+          xcodebuild -version
+
+      - name: Test
+        run: swift test
+
+      - name: Build universal .app
+        run: make app
+
+      - name: Verify slices
+        run: |
+          lipo -info dist/Halo.app/Contents/MacOS/Halo
+          file  dist/Halo.app/Contents/MacOS/Halo
+
+      - name: Read version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Package zip
+        run: |
+          cd dist
+          ditto -c -k --sequesterRsrc --keepParent Halo.app "Halo-${{ steps.version.outputs.tag }}.zip"
+          ls -lh "Halo-${{ steps.version.outputs.tag }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Halo-${{ steps.version.outputs.tag }}
+          path: dist/Halo-${{ steps.version.outputs.tag }}.zip
+          if-no-files-found: error
+
+      - name: Create / update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          ZIP="dist/Halo-${TAG}.zip"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "==> uploading asset to existing release $TAG"
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            echo "==> creating release $TAG"
+            gh release create "$TAG" "$ZIP" \
+              --title "Halo $TAG" \
+              --notes "Universal .app (arm64 + x86_64) for macOS 12+. See CHANGELOG.md for details."
+          fi

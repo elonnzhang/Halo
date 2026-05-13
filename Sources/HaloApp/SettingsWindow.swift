@@ -490,6 +490,7 @@ private struct KeyCapChip: ViewModifier {
     let active: Bool
 
     func body(content: Content) -> some View {
+        #if compiler(>=6.3)
         if #available(macOS 26.0, *) {
             content
                 .glassEffect(
@@ -497,11 +498,19 @@ private struct KeyCapChip: ViewModifier {
                     in: RoundedRectangle(cornerRadius: 6, style: .continuous)
                 )
         } else {
-            content.background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.gray.opacity(active ? 0.4 : 0.15))
-            )
+            legacyCap(content)
         }
+        #else
+        legacyCap(content)
+        #endif
+    }
+
+    @ViewBuilder
+    private func legacyCap(_ content: Content) -> some View {
+        content.background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(Color.gray.opacity(active ? 0.4 : 0.15))
+        )
     }
 }
 

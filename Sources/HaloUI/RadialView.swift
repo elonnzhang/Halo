@@ -50,6 +50,7 @@ public struct RadialView: View {
 
     @ViewBuilder
     private var labelOverlay: some View {
+        #if compiler(>=6.3)
         if #available(macOS 26.0, *) {
             GlassEffectContainer {
                 if let slot = hoveredSlot, slot.app != nil {
@@ -61,6 +62,11 @@ public struct RadialView: View {
                 labelChip(for: slot)
             }
         }
+        #else
+        if let slot = hoveredSlot, slot.app != nil {
+            labelChip(for: slot)
+        }
+        #endif
     }
 
     // MARK: - Halo glow
@@ -197,20 +203,28 @@ public struct RadialView: View {
     /// is rendered on top in `wheelBackground`, regardless of OS.
     @ViewBuilder
     private func glassDisc(diameter d: CGFloat) -> some View {
+        #if compiler(>=6.3)
         if #available(macOS 26.0, *) {
             Circle()
                 .fill(.clear)
                 .glassEffect(in: Circle())
                 .frame(width: d, height: d)
         } else {
-            VisualEffectBackground(
-                material: .hudWindow,
-                blendingMode: .behindWindow,
-                state: .active
-            )
-            .clipShape(Circle())
-            .frame(width: d, height: d)
+            visualEffectDisc(diameter: d)
         }
+        #else
+        visualEffectDisc(diameter: d)
+        #endif
+    }
+
+    private func visualEffectDisc(diameter d: CGFloat) -> some View {
+        VisualEffectBackground(
+            material: .hudWindow,
+            blendingMode: .behindWindow,
+            state: .active
+        )
+        .clipShape(Circle())
+        .frame(width: d, height: d)
     }
 
     // MARK: - Sector
@@ -592,37 +606,46 @@ private struct GlassChipBackground: ViewModifier {
     let slotID: Int
 
     func body(content: Content) -> some View {
+        #if compiler(>=6.3)
         if #available(macOS 26.0, *) {
             content
                 .glassEffect(.regular, in: Capsule(style: .continuous))
                 .glassEffectID("halo.label.\(slotID)", in: namespace)
         } else {
-            content.background {
-                Capsule(style: .continuous)
-                    .fill(Color.white.opacity(0.06))
-                    .background(
-                        VisualEffectBackground(
-                            material: .hudWindow,
-                            blendingMode: .behindWindow,
-                            state: .active
-                        )
-                        .clipShape(Capsule(style: .continuous))
+            legacyChip(content)
+        }
+        #else
+        legacyChip(content)
+        #endif
+    }
+
+    @ViewBuilder
+    private func legacyChip(_ content: Content) -> some View {
+        content.background {
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(0.06))
+                .background(
+                    VisualEffectBackground(
+                        material: .hudWindow,
+                        blendingMode: .behindWindow,
+                        state: .active
                     )
-                    .overlay {
-                        Capsule(style: .continuous)
-                            .strokeBorder(
-                                LinearGradient(
-                                    colors: [
-                                        Color.white.opacity(0.28),
-                                        Color.white.opacity(0.04)
-                                    ],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                ),
-                                lineWidth: 0.6
-                            )
-                    }
-            }
+                    .clipShape(Capsule(style: .continuous))
+                )
+                .overlay {
+                    Capsule(style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.28),
+                                    Color.white.opacity(0.04)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            ),
+                            lineWidth: 0.6
+                        )
+                }
         }
     }
 }
