@@ -18,7 +18,7 @@ final class SettingsWindowController {
         self.prefs = prefs
         let host = NSHostingController(rootView: SettingsRootView(prefs: prefs))
         let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 540),
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 620),
             styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
@@ -87,266 +87,41 @@ private final class WindowCloseObserver {
 
 // MARK: - SwiftUI root
 
-/// Settings UI hosted inside `SettingsWindowController`. Four tabs:
-/// General, Hotkey, Apps (merged Pins + Colors), About.
-///
-/// Mutations on `prefs` propagate automatically — `AppDelegate.prefsObserver`
-/// sinks `objectWillChange` and re-applies the snapshot to the running Halo —
-/// so no `onChange` callback is threaded through.
+/// Sidebar + content split. macOS 12-compatible (no NavigationSplitView).
+/// Mutations on `prefs` propagate via `objectWillChange`; the AppDelegate
+/// sinks that and re-applies the snapshot to the running Halo.
 struct SettingsRootView: View {
     @ObservedObject var prefs: AppPreferences
+    @State private var selection: SettingsSection = .general
 
     var body: some View {
-        TabView {
-            GeneralTab(prefs: prefs)
-                .tabItem { Label("General", systemImage: "gearshape") }
-            HotkeyTab(prefs: prefs)
-                .tabItem { Label("Hotkey", systemImage: "command") }
-            AppsTab(prefs: prefs)
-                .tabItem { Label("Apps", systemImage: "square.grid.3x3.fill") }
-            AboutTab()
-                .tabItem { Label("About", systemImage: "info.circle") }
+        HStack(spacing: 0) {
+            SettingsSidebar(selection: $selection)
+            Divider()
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .padding(16)
-        .frame(width: 560, height: 540)
+        .frame(width: 720, height: 620)
     }
-}
 
-// MARK: - General
-
-private struct GeneralTab: View {
-    @ObservedObject var prefs: AppPreferences
-
-    /// Generic layout-slider row: label on the left, slider in the
-    /// middle, current value (with unit) on the right. Used by the
-    /// "Wheel layout" section for Halo diameter / icon size / icon
-    /// distance.
     @ViewBuilder
-    private func layoutSlider(
-        label: LocalizedStringKey,
-        value: Binding<Double>,
-        range: ClosedRange<Double>,
-        step: Double,
-        suffix: String
-    ) -> some View {
-        HStack(spacing: 12) {
-            Text(label)
-                .frame(width: 110, alignment: .leading)
-            Slider(value: value, in: range, step: step)
-            Text("\(Int(value.wrappedValue)) \(suffix)")
-                .font(.system(.body, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(width: 56, alignment: .trailing)
+    private var content: some View {
+        switch selection {
+        case .general:   GeneralTab(prefs: prefs)
+        case .apps:      AppsTab(prefs: prefs)
+        case .whitelist: WhitelistTab(prefs: prefs)
+        case .about:     AboutTab()
         }
-    }
-
-    /// Pulls the last hour of unified-log entries under the Halo
-    /// subsystem into `~/Downloads/Halo-diagnostic-<timestamp>.log` and
-    /// reveals it in Finder. Bound to the Settings button; surfaces any
-    /// error via an `NSAlert` so the user knows what to attach to a bug
-    /// report instead of getting a silent failure.
-    private func exportDiagnostics() {
-        do {
-            let url = try DiagnosticLog.export()
-            NSWorkspace.shared.activateFileViewerSelecting([url])
-        } catch {
-            let alert = NSAlert()
-            alert.messageText = NSLocalizedString(
-                "Could not export diagnostic log",
-                comment: "Alert title shown when log export fails"
-            )
-            alert.informativeText = error.localizedDescription
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: NSLocalizedString("OK", comment: ""))
-            alert.runModal()
-        }
-    }
-
-    var body: some View {
-        Form {
-            Section("Layout") {
-                Picker("Slot count", selection: Binding(
-                    get: { prefs.slotCount },
-                    set: { prefs.slotCount = $0 }
-                )) {
-                    ForEach([4, 6, 8, 10, 12], id: \.self) { n in
-                        Text("\(n)").tag(n)
-                    }
-                }
-                .pickerStyle(.segmented)
-
-                Picker("Summon position", selection: Binding(
-                    get: { prefs.summonPosition },
-                    set: { prefs.summonPosition = $0 }
-                )) {
-                    Text("At cursor").tag(SummonPosition.mouse)
-                    Text("Screen center").tag(SummonPosition.center)
-                }
-                .pickerStyle(.segmented)
-            }
-
-            Section("Ranking") {
-                Picker("Frequency profile", selection: Binding(
-                    get: { prefs.frequencyProfile },
-                    set: { prefs.frequencyProfile = $0 }
-                )) {
-                    Text("MFU only").tag(FrequencyProfile.mfuOnly)
-                    Text("Balanced").tag(FrequencyProfile.balanced)
-                    Text("MRU only").tag(FrequencyProfile.mruOnly)
-                }
-                .pickerStyle(.segmented)
-            }
-
-            Section {
-                layoutSlider(
-                    label: "Halo diameter",
-                    value: Binding(
-                        get: { Double(prefs.haloDiameter) },
-                        set: { prefs.haloDiameter = CGFloat($0) }
-                    ),
-                    range: 280...440,
-                    step: 10,
-                    suffix: "pt"
-                )
-                layoutSlider(
-                    label: "Icon size",
-                    value: Binding(
-                        get: { Double(prefs.iconSize) },
-                        set: { prefs.iconSize = CGFloat($0) }
-                    ),
-                    range: 36...64,
-                    step: 2,
-                    suffix: "pt"
-                )
-                let radiusBounds = prefs.iconRadiusBounds
-                layoutSlider(
-                    label: "Icon distance",
-                    value: Binding(
-                        get: { Double(prefs.iconRadius) },
-                        set: { prefs.iconRadius = CGFloat($0) }
-                    ),
-                    range: Double(radiusBounds.min)...Double(radiusBounds.max),
-                    step: 2,
-                    suffix: "pt"
-                )
-                Button("Reset wheel layout") {
-                    prefs.resetLayout()
-                }
-            } header: {
-                Text("Wheel layout")
-            } footer: {
-                Text("Summon Halo to see size changes take effect.")
-                    .foregroundStyle(.secondary)
-                    .font(.callout)
-            }
-
-            Section("Startup") {
-                Toggle("Launch Halo at login", isOn: Binding(
-                    get: { prefs.autostart },
-                    set: { prefs.autostart = $0; LaunchAgentManager.apply(enabled: $0) }
-                ))
-
-                Button("Replay welcome guide") {
-                    (NSApp.delegate as? AppDelegate)?.replayWelcome()
-                }
-                Button("Reset onboarding overlay") {
-                    prefs.resetOnboarding()
-                }
-                Button("Export diagnostic log…") {
-                    exportDiagnostics()
-                }
-            }
-
-            Section {
-                Picker("Display language", selection: Binding(
-                    get: { prefs.appLanguageOverride ?? "system" },
-                    set: { prefs.appLanguageOverride = ($0 == "system" ? nil : $0) }
-                )) {
-                    Text("System").tag("system")
-                    Text("English").tag("en")
-                    Text("简体中文").tag("zh-Hans")
-                }
-                .pickerStyle(.menu)
-            } header: {
-                Text("Language")
-            } footer: {
-                Text("Restart Halo for the language change to take effect.")
-                    .foregroundStyle(.secondary)
-                    .font(.callout)
-            }
-        }
-        .compatGroupedFormStyle()
     }
 }
 
-// MARK: - Hotkey
-
-private struct HotkeyTab: View {
-    @ObservedObject var prefs: AppPreferences
-    @State private var capturing = false
-
-    var body: some View {
-        Form {
-            Section {
-                HStack {
-                    Text("Summon hotkey")
-                    Spacer()
-                    Text("\(prefs.hotkeyModifiers.symbols)\(KeyName.label(for: prefs.hotkeyKeyCode))")
-                        .font(.system(.body, design: .monospaced))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .modifier(KeyCapChip(active: capturing))
-                    Button(capturing ? "Press chord…" : "Rebind") {
-                        capturing.toggle()
-                    }
-                }
-                if capturing {
-                    HotkeyCaptureView(prefs: prefs) {
-                        capturing = false
-                    }
-                }
-                Button("Reset to ⌘ ⌥ Space") {
-                    prefs.hotkeyKeyCode = 49
-                    prefs.hotkeyModifiers = [.command, .option]
-                }
-            } header: {
-                Text("Press the hotkey to summon instantly; release to commit the highlighted slot.")
-                    .foregroundStyle(.secondary)
-                    .font(.callout)
-            }
-
-            Section {
-                HStack {
-                    Text("Double-tap ⌘ window")
-                    Slider(
-                        value: Binding(
-                            get: { prefs.cmdDoubleTapGap },
-                            set: { prefs.cmdDoubleTapGap = $0 }
-                        ),
-                        in: 0.15...0.50,
-                        step: 0.05
-                    )
-                    Text(String(format: "%.2f s", prefs.cmdDoubleTapGap))
-                        .font(.system(.body, design: .monospaced))
-                        .frame(width: 56, alignment: .trailing)
-                }
-            } header: {
-                Text("Second trigger: double-tap ⌘ alone — the second press must land within this window. Hold the second ⌘ to navigate, release to commit.")
-                    .foregroundStyle(.secondary)
-                    .font(.callout)
-            }
-        }
-        .compatGroupedFormStyle()
-    }
-}
-
-// MARK: - Apps (merged Pins + Colors)
+// MARK: - Apps tab
 
 // TODO: Apps 布局支持多 profile —— 现在只渲染单个 "Default" 绑定，
 // 未来需要一个 profile 列表 + 切换器（"Default" / "Work" / "Gaming"...），
 // 每个 profile 独立维护 pinnedBundleIDs / identityOverride。AppPreferences
 // 已留了 `clearAllBindings()` 入口，以后按 profile 维度切桶即可。
-private struct AppsTab: View {
+struct AppsTab: View {
     @ObservedObject var prefs: AppPreferences
 
     @State private var confirmingClear = false
@@ -393,10 +168,7 @@ private struct AppsTab: View {
         }
     }
 
-    /// "Halo binding" card at the top of the Apps tab. Looks like a small
-    /// app/profile chip — name, slot count, pinned count, and a Clear
-    /// button. Today there's only ever one profile ("Default"); see the
-    /// TODO above the type for the multi-profile shape we'll grow into.
+    /// "Halo binding" card at the top of the Apps tab.
     private var bindingHeader: some View {
         Section {
             HStack(spacing: 12) {
@@ -513,158 +285,24 @@ struct AppPickerSheet: View {
     }
 }
 
-// MARK: - About
+// MARK: - Whitelist tab placeholder
 
-private struct AboutTab: View {
+/// Real implementation lives in `WhitelistTab.swift` (Phase 5). Kept here
+/// only because `SettingsRootView` routes to it; Phase 5 deletes this stub.
+struct WhitelistTab: View {
+    @ObservedObject var prefs: AppPreferences
     var body: some View {
-        VStack(spacing: 18) {
-            Spacer(minLength: 0)
-
-            Image(systemName: "circle.dashed.inset.filled")
-                .font(.system(size: 64, weight: .light))
-                .foregroundStyle(.tint)
-
-            VStack(spacing: 4) {
-                Text("Halo").font(.largeTitle).bold()
-                Text("v\(Halo.version)")
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
-
-            Text("Radial app launcher for macOS — point a direction, switch apps.")
-                .font(.callout)
+        VStack(spacing: 12) {
+            Image(systemName: "shield")
+                .font(.system(size: 32))
+                .foregroundStyle(.tertiary)
+            Text("Whitelist UI lands in Phase 5")
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: 360)
-
-            HStack(spacing: 12) {
-                Link("GitHub", destination: URL(string: "https://github.com/elonnzhang/Halo")!)
-                Text("·").foregroundStyle(.tertiary)
-                Link("License (MIT)", destination: URL(string: "https://github.com/elonnzhang/Halo/blob/main/LICENSE")!)
-            }
-            .font(.callout)
-
-            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-// MARK: - Hotkey capture
-
-private struct HotkeyCaptureView: NSViewRepresentable {
-    let prefs: AppPreferences
-    let onCapture: () -> Void
-
-    func makeNSView(context: Context) -> KeyCaptureView {
-        let v = KeyCaptureView()
-        v.onCapture = { code, mods in
-            prefs.hotkeyKeyCode = code
-            prefs.hotkeyModifiers = mods
-            onCapture()
-        }
-        return v
-    }
-
-    func updateNSView(_ nsView: KeyCaptureView, context: Context) {
-        DispatchQueue.main.async { nsView.window?.makeFirstResponder(nsView) }
-    }
-}
-
-private final class KeyCaptureView: NSView {
-    var onCapture: ((UInt32, HotkeyModifiers) -> Void)?
-
-    override var acceptsFirstResponder: Bool { true }
-
-    override func keyDown(with event: NSEvent) {
-        let modifiers = HotkeyModifiers(nsEventFlags: event.modifierFlags)
-        guard !modifiers.isEmpty else {
-            NSSound.beep()
-            return
-        }
-        onCapture?(UInt32(event.keyCode), modifiers)
-    }
-}
-
-extension HotkeyModifiers {
-    init(nsEventFlags flags: NSEvent.ModifierFlags) {
-        var s: HotkeyModifiers = []
-        if flags.contains(.command) { s.insert(.command) }
-        if flags.contains(.option)  { s.insert(.option) }
-        if flags.contains(.control) { s.insert(.control) }
-        if flags.contains(.shift)   { s.insert(.shift) }
-        self = s
-    }
-}
-
 private extension Array {
     subscript(safe i: Int) -> Element? { indices.contains(i) ? self[i] : nil }
-}
-
-// MARK: - Glass chip
-
-/// Compact "key cap" surface for the hotkey display. macOS 26+ uses Liquid
-/// Glass; tinting the active state with the system accent color is semantic
-/// — it signals "press a chord now" rather than decorating the chip. Older
-/// systems fall back to the original gray fill. Compile-time gated behind
-/// `#if compiler(>=6.3)` so CI runners with Xcode 16 still build.
-private struct KeyCapChip: ViewModifier {
-    let active: Bool
-
-    func body(content: Content) -> some View {
-        #if compiler(>=6.3)
-        if #available(macOS 26.0, *) {
-            content
-                .glassEffect(
-                    active ? .regular.tint(.accentColor.opacity(0.35)) : .regular,
-                    in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-                )
-        } else {
-            legacyCap(content)
-        }
-        #else
-        legacyCap(content)
-        #endif
-    }
-
-    @ViewBuilder
-    private func legacyCap(_ content: Content) -> some View {
-        content.background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color.gray.opacity(active ? 0.4 : 0.15))
-        )
-    }
-}
-
-// MARK: - Key code label
-
-enum KeyName {
-    static func label(for code: UInt32) -> String {
-        switch code {
-        case 49: return "Space"
-        case 36: return "Return"
-        case 48: return "Tab"
-        case 51: return "Delete"
-        case 53: return "Escape"
-        case 123: return "←"
-        case 124: return "→"
-        case 125: return "↓"
-        case 126: return "↑"
-        default:
-            if let key = mapAlphaNumeric(code) { return key }
-            return "key:\(code)"
-        }
-    }
-
-    private static func mapAlphaNumeric(_ code: UInt32) -> String? {
-        let table: [UInt32: String] = [
-            0: "A", 11: "B", 8: "C", 2: "D", 14: "E", 3: "F", 5: "G", 4: "H",
-            34: "I", 38: "J", 40: "K", 37: "L", 46: "M", 45: "N", 31: "O",
-            35: "P", 12: "Q", 15: "R", 1: "S", 17: "T", 32: "U", 9: "V",
-            13: "W", 7: "X", 16: "Y", 6: "Z",
-            29: "0", 18: "1", 19: "2", 20: "3", 21: "4", 23: "5", 22: "6",
-            26: "7", 28: "8", 25: "9",
-        ]
-        return table[code]
-    }
 }
