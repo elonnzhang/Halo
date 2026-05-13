@@ -6,7 +6,7 @@ Single, self-contained macOS app. **No Accessibility permission** required for t
 
 ## Status
 
-**v1.0** — first public release. Full Liquid Glass HUD on macOS 26, NSVisualEffectView fallback on macOS 14/15. Double-tap ⌘ second-trigger. Chroma-weighted hue histogram identity colour extraction. See [CHANGELOG.md](CHANGELOG.md).
+**v1.0** — first public release. Full Liquid Glass Halo on macOS 26, NSVisualEffectView fallback on macOS 14/15. Double-tap ⌘ second-trigger. Chroma-weighted hue histogram identity colour extraction. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
@@ -25,7 +25,7 @@ make dist         # produces dist/Halo-v1.0.0.zip
 
 ## Use
 
-1. **Press `⌘⌥Space`** (or double-tap `⌘` alone) to summon the HUD at the cursor.
+1. **Press `⌘⌥Space`** (or double-tap `⌘` alone) to summon Halo at the cursor.
 2. **Move the cursor** — or press a direction / digit key — to highlight a slot.
 3. **Release the hotkey** — or click / press `Return` — to switch. `ESC` cancels.
 4. **Menu-bar icon** for keyboard-less summon and Settings.
@@ -100,13 +100,13 @@ All paths assume the current user.
 | `halo.prefs.identityOverride.v1` | Data (JSON) | `{ bundleID → OKLCH }` — per-app identity colour override |
 | `halo.usage.v1` | Data (JSON) | **Rolling 7-day activation log.** For each app the user has switched to: bundle ID, display name, and an array of activation timestamps. Older than 7 days are dropped on read. |
 | `halo.welcome.shown` | Bool | First-launch welcome overlay has been seen |
-| `halo.onboarding.shown` | Bool | First-summon HUD tip has been seen |
+| `halo.onboarding.shown` | Bool | First-summon Halo tip has been seen |
 
 **Diagnostic log — `~/Library/Logs/Halo/`**:
 
 | File | Contents |
 |---|---|
-| `halo.log` | Plain-text activity log (current). ISO-8601 timestamps + category + message — hotkey registrations, HUD summon / commit / cancel, switcher results, identity-colour extraction, settings mutations, onboarding events. **Includes bundle identifiers of the apps you switch to.** No app contents, no keystrokes, no window titles, no screenshots. |
+| `halo.log` | Plain-text activity log (current). ISO-8601 timestamps + category + message — hotkey registrations, Halo summon / commit / cancel, switcher results, identity-colour extraction, settings mutations, onboarding events. **Includes bundle identifiers of the apps you switch to.** No app contents, no keystrokes, no window titles, no screenshots. |
 | `halo.log.1` | Rotated previous file (rolls over at 5 MB). |
 
 **LaunchAgent — `~/Library/LaunchAgents/com.halo.launcher.plist`** (only when "Launch Halo at login" is enabled):

@@ -104,7 +104,7 @@ final class HaloEngineTests: XCTestCase {
         // Regression: the previous dedupe filter used `Set<AppRef>` which
         // hashed bundleID+name together, so the same app activated under
         // two different localized names (system language change, app
-        // rename) produced two slots in the HUD. Engine should canonicalise
+        // rename) produced two slots in Halo. Engine should canonicalise
         // by bundleID only.
         let calendarV1 = AppRef(bundleID: "com.apple.iCal", name: "Calendar")
         let calendarV2 = AppRef(bundleID: "com.apple.iCal", name: "日历")

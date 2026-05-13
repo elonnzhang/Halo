@@ -23,7 +23,7 @@ public struct HaloEngine: Sendable {
         // app under different localized names (system language change, app
         // rename, or transient `localizedName` from the OS) used to hash
         // as different `AppRef` values and slipped through the previous
-        // `Set<AppRef>` filter, surfacing duplicate slots in the HUD.
+        // `Set<AppRef>` filter, surfacing duplicate slots in Halo.
         var seenIDs: Set<String> = []
 
         // 1. Pinned occupy first slots, in pin order, deduped by bundleID.

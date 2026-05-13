@@ -5,7 +5,7 @@
 
 ## 1. 视觉主张
 
-**Liquid glass radial HUD.** 一块凸面玻璃浮盘，12 点方向一道 specular 高光弧，12 点稍偏左上模拟光源，中心 deadzone 是向内凹陷的 lens。默认态几乎全透明——瓣间 1° 角度缝隙本身就是视觉分割，不靠描边。身份色只在两个时刻介入：hover 瞬间瓣内亮起身份色玻璃 + 身份色外溢 halo，以及 commit 瞬间的 vignette ripple。
+**Liquid glass radial Halo.** 一块凸面玻璃浮盘，12 点方向一道 specular 高光弧，12 点稍偏左上模拟光源，中心 deadzone 是向内凹陷的 lens。默认态几乎全透明——瓣间 1° 角度缝隙本身就是视觉分割，不靠描边。身份色只在两个时刻介入：hover 瞬间瓣内亮起身份色玻璃 + 身份色外溢 halo，以及 commit 瞬间的 vignette ripple。
 
 与 macOS Tahoe（System 26）的 Control Center / Spotlight 同一视觉语言：
 - 顶部 rim 的亮边高光（specular）
@@ -53,9 +53,9 @@
 
 | 维度 | 值 | 备注 |
 | --- | --- | --- |
-| HUD 外盘直径 | **320 pt** | 不随 N 变化，瓣自适应 |
+| Halo 外盘直径 | **320 pt** | 不随 N 变化，瓣自适应 |
 | 内圈直径 (deadzone) | **112 pt** | 中心图标 `⌀ 112 × 0.62 ≈ 69 pt` 居中 |
-| 面板外框 | `HUD + 120 pt = 440 pt` | 含 halo 溢出 + 阴影 + 弧外 label |
+| 面板外框 | `Halo + 120 pt = 440 pt` | 含 halo 溢出 + 阴影 + 弧外 label |
 | 瓣间缝隙 | 1° 角度切缝 | 沿径向切出，非 stroke |
 | 外盘描边 | 0.6–0.8 pt 渐变 | 上亮下暗 + 顶部 specular 高光弧 |
 | 角度起点 | -90° | 槽 0 始终对准 12 点 |
@@ -73,7 +73,7 @@
 
 ## 3. 状态枚举
 
-每个状态都有"视觉"与"行为"两栏。视觉描述 HUD 当下渲染；行为描述驱动该状态进入的事件。
+每个状态都有"视觉"与"行为"两栏。视觉描述 Halo 当下渲染；行为描述驱动该状态进入的事件。
 
 ### 3.1 Idle（召唤完成，无 hover）
 
@@ -120,7 +120,7 @@
 - 内侧光晕：身份色 ×55% stroke 宽 6pt + `blur(4)`，用 sector 形状做 mask，形成玻璃内部被点亮的感觉
 - Icon：1.08× 放大
 - 整盘：content-aware tint 身份色 @5% 淡入
-- 外圈 halo：`RadialGradient(identity@32% → 0)`，`blur(18)`，延伸出 HUD 边缘
+- 外圈 halo：`RadialGradient(identity@32% → 0)`，`blur(18)`，延伸出 Halo 边缘
 
 ### 3.3 Preview（hover ≥ 120ms，已确认意图）
 
@@ -132,14 +132,14 @@
    │    inner glow 6pt     │
    │  中心 icon:           │
    │    跨越淡入到 app N    │
-   │  HUD 外圈：           │
+   │  Halo 外圈：           │
    │    身份色 halo 10pt 高斯 │
    ╰──────────────────╯
 ```
 
 - 瓣背景：身份色 ×14% alpha
 - 瓣内侧光晕：6 pt 高斯，身份色 ×20%
-- HUD 整体玻璃底色：注入身份色 ×5%
+- Halo 整体玻璃底色：注入身份色 ×5%
 - 外圈光晕：10pt 高斯模糊，身份色 ×20% 透明度沿径向外溢
 - 中心 dead-zone：原 frontmost 图标 fade-out + 目标 app 图标 fade-in（cross-fade 200ms，scale 0.95 → 1.0）
 
@@ -148,7 +148,7 @@
 ```
    ╭──────────────────╮
    │  瓣 N 放大 1.0 → 1.1× │
-   │  HUD opacity 1 → 0   │
+   │  Halo opacity 1 → 0   │
    │  150ms ease-out      │
    ╰──────────────────╯
             ↓
@@ -159,12 +159,12 @@
    - 不阻挡点击（pointer-events: none）
 ```
 
-- HUD 整体淡出与 ripple 同步起跑
+- Halo 整体淡出与 ripple 同步起跑
 - ripple 是一个全屏覆盖层 `position: fixed; inset: 0`，内绘 `radial-gradient(circle at center, identity 0%, transparent 60%)`，整体 scale + opacity 双轴动画
 
 ### 3.5 Cancelling（ESC / dead-zone 释放 / 失焦）
 
-- HUD 淡出 100ms ease-in
+- Halo 淡出 100ms ease-in
 - 无 ripple，无颜色残留
 - 区别于 commit：用户感受到"什么都没发生"
 
@@ -189,7 +189,7 @@
 ### 3.8 Failed（上次切换失败 / app 已卸载）
 
 - 状态点：红 `#FF453A`
-- commit 时：HUD 整体 80ms 水平摇晃 × 2（不变形，仅 transform: translateX(±3pt)）
+- commit 时：Halo 整体 80ms 水平摇晃 × 2（不变形，仅 transform: translateX(±3pt)）
 - 频率计数不增加
 
 ### 3.9 Tutorial overlay（仅首次召唤）
@@ -197,14 +197,14 @@
 ```
    ╭──────────────────────────╮
    │  ↑                       │
-   │ ←   N 瓣 HUD 透出 18%   →│
+   │ ←   N 瓣 Halo 透出 18%   →│
    │  ↓                       │
    │  移动鼠标 / 按方向键 → 选择 │
    │  松开 → 切换 · ESC → 取消  │
    ╰──────────────────────────╯
 ```
 
-- 半透明黑覆盖 `rgba(0,0,0,0.55)`，让 HUD 透出 18%
+- 半透明黑覆盖 `rgba(0,0,0,0.55)`，让 Halo 透出 18%
 - 中心 4 个方向箭头（柔和动画指示）
 - 底部 Geist 中文说明文字
 - 8s 后自动消失；点击任意位置立即消失
@@ -215,14 +215,14 @@
 
 | Token | Value | 用途 |
 | --- | --- | --- |
-| `hud-glass-light` | `white @ 9%` | 凸面高光（depth gradient 亮端） |
-| `hud-glass-mid` | `white @ 2%` | 中段过渡 |
-| `hud-glass-edge` | `black @ 22%` | 凸面暗端（rim 向内的过渡） |
-| `hud-weight` | `black @ 26%` | 底部 weight 渐变，玻璃"坠感" |
-| `hud-rim-top` | `white @ 34%` | rim stroke 顶端（受光） |
-| `hud-rim-mid` | `white @ 10%` | rim stroke 中段 |
-| `hud-rim-bot` | `white @ 2%` | rim stroke 底端（阴影） |
-| `hud-specular-peak` | `white @ 78%` | 12 点 specular 弧中段亮度 |
+| `halo-glass-light` | `white @ 9%` | 凸面高光（depth gradient 亮端） |
+| `halo-glass-mid` | `white @ 2%` | 中段过渡 |
+| `halo-glass-edge` | `black @ 22%` | 凸面暗端（rim 向内的过渡） |
+| `halo-weight` | `black @ 26%` | 底部 weight 渐变，玻璃"坠感" |
+| `halo-rim-top` | `white @ 34%` | rim stroke 顶端（受光） |
+| `halo-rim-mid` | `white @ 10%` | rim stroke 中段 |
+| `halo-rim-bot` | `white @ 2%` | rim stroke 底端（阴影） |
+| `halo-specular-peak` | `white @ 78%` | 12 点 specular 弧中段亮度 |
 | `hub-fill` | `black @ 48%` | 中心 lens 基底 |
 | `hub-inner-shadow` | `black @ 55%` | 上缘内阴影 gradient 头端 |
 | `hub-rim-top` | `white @ 24%` | lens rim 顶端 |
@@ -308,7 +308,7 @@ slot 4 (Reminders):   oklch(70% 0.18 55)    orange-ish, hue 55°
 
 | 用途 | 字体 | 备注 |
 | --- | --- | --- |
-| App 内 UI（HUD / Settings） | SF Pro Text / SF Pro Display | macOS native，与系统 HUD 一致 |
+| App 内 UI（Halo / Settings） | SF Pro Text / SF Pro Display | macOS native，与系统 HUD 一致 |
 | Mockup 网页 display | Geist 500/700 | 留性格 |
 | Mockup 网页 body | Geist 400 | 同家族 |
 | 等宽 / 键位 / Token | JetBrains Mono 400/500 | Tokens、`⌘⌥Space` 等 |
@@ -324,7 +324,7 @@ slot 4 (Reminders):   oklch(70% 0.18 55)    orange-ish, hue 55°
 | `--fs-caption` | 12 | 1.4 | 注释、状态名 |
 | `--fs-mono-sm` | 11 | 1.3 | token 值 |
 
-HUD 内部字号：
+Halo 内部字号：
 - 弧外 label（hover 时显示的 app 名）：SF Pro Medium 12pt，`rgba(255,255,255,0.94)`
 - 瓣内无文字；状态仅靠图标 + 状态点表达
 
@@ -332,7 +332,7 @@ HUD 内部字号：
 
 | Token | px |
 | --- | --- |
-| `--r-hud` | 140 (即半径) |
+| `--r-halo` | 140 (即半径) |
 | `--r-slot-outer` | 4 (瓣外角微圆) |
 | `--r-deadzone` | 36 (即半径) |
 | `--r-card` | 14 (mockup spec card) |
@@ -350,7 +350,7 @@ HUD 内部字号：
 
 ```
 t = 0ms
-   屏幕中心 (HUD 召唤位置)
+   屏幕中心 (Halo 召唤位置)
    ●  半径 280pt，不透明度 0
    
 t = 90ms (峰值)
@@ -366,19 +366,19 @@ t = 180ms (落地)
 - CSS：`radial-gradient(circle at center, var(--c) 0%, transparent 60%)`
 - 动画：transform: scale + opacity 双关键帧
 - pointer-events: none，不阻挡任何 app 输入
-- z-index 高于 HUD，低于系统 menu bar
+- z-index 高于 Halo，低于系统 menu bar
 
 ripple 不在 hover/preview 阶段出现；它专门标记"我刚刚做出了选择"这一瞬间。
 
 ## 7. 暗色与浅色
 
-**仅 Dark**。Halo HUD 永远暗色玻璃，无浅色变体。理由：
+**仅 Dark**。Halo 永远暗色玻璃，无浅色变体。理由：
 
-1. HUD 是 transient overlay，需要与任意 app（白底、黑底、彩色）共存
+1. Halo 是 transient overlay，需要与任意 app（白底、黑底、彩色）共存
 2. 暗色玻璃在浅色 / 深色背景上都能维持视觉对比
 3. macOS 系统 HUD（Spotlight、Volume、Brightness）传统都是深色玻璃
 
-身份色饱和度针对深底已校准；切到浅色 HUD 会需要全新调色，**不在 v1 计划内**。
+身份色饱和度针对深底已校准；切到浅色 Halo 会需要全新调色，**不在 v1 计划内**。
 
 ## 8. 资产清单
 

@@ -17,7 +17,7 @@ public enum DiagnosticLog {
             case .noDownloads:
                 return "Could not locate the user's Downloads folder."
             case .noLogYet:
-                return "No log entries have been recorded yet — try summoning the HUD or interacting with Settings first."
+                return "No log entries have been recorded yet — try summoning Halo or interacting with Settings first."
             case .writeFailed(let msg):
                 return "Failed to write diagnostic file: \(msg)."
             }

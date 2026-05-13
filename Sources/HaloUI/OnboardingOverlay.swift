@@ -1,12 +1,12 @@
 import AppKit
 import SwiftUI
 
-/// One-shot tip shown the first time the user summons the HUD. Renders as
-/// a **small floating chip positioned next to the HUD**, not as a
-/// full-screen overlay — the HUD is already at the cursor, so the tip
+/// One-shot tip shown the first time the user summons Halo. Renders as
+/// a **small floating chip positioned next to Halo**, not as a
+/// full-screen overlay — Halo is already at the cursor, so the tip
 /// should be there too rather than fixed at screen centre. The chip ignores
-/// pointer events so the user can drive the HUD without the tip getting
-/// in the way; it auto-dismisses after `displaySeconds` or when the HUD
+/// pointer events so the user can drive Halo without the tip getting
+/// in the way; it auto-dismisses after `displaySeconds` or when Halo
 /// itself closes (caller invokes `dismiss()` on commit / cancel).
 @MainActor
 public final class OnboardingOverlay {
@@ -21,7 +21,7 @@ public final class OnboardingOverlay {
         UserDefaults.standard.bool(forKey: defaultsKey)
     }
 
-    /// Show the tip beside the HUD panel. Auto-dismisses after
+    /// Show the tip beside the Halo panel. Auto-dismisses after
     /// `displaySeconds`. Records a UserDefaults flag so it only ever
     /// appears once.
     public func showIfNeeded(over panel: NSWindow) {
@@ -35,20 +35,20 @@ public final class OnboardingOverlay {
         window = nil
     }
 
-    private func present(over hud: NSWindow) {
+    private func present(over halo: NSWindow) {
         // Visible chip vs. outer panel: the panel is much larger so the
         // soft drop shadow has room to fade out to fully transparent
         // before hitting the panel's rectangular bound. Positioning uses
         // chip-center math (not panel-corner math) so the visible chip
-        // still lands just below the HUD regardless of the panel padding.
+        // still lands just below Halo regardless of the panel padding.
         let chipSize = NSSize(width: 320, height: 76)
         let panelMargin: CGFloat = 50
         let panelSize = NSSize(
             width: chipSize.width + 2 * panelMargin,
             height: chipSize.height + 2 * panelMargin
         )
-        let frame = chipFrame(forHud: hud.frame,
-                              on: hud.screen ?? NSScreen.main,
+        let frame = chipFrame(forHalo: halo.frame,
+                              on: halo.screen ?? NSScreen.main,
                               chipSize: chipSize,
                               panelSize: panelSize)
 
@@ -62,7 +62,7 @@ public final class OnboardingOverlay {
         w.isOpaque = false
         w.backgroundColor = .clear
         w.hasShadow = false
-        // Pass clicks through to the HUD underneath — the tip is purely
+        // Pass clicks through to Halo underneath — the tip is purely
         // informational, not interactive.
         w.ignoresMouseEvents = true
         w.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -82,13 +82,13 @@ public final class OnboardingOverlay {
         }
     }
 
-    /// Position the chip just below the HUD by default; flip above when
-    /// the HUD is near the bottom of the screen. Math is done in *chip*
+    /// Position the chip just below Halo by default; flip above when
+    /// Halo is near the bottom of the screen. Math is done in *chip*
     /// coordinates and converted to panel coordinates at the end so the
     /// chip's visible centre sits at the same place regardless of how
     /// much padding the panel carries for its shadow.
     private func chipFrame(
-        forHud hudFrame: NSRect,
+        forHalo haloFrame: NSRect,
         on screen: NSScreen?,
         chipSize: NSSize,
         panelSize: NSSize
@@ -97,12 +97,12 @@ public final class OnboardingOverlay {
         let gap: CGFloat = 18
 
         // Where the chip's centre should land.
-        var chipCenterX = hudFrame.midX
-        var chipCenterY = hudFrame.minY - chipSize.height / 2 - gap
+        var chipCenterX = haloFrame.midX
+        var chipCenterY = haloFrame.minY - chipSize.height / 2 - gap
 
         // Flip above if the chip wouldn't fit below.
         if chipCenterY - chipSize.height / 2 < screenFrame.minY + 8 {
-            chipCenterY = hudFrame.maxY + chipSize.height / 2 + gap
+            chipCenterY = haloFrame.maxY + chipSize.height / 2 + gap
         }
         // Clamp the chip itself to the visible screen.
         let chipMinCenterX = screenFrame.minX + chipSize.width / 2 + 8

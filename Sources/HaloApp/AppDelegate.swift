@@ -77,7 +77,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Suspend global hotkey + double-tap-⌘ processing while the welcome
-    /// card is up. Otherwise pressing the configured chord summons the HUD
+    /// card is up. Otherwise pressing the configured chord summons Halo
     /// and steals focus from the welcome window. Called by `WelcomeView`'s
     /// `onAppear` / `onDisappear`.
     func pauseHotkeyForOnboarding() {
@@ -173,22 +173,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let records = usageStore.allRecords().filter {
             !Self.systemBundleBlocklist.contains($0.app.bundleID)
         }
-        let pinned = pinnedAppRefs(from: prefs.pinnedBundleIDs)
+        let pinSlots = prefs.pinnedBundleIDs           // [String?] length == userMaxN
+        let pinnedBundleIDs = Set(pinSlots.compactMap { $0 })
+        let hasPins = !pinnedBundleIDs.isEmpty
 
-        let engine = HaloEngine(profile: prefs.frequencyProfile, pinned: pinned)
-        let topApps = engine.top(n: userMaxN, from: records)
+        // Frequency-sorted apps with already-pinned bundleIDs removed —
+        // pinned apps live at fixed indices, freq fills the *unpinned*
+        // slots so no app appears twice in the wheel.
+        let freqEngine = HaloEngine(profile: prefs.frequencyProfile, pinned: [])
+        let freqApps = freqEngine.top(n: userMaxN, from: records)
+            .filter { !pinnedBundleIDs.contains($0.bundleID) }
 
-        // Dynamic display slot count, always: `apps + 1` (the "+" hint)
-        // until the user reaches their configured max, after which the
-        // "+" disappears. Pinned apps are part of `topApps` (engine puts
-        // them first) so this naturally counts them along with frequency
-        // picks — the wheel grows one slot at a time as the user pins or
-        // activates a new app, up to `userMaxN`.
-        let displayN = max(1, min(topApps.count + 1, userMaxN))
+        // Decide what app (if any) sits at each visible slot.
+        let placed: [AppRef?]
+        let displayN: Int
+
+        if hasPins {
+            // Honour the user's explicit pin → slot mapping. Wheel is the
+            // full configured `userMaxN` so a slot 5 pin actually lands at
+            // visual slot 5 (6 o'clock for N=10), not collapsed to the
+            // first available position. Unpinned indices get filled by
+            // the freq-sorted list in order; anything left over is empty.
+            displayN = userMaxN
+            var freqIter = freqApps.makeIterator()
+            placed = (0..<userMaxN).map { i in
+                if i < pinSlots.count, let id = pinSlots[i] {
+                    return appRef(forBundleID: id)
+                }
+                return freqIter.next()
+            }
+        } else {
+            // No pins → dynamic `apps + 1` so the user sees only a single
+            // "+" placeholder until they fill the wheel.
+            displayN = max(1, min(freqApps.count + 1, userMaxN))
+            placed = (0..<displayN).map { i in
+                i < freqApps.count ? freqApps[i] : nil
+            }
+        }
 
         let candidates: [IdentityColor?] = (0..<displayN).map { i in
-            guard i < topApps.count else { return nil }
-            let app = topApps[i]
+            guard let app = placed[i] else { return nil }
             if let override = prefs.identityOverride(for: app.bundleID) {
                 return override
             }
@@ -215,13 +239,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let runningIDs = Set(NSWorkspace.shared.runningApplications.compactMap { $0.bundleIdentifier })
         state.slots = (0..<displayN).map { i in
-            if i < topApps.count {
-                let app = topApps[i]
+            if let app = placed[i] {
                 let runState: HaloSlot.RunState = runningIDs.contains(app.bundleID) ? .running : .launchable
                 return HaloSlot(id: i, app: app, identityColor: palette[i], runState: runState)
             }
             return HaloSlot.emptySlot(id: i, fallback: palette[i])
         }
+    }
+
+    private func appRef(forBundleID id: String) -> AppRef {
+        let name = nameCache[id] ?? lookupAppName(bundleID: id) ?? id
+        return AppRef(bundleID: id, name: name)
     }
 
     private func pinnedAppRefs(from bundleIDs: [String?]) -> [AppRef] {
@@ -246,7 +274,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HaloLog.summon.info("summon position=\(self.prefs.summonPosition.rawValue)")
         // Slots are kept current by the activation observer and by prefs
         // changes; we don't need to re-extract dominant colors here — that
-        // burns ~100ms/icon and makes the HUD feel sluggish.
+        // burns ~100ms/icon and makes Halo feel sluggish.
         let position = prefs.summonPosition
         switch position {
         case .mouse:
@@ -260,7 +288,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func summonFromMenu() {
         // Use the screen where the mouse currently lives so multi-display users
-        // see the HUD where they expect it.
+        // see Halo where they expect it.
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main
         let frame = screen?.visibleFrame ?? .zero
@@ -295,9 +323,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         state.phase = .committing(i)
 
-        // If the app isn't running, mark the petal as launching, hold the HUD a
+        // If the app isn't running, mark the petal as launching, hold Halo a
         // bit so the spinner is visible, then commit-ripple + dismiss. Failed
-        // launches do not ripple and shake the HUD.
+        // launches do not ripple and shake Halo.
         if slot.runState == .launchable {
             updateSlot(slotID: i) { $0.runState = .launching }
             let outcome = switcher.switchTo(bundleID: app.bundleID)
@@ -320,7 +348,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Running-app path: kick the fade-out BEFORE the switch so CoreAnimation
         // starts drawing immediately. The target app taking focus would yank
-        // the HUD off-screen otherwise, eating the fade.
+        // Halo off-screen otherwise, eating the fade.
         window.fireRipple(color: slot.identityColor)
         window.dismiss()
         let outcome = switcher.switchTo(bundleID: app.bundleID)

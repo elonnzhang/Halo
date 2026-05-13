@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import HaloCore
 
-/// The radial HUD. Hue-inspired layout:
+/// The radial Halo. Hue-inspired layout:
 ///
 ///   halo glow → wheel background (real NSVisualEffectView) → sectors (pie
 ///   slices + full-color icons) → center hub (punches donut hole, shows
@@ -10,7 +10,7 @@ import HaloCore
 ///
 /// Hover tracking uses `DragGesture(minimumDistance: 0)` instead of
 /// `.onContinuousHover` — the latter doesn't fire reliably for non-key
-/// windows, and the HUD lives in a non-activating panel.
+/// windows, and Halo lives in a non-activating panel.
 public struct RadialView: View {
     @ObservedObject var state: HaloState
 
@@ -80,14 +80,14 @@ public struct RadialView: View {
                     RadialGradient(
                         colors: [accent.opacity(0.32), accent.opacity(0)],
                         center: .center,
-                        startRadius: HaloUI.Geometry.hudDiameter / 2 - 24,
-                        endRadius: HaloUI.Geometry.hudDiameter / 2 + 20
+                        startRadius: HaloUI.Geometry.haloDiameter / 2 - 24,
+                        endRadius: HaloUI.Geometry.haloDiameter / 2 + 20
                     )
                 )
                 .blur(radius: 18)
                 .frame(
-                    width: HaloUI.Geometry.hudDiameter + 40,
-                    height: HaloUI.Geometry.hudDiameter + 40
+                    width: HaloUI.Geometry.haloDiameter + 40,
+                    height: HaloUI.Geometry.haloDiameter + 40
                 )
                 .allowsHitTesting(false)
                 .transition(.opacity)
@@ -101,7 +101,7 @@ public struct RadialView: View {
     // MARK: - Wheel background (liquid glass)
 
     private var wheelBackground: some View {
-        let d = HaloUI.Geometry.hudDiameter
+        let d = HaloUI.Geometry.haloDiameter
         let tint = hoveredSlot?.identityColor.swiftUIColor ?? .clear
         let isHovering = hoveredSlot != nil
         return ZStack {
@@ -267,8 +267,8 @@ public struct RadialView: View {
                     }
                 }
                 .frame(
-                    width: HaloUI.Geometry.hudDiameter,
-                    height: HaloUI.Geometry.hudDiameter
+                    width: HaloUI.Geometry.haloDiameter,
+                    height: HaloUI.Geometry.haloDiameter
                 )
 
             sectorContent(slot: slot, isActive: isActive, accent: accent)
@@ -370,7 +370,7 @@ public struct RadialView: View {
                   let icon = AppIconResolver.icon(for: originID) {
             // Pre-summon frontmost app — "where you came from". We can't call
             // `NSWorkspace.shared.frontmostApplication` here because Halo has
-            // already activated itself by the time the HUD is rendering.
+            // already activated itself by the time Halo is rendering.
             Image(nsImage: icon)
                 .resizable()
                 .interpolation(.high)
@@ -469,7 +469,7 @@ public struct RadialView: View {
             for: centered,
             sectorCount: state.slotCount,
             innerRadius: HaloUI.Geometry.deadzoneDiameter / 2,
-            outerRadius: HaloUI.Geometry.hudDiameter / 2
+            outerRadius: HaloUI.Geometry.haloDiameter / 2
         )
     }
 }

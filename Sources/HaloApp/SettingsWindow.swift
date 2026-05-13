@@ -91,7 +91,7 @@ private final class WindowCloseObserver {
 /// General, Hotkey, Apps (merged Pins + Colors), About.
 ///
 /// Mutations on `prefs` propagate automatically — `AppDelegate.prefsObserver`
-/// sinks `objectWillChange` and re-applies the snapshot to the running HUD —
+/// sinks `objectWillChange` and re-applies the snapshot to the running Halo —
 /// so no `onChange` callback is threaded through.
 struct SettingsRootView: View {
     @ObservedObject var prefs: AppPreferences
@@ -116,6 +116,29 @@ struct SettingsRootView: View {
 
 private struct GeneralTab: View {
     @ObservedObject var prefs: AppPreferences
+
+    /// Generic layout-slider row: label on the left, slider in the
+    /// middle, current value (with unit) on the right. Used by the
+    /// "Wheel layout" section for Halo diameter / icon size / icon
+    /// distance.
+    @ViewBuilder
+    private func layoutSlider(
+        label: LocalizedStringKey,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        step: Double,
+        suffix: String
+    ) -> some View {
+        HStack(spacing: 12) {
+            Text(label)
+                .frame(width: 110, alignment: .leading)
+            Slider(value: value, in: range, step: step)
+            Text("\(Int(value.wrappedValue)) \(suffix)")
+                .font(.system(.body, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .frame(width: 56, alignment: .trailing)
+        }
+    }
 
     /// Pulls the last hour of unified-log entries under the Halo
     /// subsystem into `~/Downloads/Halo-diagnostic-<timestamp>.log` and
@@ -172,6 +195,49 @@ private struct GeneralTab: View {
                     Text("MRU only").tag(FrequencyProfile.mruOnly)
                 }
                 .pickerStyle(.segmented)
+            }
+
+            Section {
+                layoutSlider(
+                    label: "Halo diameter",
+                    value: Binding(
+                        get: { Double(prefs.haloDiameter) },
+                        set: { prefs.haloDiameter = CGFloat($0) }
+                    ),
+                    range: 280...440,
+                    step: 10,
+                    suffix: "pt"
+                )
+                layoutSlider(
+                    label: "Icon size",
+                    value: Binding(
+                        get: { Double(prefs.iconSize) },
+                        set: { prefs.iconSize = CGFloat($0) }
+                    ),
+                    range: 36...64,
+                    step: 2,
+                    suffix: "pt"
+                )
+                let radiusBounds = prefs.iconRadiusBounds
+                layoutSlider(
+                    label: "Icon distance",
+                    value: Binding(
+                        get: { Double(prefs.iconRadius) },
+                        set: { prefs.iconRadius = CGFloat($0) }
+                    ),
+                    range: Double(radiusBounds.min)...Double(radiusBounds.max),
+                    step: 2,
+                    suffix: "pt"
+                )
+                Button("Reset wheel layout") {
+                    prefs.resetLayout()
+                }
+            } header: {
+                Text("Wheel layout")
+            } footer: {
+                Text("Summon Halo to see size changes take effect.")
+                    .foregroundStyle(.secondary)
+                    .font(.callout)
             }
 
             Section("Startup") {
@@ -290,11 +356,11 @@ private struct AppsTab: View {
             bindingHeader
 
             Section {
-                ForEach(0..<prefs.slotCount, id: \.self) { i in
-                    AppRowView(slot: i, prefs: prefs)
-                }
+                BindingWheelView(prefs: prefs)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 8)
             } header: {
-                Text("Each slot is either Auto (frequency picks the app) or pinned to a specific app. Pinned apps can have their identity colour overridden inline.")
+                Text("Tap a slot to pin an app or manage its identity colour. Empty slots are filled by frequency at summon time.")
                     .foregroundStyle(.secondary)
                     .font(.callout)
             }
@@ -379,97 +445,11 @@ private struct AppsTab: View {
     }
 }
 
-/// Single row in the Apps tab: pin status + colour override side-by-side so
-/// the user can manage a slot without tab-hopping. Replaces the old
-/// `PinRow` + `ColorRow` split.
-private struct AppRowView: View {
-    let slot: Int
-    @ObservedObject var prefs: AppPreferences
-
-    @State private var pickerOpen = false
-    @State private var swatch: Color = .gray
-
-    private var currentBundleID: String? {
-        prefs.pinnedBundleIDs[safe: slot] ?? nil
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Text("\(slot)")
-                .font(.system(.body, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(width: 18, alignment: .trailing)
-
-            if let id = currentBundleID, let icon = AppIconResolver.icon(for: id) {
-                Image(nsImage: icon)
-                    .resizable()
-                    .frame(width: 22, height: 22)
-                Text(displayName(for: id))
-            } else {
-                Image(systemName: "circle.dashed")
-                    .foregroundStyle(.secondary)
-                Text("Auto")
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            if currentBundleID != nil {
-                ColorPicker("", selection: $swatch, supportsOpacity: false)
-                    .labelsHidden()
-                    .compatOnChange(of: swatch) { new in
-                        if let identity = IdentityColor.fromSwiftUI(new) {
-                            prefs.setIdentityOverride(identity, for: currentBundleID!)
-                        }
-                    }
-                Button("Reset color") {
-                    if let id = currentBundleID {
-                        prefs.setIdentityOverride(nil, for: id)
-                        loadSwatch()
-                    }
-                }
-                .buttonStyle(.borderless)
-            }
-
-            Button(currentBundleID == nil ? "Pin…" : "Change") { pickerOpen = true }
-            if currentBundleID != nil {
-                Button("Clear") {
-                    prefs.setPinnedBundleID(nil, at: slot)
-                }
-                .buttonStyle(.borderless)
-            }
-        }
-        .sheet(isPresented: $pickerOpen) {
-            AppPickerSheet { picked in
-                if let id = picked {
-                    prefs.setPinnedBundleID(id, at: slot)
-                    loadSwatch()
-                }
-                pickerOpen = false
-            }
-        }
-        .onAppear(perform: loadSwatch)
-    }
-
-    private func loadSwatch() {
-        guard let id = currentBundleID else { swatch = .gray; return }
-        if let override = prefs.identityOverride(for: id) {
-            swatch = override.swiftUIColor
-        } else {
-            swatch = .gray
-        }
-    }
-
-    private func displayName(for bundleID: String) -> String {
-        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
-        else { return bundleID }
-        return (url.lastPathComponent as NSString).deletingPathExtension
-    }
-}
-
 // MARK: - App picker sheet
 
-private struct AppPickerSheet: View {
+// Internal visibility (no `private`) so `BindingWheelView` in a sibling
+// file can host this sheet for the per-slot Pin… action.
+struct AppPickerSheet: View {
     let onPick: (String?) -> Void
     @State private var apps: [(bundleID: String, name: String, url: URL)] = []
     @State private var search = ""

@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 
 #if canImport(AppKit)
 import AppKit
@@ -62,8 +63,25 @@ public final class AppPreferences: ObservableObject {
         static let cmdDoubleTapGap = "halo.prefs.cmdDoubleTapGap"
         static let autostart       = "halo.prefs.autostart"
         static let languageOverride = "halo.prefs.languageOverride"
+        // Storage key keeps its legacy `hudDiameter` suffix so v1.0 user
+        // prefs continue to load after the rename.
+        static let haloDiameter    = "halo.prefs.layout.hudDiameter"
+        static let iconSize        = "halo.prefs.layout.iconSize"
+        static let iconRadius      = "halo.prefs.layout.iconRadius"
         static let onboardingShown = "halo.onboarding.shown"
     }
+
+    // MARK: - Layout defaults
+
+    public static let defaultHaloDiameter: CGFloat = 380
+    public static let defaultIconSize: CGFloat = 48
+    /// Default deadzone (centre hub) diameter — not user-tunable yet but
+    /// referenced from the icon-radius bounds math.
+    public static let layoutDeadzoneDiameter: CGFloat = 112
+    /// Fraction of `haloDiameter / 2` where the soft-edge alpha mask
+    /// starts fading. Icons should sit inside this; the default
+    /// `iconRadius` centres them between the hub edge and this value.
+    public static let visibleOuterFactor: CGFloat = 0.84
 
     private let defaults: UserDefaults
 
@@ -136,7 +154,7 @@ public final class AppPreferences: ObservableObject {
         }
     }
 
-    /// How long the user must hold ⌘ alone before the HUD is summoned. Clamped
+    /// How long the user must hold ⌘ alone before Halo is summoned. Clamped
     /// to [0.5, 3.0] seconds so the second-hotkey can never be instant (which
     /// would fight with system ⌘ chords) or unreasonably long.
     ///
@@ -294,6 +312,90 @@ public final class AppPreferences: ObservableObject {
         if let data = try? JSONEncoder().encode(map) {
             defaults.set(data, forKey: Keys.identityOver)
         }
+    }
+
+    // MARK: - Layout (user-tunable wheel sizing)
+
+    /// Outer diameter of the radial Halo, in points. Clamped to a usable
+    /// range so users can't shrink the wheel below sector legibility or
+    /// blow it past a small display.
+    public var haloDiameter: CGFloat {
+        get {
+            let raw = CGFloat(defaults.double(forKey: Keys.haloDiameter))
+            let value = raw == 0 ? Self.defaultHaloDiameter : raw
+            return max(280, min(440, value))
+        }
+        set {
+            objectWillChange.send()
+            let clamped = max(280, min(440, newValue))
+            defaults.set(Double(clamped), forKey: Keys.haloDiameter)
+        }
+    }
+
+    /// Slot icon dimension, in points.
+    public var iconSize: CGFloat {
+        get {
+            let raw = CGFloat(defaults.double(forKey: Keys.iconSize))
+            let value = raw == 0 ? Self.defaultIconSize : raw
+            return max(36, min(64, value))
+        }
+        set {
+            objectWillChange.send()
+            let clamped = max(36, min(64, newValue))
+            defaults.set(Double(clamped), forKey: Keys.iconSize)
+        }
+    }
+
+    /// Distance from the wheel centre to each slot icon's centre, in
+    /// points. Bounds depend on `haloDiameter` and `iconSize` — icons
+    /// must clear the hub on the inside and the feathered rim on the
+    /// outside. Stored value is auto-clamped on read so a stored value
+    /// from a larger Halo configuration won't render off-screen if the
+    /// user shrinks the wheel later.
+    public var iconRadius: CGFloat {
+        get {
+            let raw = CGFloat(defaults.double(forKey: Keys.iconRadius))
+            let value = raw == 0 ? defaultIconRadius : raw
+            let bounds = iconRadiusBounds
+            return max(bounds.min, min(bounds.max, value))
+        }
+        set {
+            objectWillChange.send()
+            let bounds = iconRadiusBounds
+            let clamped = max(bounds.min, min(bounds.max, newValue))
+            defaults.set(Double(clamped), forKey: Keys.iconRadius)
+        }
+    }
+
+    /// What `iconRadius` would compute to from the current `haloDiameter`
+    /// + the layout deadzone, mid-balanced between hub edge and the
+    /// soft-mask fade-start. Used as the auto value when the user
+    /// hasn't set an override yet, and as the target of `resetLayout()`.
+    public var defaultIconRadius: CGFloat {
+        let visibleOuter = haloDiameter / 2 * Self.visibleOuterFactor
+        let hubR = Self.layoutDeadzoneDiameter / 2
+        return (visibleOuter + hubR) / 2
+    }
+
+    /// Allowed range for `iconRadius` given current `haloDiameter` /
+    /// `iconSize`. The 4 pt padding on each end keeps the icon glyph
+    /// from kissing the hub or the fade.
+    public var iconRadiusBounds: (min: CGFloat, max: CGFloat) {
+        let hubR = Self.layoutDeadzoneDiameter / 2
+        let visibleOuter = haloDiameter / 2 * Self.visibleOuterFactor
+        let halfIcon = iconSize / 2
+        let lower = hubR + halfIcon + 4
+        let upper = max(lower, visibleOuter - halfIcon - 4)
+        return (lower, upper)
+    }
+
+    /// Restore all three layout values to their defaults.
+    public func resetLayout() {
+        objectWillChange.send()
+        defaults.removeObject(forKey: Keys.haloDiameter)
+        defaults.removeObject(forKey: Keys.iconSize)
+        defaults.removeObject(forKey: Keys.iconRadius)
+        HaloLog.settings.info("Reset wheel layout to defaults")
     }
 
     // MARK: - Bindings

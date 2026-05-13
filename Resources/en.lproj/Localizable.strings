@@ -46,6 +46,17 @@
 "Reset color" = "Reset color";
 "Each slot is either Auto (frequency picks the app) or pinned to a specific app. Pinned apps can have their identity colour overridden inline." = "Each slot is either Auto (frequency picks the app) or pinned to a specific app. Pinned apps can have their identity colour overridden inline.";
 "Hidden pins (slot count too low)" = "Hidden pins (slot count too low)";
+"Tap a slot to pin an app or manage its identity colour. Empty slots are filled by frequency at summon time." = "Tap a slot to pin an app or manage its identity colour. Empty slots are filled by frequency at summon time.";
+"Wheel layout" = "Wheel layout";
+"Halo diameter" = "Halo diameter";
+"Icon size" = "Icon size";
+"Icon distance" = "Icon distance";
+"Reset wheel layout" = "Reset wheel layout";
+"Summon Halo to see size changes take effect." = "Summon Halo to see size changes take effect.";
+"Slot %d" = "Slot %d";
+"Identity colour" = "Identity colour";
+"Change…" = "Change…";
+"Clear pin" = "Clear pin";
 "Default binding" = "Default binding";
 "%d pinned · %d slots" = "%d pinned · %d slots";
 "Clear all" = "Clear all";
@@ -65,7 +76,7 @@
 /* Welcome window */
 "Welcome to Halo" = "Welcome to Halo";
 "Summon" = "Summon";
-"Press ⌘⌥Space or double-tap ⌘ to bring up the HUD." = "Press ⌘⌥Space or double-tap ⌘ to bring up the HUD.";
+"Press ⌘⌥Space or double-tap ⌘ to bring up Halo." = "Press ⌘⌥Space or double-tap ⌘ to bring up Halo.";
 "Navigate" = "Navigate";
 "Point the cursor at a slot and release the hotkey to switch. ESC cancels." = "Point the cursor at a slot and release the hotkey to switch. ESC cancels.";
 "Customize" = "Customize";

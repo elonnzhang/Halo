@@ -46,6 +46,17 @@
 "Reset color" = "重置颜色";
 "Each slot is either Auto (frequency picks the app) or pinned to a specific app. Pinned apps can have their identity colour overridden inline." = "每个槽位可设为「自动」(按使用频率挑选应用) 或手动选择指定应用。已选择的应用可在右侧覆盖识别色。";
 "Hidden pins (slot count too low)" = "已选择但隐藏的应用 (当前槽位不足)";
+"Tap a slot to pin an app or manage its identity colour. Empty slots are filled by frequency at summon time." = "点击槽位选择应用或调整识别色。空槽位会在召唤时由频率算法自动填充。";
+"Wheel layout" = "圆盘布局";
+"Halo diameter" = "Halo 直径";
+"Icon size" = "图标大小";
+"Icon distance" = "图标距中心";
+"Reset wheel layout" = "重置圆盘布局";
+"Summon Halo to see size changes take effect." = "召唤一次 Halo 即可看到尺寸变化效果。";
+"Slot %d" = "槽位 %d";
+"Identity colour" = "识别色";
+"Change…" = "更换…";
+"Clear pin" = "清除选择";
 "Default binding" = "默认绑定";
 "%d pinned · %d slots" = "已选 %d 个 · 共 %d 槽位";
 "Clear all" = "全部清空";
@@ -65,7 +76,7 @@
 /* Welcome window */
 "Welcome to Halo" = "欢迎使用 Halo";
 "Summon" = "召唤";
-"Press ⌘⌥Space or double-tap ⌘ to bring up the HUD." = "按 ⌘⌥Space 或双击 ⌘ 即可打开环形 HUD。";
+"Press ⌘⌥Space or double-tap ⌘ to bring up Halo." = "按 ⌘⌥Space 或双击 ⌘ 即可打开 Halo。";
 "Navigate" = "选择";
 "Point the cursor at a slot and release the hotkey to switch. ESC cancels." = "把光标移到某个槽位,松开快捷键即切换;按 ESC 取消。";
 "Customize" = "定制";

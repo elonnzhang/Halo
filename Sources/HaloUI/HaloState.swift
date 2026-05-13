@@ -2,12 +2,12 @@ import Foundation
 import SwiftUI
 import HaloCore
 
-/// Source of truth for what the HUD renders. Owned by HaloApp; observed by RadialView.
+/// Source of truth for what Halo renders. Owned by HaloApp; observed by RadialView.
 @MainActor
 public final class HaloState: ObservableObject {
     public enum Phase: Equatable {
         case hidden
-        case idle              // HUD up, no slot under cursor
+        case idle              // Halo up, no slot under cursor
         case hovering(Int)     // < 120ms in slot
         case previewing(Int)   // ≥ 120ms in slot
         case committing(Int)
@@ -24,7 +24,7 @@ public final class HaloState: ObservableObject {
     @Published public var slotCount: Int = 8 {
         didSet { precondition((1...12).contains(slotCount)) }
     }
-    /// HUD origin on screen, in window coordinates.
+    /// Halo origin on screen, in window coordinates.
     @Published public var center: CGPoint = .zero
     /// Active ripple, when any.
     @Published public var activeRipple: RippleSignal?

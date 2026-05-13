@@ -5,7 +5,7 @@
 
 ## 1. 概览
 
-Halo 是一个 macOS 径向应用启动器（radial launcher），灵感来自解谜游戏 *Hue* 的色环切换机制。按住快捷键召唤一个圆形 HUD，方向定向 Top-N 高频应用（**N 可配置 4–12，默认 8**），松开即切过去。
+Halo 是一个 macOS 径向应用启动器（radial launcher），灵感来自解谜游戏 *Hue* 的色环切换机制。按住快捷键召唤一个圆形 Halo，方向定向 Top-N 高频应用（**N 可配置 4–12，默认 8**），松开即切过去。
 
 **形态：独立 macOS App。** 开箱即用，不需要辅助功能权限（AX）就能完成核心切换。AX 是可选增强，只在用户希望看到目标 app 的最近窗口标题时才需要授权。
 
@@ -54,7 +54,7 @@ HaloCore          ← 核心库（无 UI 依赖，可单测）
   └ Switcher          NSWorkspace 切换封装
 HaloUI            ← SwiftUI 视图
   ├ RadialView        N 瓣几何与渲染（N 来自配置）
-  ├ HaloWindow        HUD NSWindow + level / behavior
+  ├ HaloWindow        Halo NSWindow + level / behavior
   └ Hotkey            全局快捷键注册（Carbon HotKey 或等价方案）
 ```
 
@@ -94,7 +94,7 @@ score(app) = α · normalize(activations_7d)
 v0.1 只做以下能力，其余明确推后：
 
 1. 全局 hotkey 长按召唤、松开提交、ESC 取消
-2. N 瓣径向 HUD（**N=4–12，Settings 可配，默认 8**），槽位稳定，按身份色高亮
+2. N 瓣径向 Halo（**N=4–12，Settings 可配，默认 8**），槽位稳定，按身份色高亮
 3. Top-N 频率排序 + Pin
 4. 鼠标方向 + 键盘方向 + 数字键直选（1–9/0，N>10 时仅前 10 槽可直选）
 5. 独立 macOS App + 菜单栏图标 + LaunchAgent 自启
@@ -115,7 +115,7 @@ v0.1 只做以下能力，其余明确推后：
 - 项目名 / 产品名：**Halo**（圆环、光晕；与"染色"反馈呼应；好记）
 - Bundle id：`com.halo.launcher`
 - 中文称呼：**Halo 启动器**
-- 视觉基调：玻璃材质、暗色 HUD、身份色高亮、动效短促克制
+- 视觉基调：玻璃材质、暗色 Halo、身份色高亮、动效短促克制
 
 ## 11. 路线图
 
@@ -135,5 +135,5 @@ v0.1 只做以下能力，其余明确推后：
 | R2 | 自动取色对部分应用（深色 icon、纯灰）效果差 | 8 色 fallback + 用户覆盖 |
 | R3 | `NSWorkspace.activate` 在某些 sandbox 应用下行为不一致 | v0.1 验证 Safari / Cursor / Slack / Figma / 终端 / Mail / Notes / Finder 八个常见目标 |
 | R4 | 频率统计冷启动期数据不足 | 首次运行引导 Pin；7 天前虚线槽 + "+" |
-| R5 | 长按 hotkey 与"短按 = Quick Swap"如何不打架 | 200ms 阈值；超过即进入 HUD，未超过则按短按语义切上一个 app |
+| R5 | 长按 hotkey 与"短按 = Quick Swap"如何不打架 | 200ms 阈值；超过即进入 Halo，未超过则按短按语义切上一个 app |
 | R6 | 用户频繁改 N 会扰乱已建立的肌肉记忆 | 默认从 8 起步，建议至少 2 周后再调整；Settings 改 N 时弹一次提示"会重排未 Pin 槽位"；Pin 跟 app 走，不丢失 |

@@ -7,15 +7,15 @@
 
 | 触发 | 行为 |
 | --- | --- |
-| `⌘⌥Space`（主快捷键，默认） | **按下即召唤**（无阈值）。HUD 在鼠标位置或屏幕中心淡入（约 120ms） |
+| `⌘⌥Space`（主快捷键，默认） | **按下即召唤**（无阈值）。Halo 在鼠标位置或屏幕中心淡入（约 120ms） |
 | 双击 `⌘`（单键第二入口） | 第一次 ⌘ 短按 ≤ 200ms 释放，第二次 ⌘ 按下需落在窗口内（默认 300ms，可在 Settings 中 0.15–0.50s 调整）；按下第二次 ⌘ 即召唤，松开提交 |
-| 菜单栏图标点击 → "Summon Halo" | HUD 在鼠标所在显示器中心显示，常驻直到点击瓣 / ESC / 外部点击 |
+| 菜单栏图标点击 → "Summon Halo" | Halo 在鼠标所在显示器中心显示，常驻直到点击瓣 / ESC / 外部点击 |
 
 召唤位置策略：
 
-- **At cursor（默认）**：HUD 中心吸附到鼠标当前位置，撞屏幕边缘时自动反向偏移保证完整可见
+- **At cursor（默认）**：Halo 中心吸附到鼠标当前位置，撞屏幕边缘时自动反向偏移保证完整可见
 - **Screen center**：Settings 中可切换为屏幕几何中心
-- 多显示器：HUD 始终出现在鼠标当前所在的显示器
+- 多显示器：Halo 始终出现在鼠标当前所在的显示器
 - 召唤时保存上一个 frontmost app；cancel 时恢复，commit 时不恢复
 
 > 历史：v0 设计有 200ms 长按阈值 + `<200ms` 短按 Quick Swap，以及 ⌘ 单键长按 1.5s 的第二入口。两者都已替换：主热键改为"按下即触发"，把短按让渡给系统 `⌘Tab`；第二入口改为双击 ⌘——原长按容易在 ⌘+c / ⌘+v 这类 chord 里误触。
@@ -42,9 +42,9 @@
 
 固定参数（不随 N 变化）：
 
-- HUD 直径：**320 pt**（外盘）
+- Halo 直径：**320 pt**（外盘）
 - 中心 dead-zone 直径：**112 pt**，显示当前 frontmost app 图标 / hover 时预览目标 app 图标
-- 面板外框（含呼吸 + 阴影 + label 溢出）：`HUD + 120 pt` = 440 pt
+- 面板外框（含呼吸 + 阴影 + label 溢出）：`Halo + 120 pt` = 440 pt
 - 每瓣：`360°/N` 扇形，瓣间 1° 角度缝隙（沿径向切出）
 - 瓣内：app icon 48 × 48 居中；icon 右上角状态点
   - 绿 = app 已运行
@@ -88,8 +88,8 @@
 
 - 瓣本体亮起：身份色饱和度 +30%、描边 2 pt 身份色、内侧 6 pt 光晕
 - 中心 dead-zone 图标淡出，**替换为该瓣 app 的图标**（让用户预览即将到达的目的地）
-- HUD 玻璃材质底色微弱注入身份色（5% 混合）
-- HUD 外圈薄薄一圈光晕沿屏幕径向外溢（10pt 高斯模糊 + 身份色 ×20% 透明度），让选择感"漏出"HUD 边界
+- Halo 玻璃材质底色微弱注入身份色（5% 混合）
+- Halo 外圈薄薄一圈光晕沿屏幕径向外溢（10pt 高斯模糊 + 身份色 ×20% 透明度），让选择感"漏出"Halo 边界
 
 ### 4.2 二级反馈（hover ≥ 300ms）
 
@@ -103,7 +103,7 @@
 
 ### 4.3 离开瓣
 
-光标离开瓣或回到 dead-zone：200ms 内回弹到默认态，HUD 底色身份色淡出。
+光标离开瓣或回到 dead-zone：200ms 内回弹到默认态，Halo 底色身份色淡出。
 
 ## 5. 提交与取消
 
@@ -119,9 +119,9 @@
 提交实现（v1.3）：
 
 1. `state.phase = .committing(i)`，选中瓣放大到 1.06×
-2. **先 fire ripple、再 dismiss HUD、最后调用 `Switcher.switchTo`**（顺序关键——如果先切换，目标 App 会抢焦点让 HUD 被系统立刻隐藏，fade-out 来不及播）
+2. **先 fire ripple、再 dismiss Halo、最后调用 `Switcher.switchTo`**（顺序关键——如果先切换，目标 App 会抢焦点让 Halo 被系统立刻隐藏，fade-out 来不及播）
 3. `Switcher` 走 `NSWorkspace.openApplication(at:configuration:)`，fire-and-forget，不阻塞主线程
-4. HUD fade-out 120ms；commit ripple 从 HUD 中心向外扩散 ~320ms
+4. Halo fade-out 120ms；commit ripple 从 Halo 中心向外扩散 ~320ms
 5. 频率统计 +1 通过 `NSWorkspaceDidActivateApplicationNotification` 异步累加
 
 > v1.2 曾因 `NSRunningApplication.activate(options:)` 在 cooperative activation 下静默失败而"松手后不切换"。已切换到 `NSWorkspace.openApplication`。
@@ -132,12 +132,12 @@
 | --- | --- |
 | `ESC` | 任何时刻 |
 | 松开 hotkey 且光标在 dead-zone | 选中即空 |
-| HUD 外部点击 | 仅菜单栏召唤模式 |
+| Halo 外部点击 | 仅菜单栏召唤模式 |
 | 失去键盘焦点（如系统弹窗强夺） | 自动取消 |
 
 取消动作：
 
-1. HUD 淡出（100ms，比提交快）
+1. Halo 淡出（100ms，比提交快）
 2. 不触发切换、不增加频率计数
 3. 无 vignette 反馈，区别于提交
 
@@ -194,7 +194,7 @@
 | 外圈 halo 光晕 | 120ms | ease-out（与 hover 同步） |
 | 提交时瓣放大 | 120ms | ease-out + 1.0 → 1.06 scale |
 | 提交时 vignette ripple | ~320ms | 半径扩散 + 透明度 0→峰值→0 |
-| HUD 淡出（提交 / 取消） | 120ms | ease-in |
+| Halo 淡出（提交 / 取消） | 120ms | ease-in |
 | Failed 抖动 | 40ms × 4 帧 | linear |
 
 动画性能：panel `collectionBehavior` 去掉了 `.transient`，否则目标 app 前置会让系统立即 orderOut 吞掉 fade。`Switcher` 改为 fire-and-forget，CoreAnimation 不被 `DispatchGroup.wait` 阻塞，fade 真正可见。
@@ -205,12 +205,12 @@
 | --- | --- |
 | Top-N 不满 N 个 app（首次运行） | 不满槽位渲染为虚线轮廓 + "+"，提交时弹出 Pin 选择面板 |
 | 目标 app 未运行 | 渲染半透明 icon + 灰色状态点；提交时 `NSWorkspace.launchApplication(_:)` 启动 + 瓣内 spinner |
-| 目标 app 启动失败 / bundle 已删除 | 瓣状态点变红、HUD 整体抖动 2 次（80ms × 2），频率不增加 |
+| 目标 app 启动失败 / bundle 已删除 | 瓣状态点变红、Halo 整体抖动 2 次（80ms × 2），频率不增加 |
 | 同一 app 多个实例 | v1 只切到 frontmost；v0.2 通过次级弧选窗口 |
-| 当前 frontmost 就是要切的目标 | 不切换；HUD 直接淡出（no-op 无额外提示） |
+| 当前 frontmost 就是要切的目标 | 不切换；Halo 直接淡出（no-op 无额外提示） |
 | hotkey 在系统级被占用 | Settings 红色警告 + 引导改键 |
-| 用户在 HUD 显示期间断开鼠标 | 切换到键盘选中，光标位置冻结在最后位置 |
-| Halo 召唤时屏幕分辨率变化 | HUD 立即重新居中到鼠标所在新显示器 |
+| 用户在 Halo 显示期间断开鼠标 | 切换到键盘选中，光标位置冻结在最后位置 |
+| Halo 召唤时屏幕分辨率变化 | Halo 立即重新居中到鼠标所在新显示器 |
 | 召唤时间已超过 5 秒仍未提交 | 继续等待（不超时）；hotkey 一旦松开即按规则提交或取消 |
 | 用户在 Settings 改 N（如 8 → 12） | 立即生效，下一次召唤就是 N 槽布局；Pin 关系保留，未 Pin 的槽按新 N 重排 |
 | Pin 的 app 数量超过新 N | 超出部分的 Pin 在 Settings 警告并按 Pin 时间倒序保留前 N 个，剩余 Pin 不丢失但暂不显示 |
@@ -218,13 +218,13 @@
 
 ## 9. 多显示器
 
-- HUD 在鼠标当前所在显示器召唤
+- Halo 在鼠标当前所在显示器召唤
 - 频率数据全局共享，不分 display
 - 提交时的屏幕 vignette 仅在召唤所在 display 上绘制，不污染其他屏
 
 ## 10. 无障碍
 
-- HUD 是 `NSAccessibilityRole.group`；每瓣是 `NSAccessibilityRole.button`，label 为 app 名
+- Halo 是 `NSAccessibilityRole.group`；每瓣是 `NSAccessibilityRole.button`，label 为 app 名
 - VoiceOver：召唤后朗读 "Halo 启动器，当前选中：[app 名]"
 - hover 切瓣朗读新 app 名
 - 提交时朗读 "切换到 [app 名]"
@@ -262,7 +262,7 @@
 ## 12. 首次运行
 
 1. 安装后首次启动：菜单栏图标弹一次气泡 — "按住 ⌘⌥Space 召唤 Halo"
-2. **首次召唤**：HUD 上叠加 8 秒半透明教学覆盖层
+2. **首次召唤**：Halo 上叠加 8 秒半透明教学覆盖层
    - 中心：箭头指向四方
    - 文本：「移动鼠标 / 按方向键 → 选择 · 松开 → 切换 · ESC → 取消」
 3. 教学覆盖层显示一次即不再出现；Settings 可重置

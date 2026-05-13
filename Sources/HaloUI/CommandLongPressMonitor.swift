@@ -1,7 +1,7 @@
 import AppKit
 
 /// Fires `onTriggered` when the user **double-taps** ⌘ alone (no other
-/// modifiers): tap once, release, tap again within `gap` seconds. The HUD
+/// modifiers): tap once, release, tap again within `gap` seconds. Halo
 /// then stays up while the second ⌘ remains held; releasing it fires
 /// `onReleased` so the AppDelegate can commit the highlighted slot.
 ///

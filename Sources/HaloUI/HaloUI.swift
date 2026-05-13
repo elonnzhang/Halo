@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 import HaloCore
 
 public enum HaloUI {
@@ -7,27 +8,52 @@ public enum HaloUI {
     /// Radial wheel layout — outer ring, inner hub, where icons sit, where the
     /// curved tooltip floats. Kept in one place so geometry + hit-testing +
     /// panel sizing can't drift.
+    ///
+    /// `haloDiameter`, `iconSize`, and `iconRadius` are now user-tunable
+    /// (Settings → General → Wheel layout) and read live from
+    /// `AppPreferences.shared`. SwiftUI views re-render on
+    /// `objectWillChange`; `HaloWindow.summon` re-reads at every summon so
+    /// changes take effect on the next invocation.
+    ///
+    /// Marked `@MainActor` because `AppPreferences.shared` is
+    /// main-actor-isolated (it's an `ObservableObject`). Every existing
+    /// call site is already on the main actor (SwiftUI view body, AppKit
+    /// window setup), so the annotation costs nothing at the call site.
+    @MainActor
     public enum Geometry {
-        /// Outer donut diameter.
-        public static let hudDiameter: CGFloat = 380
-        /// Center hub (deadzone) diameter. Hit-tests inside are inert.
-        public static let deadzoneDiameter: CGFloat = 112
-        /// Where each slot icon's center sits along the donut's radius.
-        /// The wheel uses a feathered alpha mask that starts fading at 84 %
-        /// of the geometric radius, so the *visible* outer rim is at
-        /// `hudDiameter / 2 × 0.84`. Centre the icons between that visible
-        /// rim and the hub edge, not between the geometric rim and the hub,
-        /// otherwise icons look like they're hugging the fade-out.
-        public static let visibleOuterRadius: CGFloat = hudDiameter / 2 * 0.84
-        public static let iconRadius: CGFloat = (visibleOuterRadius + deadzoneDiameter / 2) / 2
-        /// App icon size inside a sector.
-        public static let iconSize: CGFloat = 48
+        /// Outer donut diameter. User-tunable.
+        public static var haloDiameter: CGFloat {
+            AppPreferences.shared.haloDiameter
+        }
+        /// Centre hub (deadzone) diameter. Hit-tests inside are inert.
+        /// Not user-tunable yet — keep the spec-locked value.
+        public static let deadzoneDiameter: CGFloat = AppPreferences.layoutDeadzoneDiameter
+        /// Visible outer rim of the disc, accounting for the soft-edge
+        /// alpha mask that starts fading at `visibleOuterFactor` of the
+        /// geometric radius.
+        public static var visibleOuterRadius: CGFloat {
+            haloDiameter / 2 * AppPreferences.visibleOuterFactor
+        }
+        /// Where each slot icon's centre sits along the donut's radius.
+        /// User-tunable; defaults to the midpoint between hub edge and
+        /// visible outer rim.
+        public static var iconRadius: CGFloat {
+            AppPreferences.shared.iconRadius
+        }
+        /// App icon size inside a sector. User-tunable.
+        public static var iconSize: CGFloat {
+            AppPreferences.shared.iconSize
+        }
         /// Where the curved tooltip label floats outside the wheel.
-        public static let labelRadius: CGFloat = hudDiameter / 2 + 28
+        public static var labelRadius: CGFloat {
+            haloDiameter / 2 + 28
+        }
         public static let labelMaxWidth: CGFloat = 260
         /// Breathing room so the halo glow + label + shadow all fit in the
         /// panel without clipping.
-        public static let totalDiameter: CGFloat = hudDiameter + 120
+        public static var totalDiameter: CGFloat {
+            haloDiameter + 120
+        }
         /// Gap between adjacent sectors (degrees).
         public static let slotGapDegrees: Double = 1.0
         public static let originAngleDegrees: Double = -90

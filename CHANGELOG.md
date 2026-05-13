@@ -6,9 +6,9 @@ All notable changes to Halo.
 
 First public release.
 
-### HUD
+### Halo
 
-- Radial wheel HUD with 4 / 6 / 8 / 10 / 12 configurable slots; slot 0 is always at 12 o'clock, the rest sweep clockwise.
+- Radial Halo wheel with 4 / 6 / 8 / 10 / 12 configurable slots; slot 0 is always at 12 o'clock, the rest sweep clockwise.
 - **Liquid Glass** disc + label chip on macOS 26 (Tahoe): native `glassEffect` surfaces, `GlassEffectContainer` so the label morphs between slots via `glassEffectID`. macOS 14 / 15 fall back to a hand-composed `NSVisualEffectView` (`.hudWindow` / `.behindWindow`) with the same visual recipe.
 - Feathered radial-alpha disc edge: no hard rim stroke; the wheel dissolves into the desktop.
 - Pie-slice `SectorShape` with 1° angular gaps between slots — no overlapping strokes. Full-colour app icons at 48 pt; running-state dots; empty-slot dashed marks with a breathing pulse.

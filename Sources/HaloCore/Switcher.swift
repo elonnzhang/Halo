@@ -68,7 +68,7 @@ public struct NSWorkspaceRuntime: AppRuntime {
 
     private func openAndActivate(url: URL) -> Bool {
         // Fire-and-forget: DispatchGroup.wait here blocked the main thread long
-        // enough for the HUD fade-out to stall. openApplication handles the
+        // enough for the Halo fade-out to stall. openApplication handles the
         // cooperative-activation hint in the background; optimistically return
         // true once we've kicked it off. Sync failure (bundle-not-found) still
         // returns false via the nil-url check above.

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import HaloCore
 
-/// Transparent floating panel that hosts the radial HUD. While visible, a
+/// Transparent floating panel that hosts the radial Halo. While visible, a
 /// 60 fps cursor timer polls `NSEvent.mouseLocation` and drives
 /// `state.updateHover(slot:)` — that's the primary hover mechanism, because
 /// `.onContinuousHover` / mouse-moved events don't reliably fire for
@@ -19,7 +19,7 @@ public final class HaloWindow {
     private var cursorTimer: Timer?
     private var previousFrontApp: NSRunningApplication?
     private var rippleWindow: NSWindow?
-    /// Halo windows other than the HUD panel that were visible at summon
+    /// Halo windows other than the Halo panel that were visible at summon
     /// time and have been ordered-out to keep them from riding up with the
     /// overlay on macOS 12 / 13. macOS 14+ uses the targeted `NSApp.activate()`
     /// instead and leaves this empty. Restored on cancel; cleared on commit.
@@ -206,7 +206,7 @@ public final class HaloWindow {
             for: centered,
             sectorCount: state.slotCount,
             innerRadius: HaloUI.Geometry.deadzoneDiameter / 2,
-            outerRadius: HaloUI.Geometry.hudDiameter / 2
+            outerRadius: HaloUI.Geometry.haloDiameter / 2
         )
         state.updateHover(slot: index)
     }

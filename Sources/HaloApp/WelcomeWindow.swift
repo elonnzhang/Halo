@@ -268,7 +268,7 @@ private struct WelcomeOverlay: View {
                             .transition(.opacity.combined(with: .scale(scale: 0.9)))
                     }
                 }
-                Text("Press ⌘⌥Space or double-tap ⌘ to bring up the HUD.")
+                Text("Press ⌘⌥Space or double-tap ⌘ to bring up Halo.")
                     .font(.system(size: 12))
                     .foregroundStyle(.white.opacity(0.65))
                     .fixedSize(horizontal: false, vertical: true)

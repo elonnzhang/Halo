@@ -5,7 +5,7 @@ import AppKit
 /// Global hotkey monitor that emits an engaged/released pair.
 ///
 /// Uses Carbon `RegisterEventHotKey` (no Accessibility permission needed).
-/// The HUD is summoned immediately on press (`.holdEngaged`) and committed on
+/// Halo is summoned immediately on press (`.holdEngaged`) and committed on
 /// release (`.holdReleased`) — the earlier 200ms long-press / short-tap split
 /// has been removed in favour of instant-summon.
 @MainActor
