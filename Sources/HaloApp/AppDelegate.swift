@@ -29,7 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var prefsObserver: AnyCancellable?
     private var nameCache: [String: String] = [:]
     private var identityColorCache: [String: IdentityColor] = [:]
-    private var commandLongPress: CommandLongPressMonitor?
+    private var doubleTapMonitor: DoubleTapMonitor?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         HaloLog.lifecycle.info("Halo \(Halo.version) launching")
@@ -60,11 +60,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyPreferences()
         refreshSlots()
 
-        let monitor = CommandLongPressMonitor(gap: prefs.cmdDoubleTapGap)
+        let monitor = DoubleTapMonitor(
+            trigger: prefs.doubleTapTrigger,
+            gap: prefs.cmdDoubleTapGap
+        )
         monitor.onTriggered = { [weak self] in self?.summon() }
         monitor.onReleased = { [weak self] in self?.commitSelection() }
+        monitor.suppressionGate = { [weak self] in
+            guard let self = self else { return false }
+            let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            return self.prefs.isHaloSuppressed(forFrontmost: frontmost)
+        }
         monitor.start()
-        commandLongPress = monitor
+        doubleTapMonitor = monitor
 
         // First-launch welcome card. Deferred one runloop tick so the menu
         // bar item finishes mounting and the user sees it referenced from
@@ -79,18 +87,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         welcome.showAgain()
     }
 
-    /// Suspend global hotkey + double-tap-⌘ processing while the welcome
+    /// Suspend global hotkey + double-tap processing while the welcome
     /// card is up. Otherwise pressing the configured chord summons Halo
     /// and steals focus from the welcome window. Called by `WelcomeView`'s
     /// `onAppear` / `onDisappear`.
     func pauseHotkeyForOnboarding() {
         hotkey.unregister()
-        commandLongPress?.stop()
+        doubleTapMonitor?.stop()
     }
 
     func resumeHotkey() {
         registerHotkey()
-        commandLongPress?.start()
+        doubleTapMonitor?.start()
     }
 
     // MARK: - Preferences sync
@@ -101,7 +109,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Re-register hotkey if it changed.
         registerHotkey()
-        commandLongPress?.gap = prefs.cmdDoubleTapGap
+        doubleTapMonitor?.gap = prefs.cmdDoubleTapGap
+        doubleTapMonitor?.trigger = prefs.doubleTapTrigger
         refreshSlots()
     }
 
