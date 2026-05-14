@@ -122,10 +122,7 @@ public struct ActionArcView: View {
         }
         .scaleEffect(isHovered && !gated ? 1.06 : 1.0)
         .offset(x: position.x, y: position.y)
-        .opacity(0)
         .modifier(ChipEntryAnimation(
-            slotOrigin: slotOrigin,
-            target: position,
             delay: reduceMotion ? 0 : Double(idx) * 0.030
         ))
     }
@@ -217,12 +214,10 @@ private extension ArcChip {
     }
 }
 
-/// Sequential pop entry animation: chip starts at the slot centre + small
-/// scale, slides out to its arc position over 220 ms. Stagger via the
-/// `delay` so the four chips fan in one after the other.
+/// Sequential pop entry animation: chip fades + scales up. Stagger via the
+/// `delay` so the four chips fan in one after the other. The parent owns
+/// the chip's offset, so we only modulate opacity + scale here.
 private struct ChipEntryAnimation: ViewModifier {
-    let slotOrigin: CGPoint
-    let target: CGPoint
     let delay: Double
     @State private var shown = false
 
@@ -230,8 +225,6 @@ private struct ChipEntryAnimation: ViewModifier {
         content
             .opacity(shown ? 1 : 0)
             .scaleEffect(shown ? 1 : 0.40)
-            // We don't translate here because the parent already offsets
-            // to target; the scale + opacity carries the "pop in" feel.
             .onAppear {
                 withAnimation(
                     .spring(response: 0.36, dampingFraction: 0.78).delay(delay)
