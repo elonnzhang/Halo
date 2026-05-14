@@ -29,7 +29,12 @@ public final class HaloWindow {
         self.state = state
         let size = HaloUI.Geometry.scaledTotalDiameter
         let rect = NSRect(x: 0, y: 0, width: size, height: size)
-        let panel = NSPanel(
+        // HaloOverlayPanel forces `canBecomeKey` — a borderless
+        // `.nonactivatingPanel` otherwise refuses key focus, so keyDown for
+        // Cmd+digit while the user is still holding Cmd from the double-tap
+        // would route to the previously-frontmost app and fire its
+        // shortcuts instead of reaching our local monitor.
+        let panel = HaloOverlayPanel(
             contentRect: rect,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -47,7 +52,7 @@ public final class HaloWindow {
         ]
         panel.isMovable = false
         panel.hidesOnDeactivate = false
-        panel.becomesKeyOnlyIfNeeded = true
+        panel.becomesKeyOnlyIfNeeded = false
         panel.appearance = NSAppearance(named: .darkAqua)
 
         let host = NSHostingView(rootView: RadialView(state: state))
@@ -99,6 +104,12 @@ public final class HaloWindow {
             for win in hiddenForSummon { win.orderOut(nil) }
             NSApp.activate(ignoringOtherApps: true)
         }
+        // Force key focus onto the overlay panel. Without this, the
+        // previously-frontmost app stays the key window from the OS's
+        // keystroke-routing perspective; Cmd+digit while the user keeps
+        // Cmd held from the double-tap then fires that app's shortcut
+        // instead of being delivered to our local keyDown monitor.
+        panel.makeKey()
 
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.12
@@ -224,4 +235,14 @@ public final class HaloWindow {
     private func screenContaining(_ point: CGPoint) -> NSScreen? {
         NSScreen.screens.first { $0.frame.contains(point) }
     }
+}
+
+/// A borderless `.nonactivatingPanel` defaults `canBecomeKey` to false,
+/// which prevents our local keyDown monitor from receiving events while
+/// the user keeps Cmd held from the double-tap summon. Forcing the
+/// override (same trick `WelcomeOverlayPanel` uses) lets the panel take
+/// key focus without flipping activation policy or stealing the dock.
+private final class HaloOverlayPanel: NSPanel {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
 }
