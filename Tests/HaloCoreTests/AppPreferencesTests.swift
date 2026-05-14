@@ -100,6 +100,15 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertTrue(prefs.scrollToSwitch)
         XCTAssertTrue(prefs.numberKeyCommit)
         XCTAssertTrue(prefs.highlightFrontmostOnSummon)
+        XCTAssertTrue(prefs.soundEffectsEnabled)
+    }
+
+    func test_soundEffectsEnabled_persistsOffAcrossInstances() {
+        let defaults = freshDefaults()
+        let prefs = AppPreferences(defaults: defaults)
+        prefs.soundEffectsEnabled = false
+        let reloaded = AppPreferences(defaults: defaults)
+        XCTAssertFalse(reloaded.soundEffectsEnabled)
     }
 
     func test_navigationToggles_persist() {

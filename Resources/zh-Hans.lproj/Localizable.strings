@@ -92,6 +92,10 @@
 "Digit-key commit" = "数字键提交";
 "Highlight frontmost on summon" = "召唤时高亮当前 App";
 
+"Sound" = "音效";
+"Enable sound effects" = "启用音效";
+"Plays on summon, slot slide, and commit. Uses system sounds." = "召唤、切换、滑动时播放系统音效。";
+
 "Appearance & wheel layout" = "外观与轮盘布局";
 "Panel size is a renderer-time uniform scale (0.80–1.50x). Summon Halo to see the change take effect." = "面板大小是渲染期统一缩放 (0.80–1.50x),召唤一次 Halo 即可看到效果。";
 "Panel size" = "面板大小";

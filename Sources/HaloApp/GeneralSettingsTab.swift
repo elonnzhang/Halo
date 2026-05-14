@@ -148,6 +148,22 @@ struct GeneralTab: View {
             }
 
             Section {
+                Toggle(isOn: Binding(
+                    get: { prefs.soundEffectsEnabled },
+                    set: { prefs.soundEffectsEnabled = $0 }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Enable sound effects")
+                        Text("Plays on summon, slot slide, and commit. Uses system sounds.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Sound")
+            }
+
+            Section {
                 geometryRow("Panel size",
                             value: Binding(
                                 get: { Double(prefs.panelScale) },
@@ -324,6 +340,12 @@ struct GeneralTab: View {
                 Toggle("Highlight frontmost on summon", isOn: Binding(
                     get: { prefs.highlightFrontmostOnSummon },
                     set: { prefs.highlightFrontmostOnSummon = $0 }
+                ))
+            }
+            Section("Sound") {
+                Toggle("Enable sound effects", isOn: Binding(
+                    get: { prefs.soundEffectsEnabled },
+                    set: { prefs.soundEffectsEnabled = $0 }
                 ))
             }
             Section("Appearance & wheel layout") {

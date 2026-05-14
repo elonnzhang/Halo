@@ -94,6 +94,10 @@
 "Digit-key commit" = "Digit-key commit";
 "Highlight frontmost on summon" = "Highlight frontmost on summon";
 
+"Sound" = "Sound";
+"Enable sound effects" = "Enable sound effects";
+"Plays on summon, slot slide, and commit. Uses system sounds." = "Plays on summon, slot slide, and commit. Uses system sounds.";
+
 "Appearance & wheel layout" = "Appearance & wheel layout";
 "Panel size is a renderer-time uniform scale (0.80–1.50x). Summon Halo to see the change take effect." = "Panel size is a renderer-time uniform scale (0.80–1.50x). Summon Halo to see the change take effect.";
 "Panel size" = "Panel size";

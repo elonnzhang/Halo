@@ -74,6 +74,7 @@ public final class AppPreferences: ObservableObject {
         static let highlightFront  = "halo.prefs.highlightFrontmostOnSummon"
         static let doubleTapTrigger = "halo.prefs.doubleTapTrigger"
         static let whitelist       = "halo.prefs.whitelist.v1"
+        static let soundEffects    = "halo.prefs.soundEffectsEnabled"
         static let onboardingShown = "halo.onboarding.shown"
     }
 
@@ -111,6 +112,7 @@ public final class AppPreferences: ObservableObject {
             Keys.numberKeyCommit: true,
             Keys.highlightFront: true,
             Keys.doubleTapTrigger: DoubleTapTrigger.command.rawValue,
+            Keys.soundEffects: true,
         ])
     }
 
@@ -273,6 +275,17 @@ public final class AppPreferences: ObservableObject {
         set {
             objectWillChange.send()
             defaults.set(newValue, forKey: Keys.highlightFront)
+        }
+    }
+
+    /// Master switch for the three UX sound effects (summon / commit /
+    /// slide). Defaults on so first-launch users hear feedback at least
+    /// once and can discover the toggle in Settings → Sound.
+    public var soundEffectsEnabled: Bool {
+        get { defaults.bool(forKey: Keys.soundEffects) }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue, forKey: Keys.soundEffects)
         }
     }
 
