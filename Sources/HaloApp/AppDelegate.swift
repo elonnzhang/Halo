@@ -48,6 +48,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBar = MenuBarController(
             onSummon: { [weak self] in self?.summonFromMenu() },
             onSettings: { [weak self] in self?.openSettings() },
+            onProfileSelect: { [weak self] id in
+                self?.prefs.switchToProfile(id)
+            },
             onQuit: { NSApp.terminate(nil) }
         )
 
@@ -133,6 +136,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Cache the whitelist as a Set so the hotkey/double-tap gates
         // don't decode JSON on every keypress.
         whitelistSet = Set(prefs.whitelistedBundleIDs)
+        // Keep the menu-bar Profile submenu in sync with prefs. The
+        // submenu is hidden when there's only one profile so users
+        // don't see a degenerate single-item switcher.
+        menuBar.setProfiles(prefs.profiles.map {
+            (id: $0.id, name: $0.name, isActive: $0.id == prefs.activeProfileID)
+        })
         refreshSlots()
     }
 
