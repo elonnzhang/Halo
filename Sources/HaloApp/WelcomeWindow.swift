@@ -368,11 +368,21 @@ private struct WelcomeOverlay: View {
     }
 
     private var legacyCardBackground: some View {
-        VisualEffectBackground(
-            material: .hudWindow,
-            blendingMode: .behindWindow,
-            state: .active
-        )
+        // The panel is borderless and transparent, so `.behindWindow` blending
+        // samples the desktop wallpaper rather than the SwiftUI scrim above —
+        // on a bright wallpaper (notably macOS 12 Monterey's default) the
+        // hudWindow material renders near-white and the white text becomes
+        // unreadable. Lay an explicit dark base under the material so the
+        // contrast survives regardless of what sits behind the panel.
+        ZStack {
+            Color.black.opacity(0.72)
+            VisualEffectBackground(
+                material: .hudWindow,
+                blendingMode: .behindWindow,
+                state: .active
+            )
+            .opacity(0.55)
+        }
     }
 
     private var successColor: Color {
