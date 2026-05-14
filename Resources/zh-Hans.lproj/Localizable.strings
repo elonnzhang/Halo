@@ -98,6 +98,10 @@
 
 "Appearance & wheel layout" = "外观与轮盘布局";
 "Panel size is a renderer-time uniform scale (0.80–1.50x). Summon Halo to see the change take effect." = "面板大小是渲染期统一缩放 (0.80–1.50x),召唤一次 Halo 即可看到效果。";
+"Theme applies app-wide — Settings, Halo wheel, welcome card, and alerts all follow." = "主题作用于整个应用——设置面板、Halo 轮盘、欢迎卡和提示框都会跟随。";
+"Theme" = "主题";
+"Light" = "明亮";
+"Dark" = "暗色";
 "Panel size" = "面板大小";
 "Reset layout" = "重置布局";
 

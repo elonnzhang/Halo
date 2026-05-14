@@ -10,6 +10,19 @@ public enum SummonPosition: String, Codable, Sendable, CaseIterable {
     case center
 }
 
+/// Light / dark / system-follow appearance preference. `system` mirrors the
+/// macOS system setting (no override); `light` and `dark` force aqua /
+/// darkAqua respectively. Applied at the `NSApp.appearance` level so every
+/// window that doesn't override picks it up — Settings, Pin picker, alerts.
+/// The Halo wheel and Welcome overlay remain pinned to `.darkAqua` (branded
+/// HUD surfaces that don't follow this knob; see `HaloWindow.init` /
+/// `WelcomeWindowController.present`).
+public enum AppearanceMode: String, Codable, Sendable, CaseIterable {
+    case system
+    case light
+    case dark
+}
+
 /// Bitmask of supported hotkey modifiers, mirroring NSEvent.ModifierFlags / Carbon.
 public struct HotkeyModifiers: OptionSet, Codable, Sendable, Hashable {
     public let rawValue: UInt32
@@ -75,6 +88,7 @@ public final class AppPreferences: ObservableObject {
         static let doubleTapTrigger = "halo.prefs.doubleTapTrigger"
         static let whitelist       = "halo.prefs.whitelist.v1"
         static let soundEffects    = "halo.prefs.soundEffectsEnabled"
+        static let appearanceMode  = "halo.prefs.appearanceMode"
         static let onboardingShown = "halo.onboarding.shown"
     }
 
@@ -113,6 +127,7 @@ public final class AppPreferences: ObservableObject {
             Keys.highlightFront: true,
             Keys.doubleTapTrigger: DoubleTapTrigger.command.rawValue,
             Keys.soundEffects: true,
+            Keys.appearanceMode: AppearanceMode.system.rawValue,
         ])
     }
 
@@ -286,6 +301,20 @@ public final class AppPreferences: ObservableObject {
         set {
             objectWillChange.send()
             defaults.set(newValue, forKey: Keys.soundEffects)
+        }
+    }
+
+    /// User-facing appearance choice: follow the system, force light, or
+    /// force dark. AppDelegate.applyPreferences() reads this and sets
+    /// `NSApp.appearance` so Settings + Pin picker + alerts react live.
+    public var appearanceMode: AppearanceMode {
+        get {
+            let raw = defaults.string(forKey: Keys.appearanceMode) ?? AppearanceMode.system.rawValue
+            return AppearanceMode(rawValue: raw) ?? .system
+        }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue.rawValue, forKey: Keys.appearanceMode)
         }
     }
 

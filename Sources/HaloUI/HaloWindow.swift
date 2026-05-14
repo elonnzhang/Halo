@@ -53,7 +53,9 @@ public final class HaloWindow {
         panel.isMovable = false
         panel.hidesOnDeactivate = false
         panel.becomesKeyOnlyIfNeeded = false
-        panel.appearance = NSAppearance(named: .darkAqua)
+        // Inherit appearance from NSApp.appearance (driven by
+        // AppPreferences.appearanceMode) so the wheel flips with the
+        // user's theme choice. Pre-fix this was pinned to .darkAqua.
 
         let host = NSHostingView(rootView: RadialView(state: state))
         host.frame = rect

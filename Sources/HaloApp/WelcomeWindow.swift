@@ -64,7 +64,8 @@ final class WelcomeWindowController {
         panel.hasShadow = false
         panel.isMovable = false
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.appearance = NSAppearance(named: .darkAqua)
+        // Inherit appearance from NSApp.appearance so the welcome card
+        // flips with the user's theme. Pre-fix this was pinned to .darkAqua.
 
         let host = NSHostingView(rootView: WelcomeOverlay(
             prefs: AppPreferences.shared,
@@ -103,6 +104,13 @@ private struct WelcomeOverlay: View {
     @State private var summonDetected = false
     @State private var monitor: Any?
     @State private var appear = false
+    @Environment(\.colorScheme) private var colorScheme
+
+    /// True when the welcome card is rendering against a dark NSAppearance.
+    /// All hand-coded text + glass tints flip on this so the same comp
+    /// reads as a "frosted dark hero" in dark mode and a "frosted light
+    /// hero" in light mode.
+    private var isDark: Bool { colorScheme == .dark }
 
     var body: some View {
         ZStack {
@@ -117,7 +125,10 @@ private struct WelcomeOverlay: View {
     // MARK: Scrim
 
     private var scrim: some View {
-        Color.black.opacity(0.55)
+        // Slight dim in light mode so the desktop behind doesn't compete
+        // with the white card. A heavier 0.55 dim works on dark mode where
+        // the card needs the contrast to read as a glass surface.
+        Color.black.opacity(isDark ? 0.55 : 0.30)
             .contentShape(Rectangle())
             .onTapGesture { onDismiss() }
             .opacity(appear ? 1 : 0)
@@ -150,13 +161,14 @@ private struct WelcomeOverlay: View {
     /// Top-bright → bottom-dim rim stroke gives the card a glass meniscus
     /// rather than a flat outlined rectangle.
     private var cardRim: some View {
-        RoundedRectangle(cornerRadius: 24, style: .continuous)
+        // On light cards a white rim disappears into the white glass; use a
+        // soft dark stroke instead so the card edge stays readable.
+        let topColor: Color = isDark ? .white.opacity(0.18) : .black.opacity(0.12)
+        let bottomColor: Color = isDark ? .white.opacity(0.04) : .black.opacity(0.03)
+        return RoundedRectangle(cornerRadius: 24, style: .continuous)
             .strokeBorder(
                 LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.18),
-                        Color.white.opacity(0.04),
-                    ],
+                    colors: [topColor, bottomColor],
                     startPoint: .top,
                     endPoint: .bottom
                 ),
@@ -168,13 +180,11 @@ private struct WelcomeOverlay: View {
     /// Faint top-fade inside the rim that simulates a glass surface catching
     /// light from above. Subtle — barely visible but adds depth.
     private var cardMeniscus: some View {
-        RoundedRectangle(cornerRadius: 24, style: .continuous)
+        let highlight: Color = isDark ? .white.opacity(0.06) : .white.opacity(0.30)
+        return RoundedRectangle(cornerRadius: 24, style: .continuous)
             .fill(
                 LinearGradient(
-                    colors: [
-                        Color.white.opacity(0.06),
-                        Color.clear,
-                    ],
+                    colors: [highlight, Color.clear],
                     startPoint: .top,
                     endPoint: .center
                 )
@@ -186,15 +196,15 @@ private struct WelcomeOverlay: View {
         Text("ESC")
             .font(.system(size: 10, weight: .medium, design: .rounded))
             .tracking(0.6)
-            .foregroundStyle(.white.opacity(0.45))
+            .foregroundStyle(.primary.opacity(0.45))
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(
                 Capsule(style: .continuous)
-                    .fill(Color.white.opacity(0.08))
+                    .fill(Color.primary.opacity(0.08))
                     .overlay(
                         Capsule(style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.10), lineWidth: 0.5)
+                            .strokeBorder(Color.primary.opacity(0.10), lineWidth: 0.5)
                     )
             )
             .padding(16)
@@ -221,10 +231,10 @@ private struct WelcomeOverlay: View {
         VStack(spacing: 8) {
             Text("Welcome to Halo")
                 .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
+                .foregroundStyle(.primary)
             Text("Radial app launcher for macOS — point a direction, switch apps.")
                 .font(.system(size: 13))
-                .foregroundStyle(.white.opacity(0.65))
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: 380)
         }
@@ -260,7 +270,7 @@ private struct WelcomeOverlay: View {
                 HStack(spacing: 8) {
                     Text("Summon")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                     if summonDetected {
                         Text("Hotkey detected ✓")
                             .font(.system(size: 12, weight: .medium, design: .rounded))
@@ -270,12 +280,12 @@ private struct WelcomeOverlay: View {
                 }
                 Text("Press ⌘⌥Space or double-tap ⌘ to bring up Halo.")
                     .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.65))
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(currentHotkeyHint)
                     .font(.system(size: 11, weight: .medium, design: .rounded))
                     .foregroundStyle(
-                        summonDetected ? successColor : Color.white.opacity(0.40)
+                        summonDetected ? successColor : Color.primary.opacity(0.40)
                     )
             }
             Spacer(minLength: 0)
@@ -296,10 +306,10 @@ private struct WelcomeOverlay: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                 Text(body)
                     .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.65))
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
@@ -325,26 +335,33 @@ private struct WelcomeOverlay: View {
     }
 
     private var getStartedButton: some View {
-        Button(action: onDismiss) {
+        // Dark mode keeps the original "bright white pill on dark glass"
+        // look. Light mode flips to an accent-tinted pill because a white
+        // pill on a light card vanishes into the background.
+        let fillTop:   Color = isDark ? Color.white : Color.accentColor
+        let fillBot:   Color = isDark ? Color.white.opacity(0.92) : Color.accentColor.opacity(0.92)
+        let textColor: Color = isDark ? .black : .white
+        let rimColor:  Color = isDark ? Color.black.opacity(0.06) : Color.black.opacity(0.10)
+        return Button(action: onDismiss) {
             HStack(spacing: 6) {
                 Text("Get Started")
                     .font(.system(size: 14, weight: .semibold))
                 Image(systemName: "arrow.right")
                     .font(.system(size: 11, weight: .bold))
             }
-            .foregroundStyle(.black)
+            .foregroundStyle(textColor)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 13)
             .background(
                 LinearGradient(
-                    colors: [Color.white, Color.white.opacity(0.92)],
+                    colors: [fillTop, fillBot],
                     startPoint: .top,
                     endPoint: .bottom
                 )
             )
             .overlay(
                 Capsule(style: .continuous)
-                    .strokeBorder(Color.black.opacity(0.06), lineWidth: 0.5)
+                    .strokeBorder(rimColor, lineWidth: 0.5)
             )
             .clipShape(Capsule(style: .continuous))
             .shadow(color: .black.opacity(0.18), radius: 6, x: 0, y: 2)
@@ -371,11 +388,12 @@ private struct WelcomeOverlay: View {
         // The panel is borderless and transparent, so `.behindWindow` blending
         // samples the desktop wallpaper rather than the SwiftUI scrim above —
         // on a bright wallpaper (notably macOS 12 Monterey's default) the
-        // hudWindow material renders near-white and the white text becomes
-        // unreadable. Lay an explicit dark base under the material so the
-        // contrast survives regardless of what sits behind the panel.
+        // hudWindow material renders near-white and the text becomes
+        // unreadable. Lay an explicit theme-matched plate under the material
+        // so contrast survives regardless of what sits behind the panel:
+        // dark mode gets a near-black plate, light mode a near-white one.
         ZStack {
-            Color.black.opacity(0.72)
+            isDark ? Color.black.opacity(0.72) : Color.white.opacity(0.82)
             VisualEffectBackground(
                 material: .hudWindow,
                 blendingMode: .behindWindow,
