@@ -15,6 +15,7 @@ public struct RadialView: View {
     @ObservedObject var state: HaloState
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     /// Shared namespace so the wheel disc and label chip morph as one Liquid
     /// Glass system on macOS 26+. Unused on older systems but the @Namespace
@@ -23,6 +24,10 @@ public struct RadialView: View {
 
     public init(state: HaloState) {
         self.state = state
+    }
+
+    private var chrome: WheelChrome {
+        WheelChrome(isDark: colorScheme == .dark)
     }
 
     public var body: some View {
@@ -116,14 +121,15 @@ public struct RadialView: View {
 
             // 1b. Convex depth gradient: brighter near the top-left (simulated
             // light), dimmer at the far rim so the disc reads as a polished
-            // glass pebble rather than a flat black coin.
+            // glass pebble rather than a flat black coin. Theme-aware so light
+            // mode keeps the lit-from-above cue without going washed-out.
             Circle()
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color.white.opacity(0.09),
-                            Color.white.opacity(0.02),
-                            Color.black.opacity(0.22)
+                            chrome.depthHigh,
+                            chrome.depthMid,
+                            chrome.depthLow,
                         ],
                         center: UnitPoint(x: 0.42, y: 0.34),
                         startRadius: 0,
@@ -166,7 +172,7 @@ public struct RadialView: View {
             Circle()
                 .fill(
                     LinearGradient(
-                        colors: [Color.clear, Color.black.opacity(0.10)],
+                        colors: [Color.clear, chrome.weightShadow],
                         startPoint: UnitPoint(x: 0.5, y: 0.55),
                         endPoint: .bottom
                     )
@@ -183,7 +189,7 @@ public struct RadialView: View {
                     LinearGradient(
                         colors: [
                             Color.white.opacity(0),
-                            Color.white.opacity(0.78),
+                            chrome.specularBright,
                             Color.white.opacity(0)
                         ],
                         startPoint: .leading,
@@ -257,8 +263,8 @@ public struct RadialView: View {
 
         // Idle sectors: near-invisible glass. The only thing separating them
         // from neighbours is the 1° angular gap in SectorShape, not a stroke.
-        let idleFill    = Color.white.opacity(0.015)
-        let strokeColor: Color = isActive ? accent : Color.white.opacity(0.03)
+        let idleFill    = chrome.sectorIdleFill
+        let strokeColor: Color = isActive ? accent : chrome.sectorIdleStroke
         let strokeWidth: CGFloat = isActive ? 1.4 : 0.5
 
         // Sector fill is a radial gradient: bright accent at the inner edge
@@ -433,7 +439,7 @@ public struct RadialView: View {
             // Recessed base. Darker than the outer glass so the hub reads as
             // a depression, not a raised button.
             Circle()
-                .fill(Color.black.opacity(0.48))
+                .fill(chrome.hubFill)
 
             // Inner shadow at the top edge. Fakes the "looking down into a
             // hole" effect: a dark, blurred stroke whose gradient is opaque
@@ -443,7 +449,7 @@ public struct RadialView: View {
                 .stroke(
                     LinearGradient(
                         colors: [
-                            Color.black.opacity(0.55),
+                            chrome.hubInnerShadow,
                             Color.clear
                         ],
                         startPoint: .top,
@@ -459,8 +465,8 @@ public struct RadialView: View {
                 .strokeBorder(
                     LinearGradient(
                         colors: [
-                            Color.white.opacity(0.24),
-                            Color.white.opacity(0.06)
+                            chrome.hubRimTop,
+                            chrome.hubRimBottom,
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -508,7 +514,7 @@ public struct RadialView: View {
         } else {
             Image(systemName: "circle.dotted")
                 .font(.system(size: 28, weight: .light))
-                .foregroundStyle(Color.white.opacity(0.40))
+                .foregroundStyle(chrome.hubFallback)
         }
     }
 
@@ -522,16 +528,17 @@ public struct RadialView: View {
         )
         return Text(slot.app?.name ?? "")
             .font(.system(size: 13, weight: .bold))
-            .foregroundStyle(Color.white)
+            .foregroundStyle(chrome.labelText)
             .lineLimit(2)
             .minimumScaleFactor(0.82)
             .multilineTextAlignment(.center)
             .truncationMode(.tail)
-            // Tight dark shadow on the text glyphs themselves (not the
-            // capsule). Liquid Glass vibrancy can desaturate white text
-            // against a coloured disc; the shadow restores legibility
-            // without darkening the capsule background.
-            .shadow(color: .black.opacity(0.55), radius: 1.5, x: 0, y: 0.5)
+            // Tight legibility shadow on the text glyphs themselves (not the
+            // capsule). Glass vibrancy can desaturate the foreground; the
+            // shadow restores contrast without darkening the chip background.
+            // Flips to white in light mode so it still bumps glyphs off the
+            // light chip backdrop.
+            .shadow(color: chrome.labelTextShadow, radius: 1.5, x: 0, y: 0.5)
             .padding(.horizontal, 14)
             .padding(.vertical, 7)
             .modifier(GlassChipBackground(namespace: glassNamespace, slotID: slot.id))
@@ -698,13 +705,14 @@ private struct KeyHint: View {
     let isActive: Bool
     let accent: Color
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
-        Text(glyph)
+        let chrome = WheelChrome(isDark: colorScheme == .dark)
+        return Text(glyph)
             .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
             .tracking(0.3)
-            .foregroundStyle(
-                isActive ? Color.white : Color.white.opacity(0.38)
-            )
+            .foregroundStyle(isActive ? chrome.keyHintActive : chrome.keyHintIdle)
             // Subtle accent halo on the active slot only. Idle digits stay
             // flat — the rim glass behind them is dark enough that any
             // shadow reads as crud instead of polish.
@@ -732,6 +740,8 @@ private struct StatusDot: View {
 
 private struct EmptySlotMark: View {
     @State private var animating = false
+    @Environment(\.colorScheme) private var colorScheme
+
     /// macOS app icons follow a squircle with ~22 % corner radius. For our
     /// 42 pt drawn-icon footprint that's ~9 pt; rounding to 11 keeps it in
     /// step with the `RoundedRectangle(cornerRadius: 11)` fallback used by
@@ -739,15 +749,16 @@ private struct EmptySlotMark: View {
     private let cornerRadius: CGFloat = 11
 
     var body: some View {
-        ZStack {
+        let chrome = WheelChrome(isDark: colorScheme == .dark)
+        return ZStack {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .strokeBorder(
-                    Color.white.opacity(animating ? 0.30 : 0.18),
+                    animating ? chrome.emptyMarkStrokeActive : chrome.emptyMarkStroke,
                     style: StrokeStyle(lineWidth: 1, dash: [3, 3])
                 )
             Text("+")
                 .font(.system(size: 20, weight: .light, design: .rounded))
-                .foregroundStyle(Color.white.opacity(animating ? 0.55 : 0.35))
+                .foregroundStyle(animating ? chrome.emptyMarkTextActive : chrome.emptyMarkText)
         }
         .onAppear {
             withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
@@ -755,6 +766,58 @@ private struct EmptySlotMark: View {
             }
         }
     }
+}
+
+// MARK: - Theme-aware chrome palette
+
+/// All the chrome colors the wheel mixes per layer — specular, depth
+/// gradient, weight shadow, hub recess, sector strokes, hint glyphs, etc.
+/// Picks one ramp for `colorScheme == .dark` and a softened inverted ramp
+/// for light mode so the same compositional intent (lit-from-above glass
+/// pebble with a recessed lens) reads correctly against either appearance.
+struct WheelChrome {
+    let isDark: Bool
+
+    // Disc depth ramp — radial gradient from upper-left bright to far-rim dim.
+    var depthHigh: Color { isDark ? .white.opacity(0.09) : .white.opacity(0.65) }
+    var depthMid:  Color { isDark ? .white.opacity(0.02) : .white.opacity(0.18) }
+    var depthLow:  Color { isDark ? .black.opacity(0.22) : .black.opacity(0.06) }
+
+    // Bottom weight shadow, picks up "gravity" on the disc.
+    var weightShadow: Color { .black.opacity(isDark ? 0.10 : 0.05) }
+
+    // Specular arc at the top. Pure white in both modes — it's a literal
+    // light-catching highlight; only the alpha tones down for light.
+    var specularBright: Color { isDark ? .white.opacity(0.78) : .white.opacity(0.92) }
+
+    // Centre hub recess. Stays dark in both modes (it's a hole), but softer
+    // in light mode so it doesn't punch a black coin into a light disc.
+    var hubFill: Color { isDark ? .black.opacity(0.48) : .black.opacity(0.16) }
+    var hubInnerShadow: Color { isDark ? .black.opacity(0.55) : .black.opacity(0.30) }
+    var hubRimTop: Color { isDark ? .white.opacity(0.24) : .black.opacity(0.18) }
+    var hubRimBottom: Color { isDark ? .white.opacity(0.06) : .black.opacity(0.04) }
+
+    // Sector chrome. Idle strokes pick up the opposite of the disc so they
+    // read as "barely visible separators" without flipping the visual logic.
+    var sectorIdleFill:   Color { isDark ? .white.opacity(0.015) : .black.opacity(0.012) }
+    var sectorIdleStroke: Color { isDark ? .white.opacity(0.03)  : .black.opacity(0.06) }
+
+    // Label chip text + its tight legibility shadow.
+    var labelText:       Color { .primary }
+    var labelTextShadow: Color { isDark ? .black.opacity(0.55) : .white.opacity(0.85) }
+
+    // Empty-slot dashed placeholder.
+    var emptyMarkStroke: Color { .primary.opacity(isDark ? 0.18 : 0.32) }
+    var emptyMarkStrokeActive: Color { .primary.opacity(isDark ? 0.30 : 0.50) }
+    var emptyMarkText:   Color { .primary.opacity(isDark ? 0.35 : 0.45) }
+    var emptyMarkTextActive: Color { .primary.opacity(isDark ? 0.55 : 0.70) }
+
+    // Outer-ring digit-key hint glyph.
+    var keyHintIdle:   Color { .primary.opacity(isDark ? 0.38 : 0.45) }
+    var keyHintActive: Color { .primary }
+
+    // Centre-hub idle fallback glyph (`circle.dotted`).
+    var hubFallback: Color { .primary.opacity(isDark ? 0.40 : 0.50) }
 }
 
 // MARK: - Glass chip background
@@ -766,6 +829,8 @@ private struct EmptySlotMark: View {
 private struct GlassChipBackground: ViewModifier {
     let namespace: Namespace.ID
     let slotID: Int
+
+    @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {
@@ -779,9 +844,15 @@ private struct GlassChipBackground: ViewModifier {
 
     @ViewBuilder
     private func legacyChip(_ content: Content) -> some View {
+        let isDark = colorScheme == .dark
+        // White-on-glass works in dark; in light a black tint reads better
+        // since the chip is sampling a brighter underlying disc.
+        let tintFill: Color = isDark ? .white.opacity(0.06) : .black.opacity(0.05)
+        let rimTop:   Color = isDark ? .white.opacity(0.28) : .black.opacity(0.20)
+        let rimBot:   Color = isDark ? .white.opacity(0.04) : .black.opacity(0.04)
         content.background {
             Capsule(style: .continuous)
-                .fill(Color.white.opacity(0.06))
+                .fill(tintFill)
                 .background(
                     VisualEffectBackground(
                         material: .hudWindow,
@@ -794,10 +865,7 @@ private struct GlassChipBackground: ViewModifier {
                     Capsule(style: .continuous)
                         .strokeBorder(
                             LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.28),
-                                    Color.white.opacity(0.04)
-                                ],
+                                colors: [rimTop, rimBot],
                                 startPoint: .top,
                                 endPoint: .bottom
                             ),

@@ -164,6 +164,16 @@ struct GeneralTab: View {
             }
 
             Section {
+                Picker("Theme", selection: Binding(
+                    get: { prefs.appearanceMode },
+                    set: { prefs.appearanceMode = $0 }
+                )) {
+                    Text("System").tag(AppearanceMode.system)
+                    Text("Light").tag(AppearanceMode.light)
+                    Text("Dark").tag(AppearanceMode.dark)
+                }
+                .pickerStyle(.segmented)
+
                 geometryRow("Panel size",
                             value: Binding(
                                 get: { Double(prefs.panelScale) },
@@ -198,7 +208,7 @@ struct GeneralTab: View {
             } header: {
                 Text("Appearance & wheel layout")
             } footer: {
-                Text("Panel size is a renderer-time uniform scale (0.80–1.50x). Summon Halo to see the change take effect.")
+                Text("Theme applies app-wide — Settings, Halo wheel, welcome card, and alerts all follow.")
             }
 
             Section("Startup & diagnostics") {
@@ -349,6 +359,15 @@ struct GeneralTab: View {
                 ))
             }
             Section("Appearance & wheel layout") {
+                Picker("Theme", selection: Binding(
+                    get: { prefs.appearanceMode },
+                    set: { prefs.appearanceMode = $0 }
+                )) {
+                    Text("System").tag(AppearanceMode.system)
+                    Text("Light").tag(AppearanceMode.light)
+                    Text("Dark").tag(AppearanceMode.dark)
+                }
+                .pickerStyle(.segmented)
                 HStack {
                     Text("Panel size")
                     Slider(value: Binding(

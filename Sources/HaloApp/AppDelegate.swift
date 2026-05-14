@@ -133,7 +133,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Cache the whitelist as a Set so the hotkey/double-tap gates
         // don't decode JSON on every keypress.
         whitelistSet = Set(prefs.whitelistedBundleIDs)
+        applyAppearance()
         refreshSlots()
+    }
+
+    /// Push `prefs.appearanceMode` onto `NSApp.appearance` so Settings, the
+    /// Pin picker, alerts, and any other non-HUD window flip live. The Halo
+    /// wheel and Welcome overlay set their own `NSPanel.appearance` and
+    /// stay dark by design.
+    private func applyAppearance() {
+        let appearance: NSAppearance?
+        switch prefs.appearanceMode {
+        case .system: appearance = nil
+        case .light:  appearance = NSAppearance(named: .aqua)
+        case .dark:   appearance = NSAppearance(named: .darkAqua)
+        }
+        NSApp.appearance = appearance
     }
 
     private func registerHotkey() {
