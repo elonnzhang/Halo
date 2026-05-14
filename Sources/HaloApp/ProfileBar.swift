@@ -1,16 +1,18 @@
 import SwiftUI
+import AppKit
 import HaloCore
 import HaloUI
 
 /// Lives at the top of `AppsTab`. The *only* UI surface for v1.2
 /// multi-profile: a pill row + `+` button + meta count. Switching,
-/// renaming, duplicating, deleting all flow through here. No other
-/// tab, sidebar, or menu-bar surface is touched.
+/// renaming, duplicating, deleting all flow through here.
 struct ProfileBar: View {
     @ObservedObject var prefs: AppPreferences
 
     @State private var renamingID: UUID?
     @State private var renameDraft: String = ""
+    @FocusState private var renameFieldFocused: Bool
+
     @State private var showingNewSheet = false
     @State private var newName: String = ""
     @State private var newCloneActive = true
@@ -58,59 +60,77 @@ struct ProfileBar: View {
             if isRenaming {
                 renameField(for: profile)
             } else {
-                labelButton(for: profile, isActive: isActive)
+                Text(profile.name)
+                    .font(.system(size: 12, weight: isActive ? .semibold : .medium))
+                    .lineLimit(1)
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                    // Double-click first so SwiftUI gives it priority; single
+                    // click then handles plain switching.
+                    .onTapGesture(count: 2) { startRename(profile) }
+                    .onTapGesture(count: 1) {
+                        if !isActive { prefs.switchToProfile(profile.id) }
+                    }
             }
         }
-        .background(pillBackground(isActive: isActive))
-        .overlay(pillBorder(isActive: isActive))
+        .background(pillBackground(isActive: isActive, isRenaming: isRenaming))
+        .overlay(pillBorder(isActive: isActive, isRenaming: isRenaming))
         .contextMenu { pillMenu(profile, isActive: isActive) }
-    }
-
-    private func labelButton(for profile: BindingProfile, isActive: Bool) -> some View {
-        Button {
-            if !isActive { prefs.switchToProfile(profile.id) }
-        } label: {
-            Text(profile.name)
-                .font(.system(size: 12, weight: isActive ? .semibold : .medium))
-                .lineLimit(1)
-                .foregroundStyle(.primary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        .help(isActive ? "Active profile · double-click to rename"
+                       : "Click to switch · double-click to rename")
     }
 
     private func renameField(for profile: BindingProfile) -> some View {
-        TextField("Name", text: $renameDraft, onCommit: {
-            commitRename(for: profile.id)
-        })
-        .textFieldStyle(.plain)
-        .font(.system(size: 12, weight: .semibold))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .frame(minWidth: 60, maxWidth: 140)
-        .onExitCommand { renamingID = nil }
-        .onSubmit { commitRename(for: profile.id) }
+        TextField("Name", text: $renameDraft)
+            .textFieldStyle(.plain)
+            .font(.system(size: 12, weight: .semibold))
+            .focused($renameFieldFocused)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .frame(minWidth: 70, maxWidth: 160)
+            .onAppear {
+                renameFieldFocused = true
+                // Select the existing name so the user can type to
+                // replace it (Finder-style rename UX).
+                DispatchQueue.main.async {
+                    NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
+                }
+            }
+            .onSubmit { commitRename(for: profile.id) }
+            .onExitCommand { cancelRename() }
     }
 
     @ViewBuilder
-    private func pillBackground(isActive: Bool) -> some View {
-        if isActive {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
+    private func pillBackground(isActive: Bool, isRenaming: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        if isRenaming {
+            shape.fill(Color(nsColor: .textBackgroundColor))
+        } else if isActive {
+            shape
                 .fill(.regularMaterial)
                 .shadow(color: .black.opacity(0.06), radius: 1, x: 0, y: 1)
         } else {
-            RoundedRectangle(cornerRadius: 7, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
+            shape.fill(Color(nsColor: .controlBackgroundColor))
         }
     }
 
-    private func pillBorder(isActive: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
-            .strokeBorder(isActive ? Color.accentColor.opacity(0.55)
-                                   : Color.primary.opacity(0.10),
-                          lineWidth: 0.5)
+    private func pillBorder(isActive: Bool, isRenaming: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
+        let color: Color
+        let width: CGFloat
+        if isRenaming {
+            color = Color.accentColor
+            width = 1.5
+        } else if isActive {
+            color = Color.accentColor.opacity(0.55)
+            width = 0.5
+        } else {
+            color = Color.primary.opacity(0.10)
+            width = 0.5
+        }
+        return shape.strokeBorder(color, lineWidth: width)
     }
 
     @ViewBuilder
@@ -134,12 +154,19 @@ struct ProfileBar: View {
     private func startRename(_ profile: BindingProfile) {
         renameDraft = profile.name
         renamingID = profile.id
+        // onAppear in renameField wires focus + select-all.
     }
 
     private func commitRename(for id: UUID) {
         let trimmed = renameDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty { prefs.renameProfile(id, to: trimmed) }
         renamingID = nil
+        renameFieldFocused = false
+    }
+
+    private func cancelRename() {
+        renamingID = nil
+        renameFieldFocused = false
     }
 
     // MARK: - Add button
