@@ -8,7 +8,7 @@ Single, self-contained macOS app. **No Accessibility permission** required for t
 
 ## Status
 
-**v1.0** — first public release. Full Liquid Glass Halo on macOS 26, NSVisualEffectView fallback on macOS 14/15. Double-tap ⌘ second-trigger. Chroma-weighted hue histogram identity colour extraction. See [CHANGELOG.md](CHANGELOG.md).
+**v1.1** (2026-05-14) — Settings panel rebuilt around native `NavigationSplitView` + `Form(.grouped)`; five-way double-tap trigger picker (⌥ Left / ⌥ Right / ⌘ / ⌃ / Mouse 3); new Whitelist tab that suppresses Halo inside chosen apps; panel-size renderer scale (0.80–1.50×); scroll-wheel slot cycling; full Liquid Glass on macOS 26. Async `Switcher` outcome so corrupt bundles shake-and-fail instead of silently vanishing. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Install
 
@@ -22,7 +22,7 @@ open /Applications/Halo.app
 Or build the redistributable zip:
 
 ```sh
-make dist         # produces dist/Halo-v1.0.0.zip
+make dist         # produces dist/Halo-v1.1.0.zip (or whatever Info.plist's CFBundleShortVersionString says)
 ```
 
 ## Use
@@ -36,17 +36,24 @@ The top **N** slots (configurable 4 / 6 / 8 / 10 / 12) are filled by the apps yo
 
 ## Settings (menu bar → Settings…)
 
-- **Behavior** — slot count, frequency profile, summon position, autostart, reset onboarding.
-- **Hotkey** — rebind the primary chord live (Liquid Glass key cap), or tune the double-tap ⌘ window (0.15–0.50 s).
-- **Pins** — lock specific apps to specific slots. App picker uses a native `.searchable` toolbar field. Pins survive slot-count changes.
-- **Colors** — per-pinned-app identity colour override.
-- **About** — version.
+Four sections in a native sidebar (`NavigationSplitView` on macOS 13+, custom HStack on macOS 12). Resizable 880 × 720 default, 760 × 600 minimum.
+
+- **General**
+  - *Summon position & ranking* — slot count (4 / 6 / 8 / 10 / 12), at-cursor vs screen-center, frequency profile (MFU / Balanced / MRU).
+  - *Trigger* — rebind the primary chord live (Liquid Glass key cap on macOS 26); pick the double-tap auxiliary key (⌥ Left / ⌥ Right / ⌘ / ⌃ / Mouse 3 Middle); tune the gap window (0.15–0.50 s).
+  - *Navigation* — toggles for scroll-wheel slot cycling, digit-key commit (1–9, 0, −, =), and seeding the highlighted slot from the previous frontmost app.
+  - *Appearance & wheel layout* — **Panel size** renderer scale (0.80–1.50×) plus the three base sliders (Halo diameter, icon size, icon distance) and a reset.
+  - *Startup & diagnostics* — autostart, replay welcome, reset onboarding, export diagnostic log.
+  - *Language* — system / English / 简体中文 (restart required).
+- **Apps** — pin specific apps to specific slots via the binding wheel; per-slot popover for identity-colour override / clear. Pins survive slot-count changes (overflow preserved).
+- **Whitelist** — list of bundle IDs where Halo's chord + double-tap are suppressed (IDEs, design tools, remote desktop, games). "Apply recommended" seeds from `WhitelistSuggestions.installedSubset()`. Carbon registration stays installed so the chord never leaks to other apps mid-session.
+- **About** — gradient app-icon badge, version, GitHub / License links, runtime metadata, inline diagnostic-log export.
 
 ## Develop
 
 ```sh
 make build        # debug build
-make test         # 27 unit tests (engine, store, switcher, OKLCH math, prefs, conflict resolver)
+make test         # 88 unit tests across HaloCoreTests + HaloUITests
 make app          # produce dist/Halo.app (release, ad-hoc signed)
 make clean        # remove .build and dist
 ```
@@ -54,14 +61,15 @@ make clean        # remove .build and dist
 ## Project layout
 
 ```
-Sources/HaloCore        UI-free core: engine, usage store, switcher, OKLCH, prefs
-Sources/HaloUI          SwiftUI views + Carbon hotkey + transparent NSPanel
-Sources/HaloApp         AppDelegate, Settings window, Pin picker, LaunchAgent
-Tests/HaloCoreTests     27 unit tests
-Resources/              Info.plist, Halo.icns, Halo.iconset
+Sources/HaloCore        UI-free core: engine, usage store, AppRuntime / Switcher, OKLCH, prefs, SlotCycle, WhitelistSuggestions
+Sources/HaloUI          SwiftUI views + Carbon hotkey + DoubleTapMonitor + NSPanel + NSWorkspaceRuntime
+Sources/HaloApp         AppDelegate, Settings window (NavigationSplitView), Whitelist tab, Pin picker, LaunchAgent
+Tests/HaloCoreTests     Pure logic: engine, store, switcher, OKLCH, prefs, SlotCycle, whitelist, AppPreferences bounds
+Tests/HaloUITests       View-layer: RadialGeometry hit-test, HaloState transitions, DoubleTapMonitor state machine, scrollAnchor lifecycle
+Resources/              Info.plist, *.lproj/Localizable.strings (en + zh-Hans), Halo.icns, Halo.iconset
 scripts/                build-app.sh, render-icon.swift
-docs/                   Product / interaction / visual specs (Chinese)
-mockups/halo.html       Single-file clickable UI mockup
+docs/                   Product / interaction / visual / settings specs (Chinese, v1.1 stamps inline)
+mockups/                Clickable UI mockups — halo.html (live wheel), halo-settings.html, halo-redesign.html
 ```
 
 ## Docs
@@ -73,7 +81,13 @@ mockups/halo.html       Single-file clickable UI mockup
 
 ## Permissions
 
-Halo needs **no Accessibility permission**. Activation tracking uses `NSWorkspace` notifications; switching uses `NSWorkspace.activate` / `openApplication`; hotkeys use Carbon `RegisterEventHotKey` and `NSEvent.modifierFlags` polling. No event taps, no accessibility tree reads.
+The **primary chord** (`⌘⌥ Space`) needs **no Accessibility permission** — Carbon `RegisterEventHotKey` works without it. Activation tracking uses `NSWorkspace` notifications; switching uses `NSWorkspace.openApplication` (cooperative activation on macOS 14+).
+
+The **double-tap auxiliary trigger** (⌥ / ⌘ / ⌃ / Mouse 3) does need **Accessibility permission** because it listens to global `NSEvent.flagsChanged` / `.otherMouseDown`. Halo probes `AXIsProcessTrusted()` on launch and surfaces a one-shot alert with a deep link to System Settings if access is denied. The chord path keeps working either way.
+
+## Language
+
+Display language is settable in **Settings → General → Language** (System / English / 简体中文). Restart required to apply.
 
 ## Data & privacy
 
@@ -97,10 +111,19 @@ All paths assume the current user.
 | `halo.prefs.autostart` | Bool | Whether the LaunchAgent is installed |
 | `halo.prefs.languageOverride` | String? | `nil` = follow system, or `"en"` / `"zh-Hans"` |
 | `AppleLanguages` | [String] | Mirrored from `languageOverride` (system-recognised key) so Foundation picks up the override on next launch |
+| `halo.prefs.doubleTapTrigger` | String | One of `leftOption` / `rightOption` / `command` / `control` / `middleMouse` |
+| `halo.prefs.scrollToSwitch` | Bool | Scroll-wheel cycles highlighted slot |
+| `halo.prefs.numberKeyCommit` | Bool | Digit keys 1–9 0 - = commit a slot directly |
+| `halo.prefs.highlightFrontmostOnSummon` | Bool | First scroll-tick lands on the previous frontmost app's pinned slot |
+| `halo.prefs.layout.hudDiameter` | Double | Halo outer diameter, 280–440 pt (legacy storage key) |
+| `halo.prefs.layout.iconSize` | Double | Slot icon size, 36–64 pt |
+| `halo.prefs.layout.iconRadius` | Double | Icon-to-center distance, bounded by hub + outer fade |
+| `halo.prefs.layout.panelScale` | Double | Renderer-time uniform scale, 0.80–1.50× |
 | `halo.prefs.pinnedSlots.v1` | Data (JSON) | `[String?]` — bundle ID pinned to each slot, indexed by slot |
 | `halo.prefs.overflowPins.v1` | Data (JSON) | `[String]` — pins that don't fit the current slot count |
 | `halo.prefs.identityOverride.v1` | Data (JSON) | `{ bundleID → OKLCH }` — per-app identity colour override |
-| `halo.usage.v1` | Data (JSON) | **Rolling 7-day activation log.** For each app the user has switched to: bundle ID, display name, and an array of activation timestamps. Older than 7 days are dropped on read. |
+| `halo.prefs.whitelist.v1` | Data (JSON) | `[String]` — bundle IDs where Halo's triggers are suppressed |
+| `halo.usage.v1` | Data (JSON) | **Rolling 7-day activation log.** For each app the user has switched to: bundle ID, display name, and an array of activation timestamps. Pruned on every write (no longer grows unbounded). |
 | `halo.welcome.shown` | Bool | First-launch welcome overlay has been seen |
 | `halo.onboarding.shown` | Bool | First-summon Halo tip has been seen |
 
@@ -167,9 +190,9 @@ log stream --predicate 'subsystem == "com.halo.launcher"' --level debug
 
 Settings → General → **Export diagnostic log…** bundles `halo.log` + `halo.log.1` plus a header (Halo version, macOS version, hardware model) into `~/Downloads/Halo-diagnostic-<timestamp>.log` for sharing on a bug report.
 
-## Language
+## Spec docs
 
-Primary working language for the spec docs is Chinese. English mirrors come once the implementation has soaked in.
+Primary working language for the spec docs (`docs/PRODUCT.md`, `docs/INTERACTION.md`, `docs/VISUAL.md`, `docs/SETTING.md`) is Chinese. The READMEs are bilingual. See [v1.1 status banners](docs/SETTING.md) inline in each spec for what has shipped vs. what is still roadmap.
 
 ## License
 

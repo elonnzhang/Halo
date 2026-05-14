@@ -1,7 +1,12 @@
 # Halo — 产品设计
 
-> 状态：v0 设计稿（待签收后进入实现）
-> 主语言：中文。英文版后补。
+> 状态: v1.1 已发布 (2026-05-14). 文档基线 = 实现; 与 [INTERACTION.md](INTERACTION.md) / [VISUAL.md](VISUAL.md) / [SETTING.md](SETTING.md) 配套.
+> 主语言: 中文.
+>
+> **v1.1 实施备注**:
+> - §7 取色策略已删除 Hue-8 调色板降级 (现在每个 app 完全用自己 icon 提取的颜色, 极端低饱和的 icon 也显示淡色而不是借色), 详见 [VISUAL.md §4.2](VISUAL.md).
+> - §11 路线图标的 v0.1 / v0.2 / v0.3 已全部落地. 当前发版基线 v1.1: 新增 Whitelist tab、5 选 1 双击触发、panelScale 缩放、scroll-cycle、digit-key 提交、frontmost 滚轮锚定、async Switcher outcome、AX 权限探测; 仍 deferred: 多 profile 切换、动效与音效组、AX-powered 窗口标题预览.
+> - 触发器扩展: 单击 chord (默认 `⌘⌥ Space`) + 双击辅助键 (5 选 1: ⌥-L / ⌥-R / ⌘ / ⌃ / Mouse 3 Middle, 默认 ⌘).
 
 ## 1. 概览
 

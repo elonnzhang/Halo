@@ -1,7 +1,13 @@
 # Halo — 交互规格
 
-> 状态：v0 交互稿（与 [PRODUCT.md](PRODUCT.md) 配套）
-> 主语言：中文。英文版后补。
+> 状态: 与 v1.1 实现对齐 (2026-05-14). 配套 [PRODUCT.md](PRODUCT.md) / [SETTING.md](SETTING.md).
+> 主语言: 中文.
+>
+> **v1.1 实施备注**:
+> - §1 触发组合键已扩展为 5 选 1 双击触发器 (⌥-L / ⌥-R / ⌘ / ⌃ / Mouse 3), 默认仍是 `⌘⌥ Space` + ⌘ 双击.
+> - §2 几何参数 (Halo 直径 / 图标尺寸 / 图标距中心) 已通过 Settings 暴露为用户可调; 默认值已更新.
+> - §11 设置面板已重做为 sidebar 布局 (4 section), 新增 Whitelist / Panel size / Navigation 三个子区.
+> - §4.2 hover 窗口标签 (AX-powered) 仍为 deferred (未实现).
 
 ## 1. 召唤（Summon）
 
@@ -40,13 +46,14 @@
 | 10 | 36° | 1–9 / 0 | 重度多 app |
 | 12 | 30° | 1–9 / 0；11、12 仅方向键 / Tab | 已接近肌肉记忆上限 |
 
-固定参数（不随 N 变化）：
+几何参数（v1.1: 大部分已支持用户调节, 这里给出默认值）：
 
-- Halo 直径：**320 pt**（外盘）
-- 中心 dead-zone 直径：**112 pt**，显示当前 frontmost app 图标 / hover 时预览目标 app 图标
-- 面板外框（含呼吸 + 阴影 + label 溢出）：`Halo + 120 pt` = 440 pt
-- 每瓣：`360°/N` 扇形，瓣间 1° 角度缝隙（沿径向切出）
-- 瓣内：app icon 48 × 48 居中；icon 右上角状态点
+- Halo 外盘直径: **380 pt** 默认, 用户可调 280–440 pt (Settings → 通用 → 外观)
+- 中心 dead-zone 直径: **112 pt**, 显示当前 frontmost app 图标 / hover 时预览目标 app 图标 (不可调)
+- 面板外框 (含呼吸 + 阴影 + label 溢出): `直径 + 200 pt`
+- 面板缩放 panelScale: **1.00x** 默认, 用户可调 0.80–1.50x (整体渲染期统一缩放, hit-test 同步除以该值)
+- 每瓣: `360°/N` 扇形, 瓣间 1° 角度缝隙 (沿径向切出)
+- 瓣内: app icon **48 pt** 默认 (可调 36–64 pt), 居中; icon 右上角状态点
   - 绿 = app 已运行
   - 无 = app 未启动（提交时会启动）
   - 红 = 上一次切换失败
@@ -234,30 +241,30 @@
 
 ## 11. 设置项
 
-当前（v1.3）Settings 面板暴露：
+> v1.1 重做: 原 5 标签 `TabView` 改为 4 section 的 sidebar (macOS 13+ 原生 `NavigationSplitView`, macOS 12 自建 HStack 回退). 默认窗口 880 × 720, 最小 760 × 600, 可缩放. 完整规格见 [docs/SETTING.md](SETTING.md).
 
-**Behavior 标签**
-- **Slot count (N)**：`4 / 6 / 8 / 10 / 12`（默认 8）
-- **Frequency profile**：`MFU only / Balanced（默认）/ MRU only`
-- **Summon position**：`At cursor（默认）/ Screen center`
-- **Launch Halo at login**：写 LaunchAgent plist
-- **Reset onboarding overlay** 按钮
+**通用 (General)** — 6 个 group 自上而下:
+1. 召唤位置与排序: 槽位数量 (4 / 6 / 8 / 10 / 12, 默认 8) · 召唤位置 (光标 / 屏幕中心, 默认光标) · 频次模型 (MFU / 平衡 / MRU, 默认平衡)
+2. 触发键: 主组合键 chord (默认 `⌘⌥ Space`, 可重绑); 双击触发键 (五选一: ⌥ Left / ⌥ Right / ⌘ / ⌃ / Mouse 3 Middle, 默认 ⌘); 双击间隔 (0.15–0.50s, 默认 0.30s)
+3. 导航与切换: 滚轮切换槽位 · 数字键提交 (1–9 0 - =) · 召唤时高亮当前 frontmost
+4. 外观与轮盘布局: **面板大小** 0.80–1.50× (默认 1.0x) · Halo 直径 280–440pt (默认 380pt) · 图标尺寸 36–64pt (默认 48pt) · 图标到圆心距离 (auto-clamp) · 重置轮盘布局
+5. 启动与诊断: 开机自启 (写 LaunchAgent plist) · 重播欢迎引导 · 重置首次提示蒙层 · 导出诊断日志
+6. 语言: 跟随系统 / English / 简体中文 (重启生效)
 
-**Hotkey 标签**
-- **Summon hotkey**：默认 `⌘⌥Space`；支持 Rebind + Reset to ⌘⌥Space
-- **Double-tap ⌘ window**：0.15–0.50s 滑块（默认 0.30s），控制双击 ⌘ 召唤的两次按下间隔上限
+**Apps**
+- 绑定轮盘可视化编辑当前 8 个槽位
+- 点击空槽 → AppPickerSheet (搜索框 + `/Applications` + `/System/Applications`)
+- 点击已 pin 槽 → 弹出修改身份色 / 取消 pin 的 popover
+- 超过 N 的 overflow pins 在 "Hidden pins" section 列出, 恢复槽位数后自动回流
 
-**Pins 标签**
-- 每个槽位一行，可选择 `Auto`（频率自动填）或 `Pick…` 固定到某 app；固定后可 `Clear`
-- 超过 N 的 overflow pins 在折叠段显示
-
-**Colors 标签**
-- 已 pin 的 app 每个有 ColorPicker，可覆盖自动取色；`Reset` 恢复图标取色
+**Whitelist** (v1.1 新增)
+- 列出当前被屏蔽 Halo 触发的 bundle ID; +/− 工具栏 / Apply recommended 一键填入 `WhitelistSuggestions.installedSubset()`
+- 命中时 `HaloHotkey` + `DoubleTapMonitor` 都短路 (Carbon 注册不退回, 不会让组合键泄漏到其它应用)
 
 **About**
-- 版本号、签名微交互说明
+- 渐变图标徽章、版本号 + build、GitHub / 许可证链接、运行时元数据、内嵌 "导出诊断日志" 按钮
 
-未暴露：触控板手势、Accessibility 权限状态（v1 核心不依赖 AX）。
+**Accessibility 权限**: 主组合键不需要 AX (Carbon 路径); 双击触发需要 AX 才能接收 Halo 窗口外的 `flagsChanged` / `.otherMouseDown` 事件. 启动时通过 `AXIsProcessTrusted()` 探测并在被拒时弹一次性提示, 内嵌 "打开系统设置" 深链.
 
 ## 12. 首次运行
 

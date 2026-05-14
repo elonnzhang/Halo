@@ -1,7 +1,13 @@
 # Halo, 视觉规格
 
-> 状态：v0 视觉稿（与 [PRODUCT.md](PRODUCT.md) / [INTERACTION.md](INTERACTION.md) 配套）
-> 主语言：中文。配套可点击 mockup：[`mockups/halo.html`](../mockups/halo.html)
+> 状态: 与 v1.1 实现对齐 (2026-05-14). 配套 [PRODUCT.md](PRODUCT.md) / [INTERACTION.md](INTERACTION.md) / [SETTING.md](SETTING.md).
+> 主语言: 中文. 可点击 mockup: [`mockups/halo.html`](../mockups/halo.html) (live 轮盘) · [`mockups/halo-settings.html`](../mockups/halo-settings.html) (v1.1 设置面板) · [`mockups/halo-redesign.html`](../mockups/halo-redesign.html) (v1.1 视觉 redesign).
+>
+> **v1.1 实施备注**:
+> - §2 几何参数表已更新: Halo 直径 / 图标尺寸 / 图标到圆心距离 / 面板缩放 panelScale 全部用户可调.
+> - §4.2 已删除 Hue-8 fallback (本节文字已更新).
+> - §8 资产清单中 "8 色 fallback 调色板" 行已移除, 与 §4.2 一致.
+> - `mockups/halo.html` 仍展示 v1.0 8-slot 几何 (320pt / 72pt deadzone), 是历史快照; 当前实现请看 `halo-redesign.html` 与 `halo-settings.html`.
 
 ## 1. 视觉主张
 
@@ -31,8 +37,8 @@
        ┌────────────┐
    7   │            │   1
        │            │
-       │   ⊙ deadzone   ← 中心 dead-zone, ⌀72pt
-       │   (72pt)   │     显示当前 frontmost app
+       │   ⊙ deadzone   ← 中心 dead-zone, ⌀112pt
+       │   (112pt)  │     显示当前 frontmost app
        │            │
        │            │
    5   │            │   3
@@ -49,17 +55,22 @@
 | 数字键直选 | 1–4 | 1–6 | 1–8 | 1–9 / 0 | 1–9 / 0 |
 | 11、12 槽位访问 | n/a | n/a | n/a | n/a | 方向键 / Tab |
 
-### 固定参数（不随 N 变化）
+### 固定参数（v1.1: 已支持用户调节, 默认值如下）
 
-| 维度 | 值 | 备注 |
-| --- | --- | --- |
-| Halo 外盘直径 | **320 pt** | 不随 N 变化，瓣自适应 |
-| 内圈直径 (deadzone) | **112 pt** | 中心图标 `⌀ 112 × 0.62 ≈ 69 pt` 居中 |
-| 面板外框 | `Halo + 120 pt = 440 pt` | 含 halo 溢出 + 阴影 + 弧外 label |
-| 瓣间缝隙 | 1° 角度切缝 | 沿径向切出，非 stroke |
-| 外盘描边 | 0.6–0.8 pt 渐变 | 上亮下暗 + 顶部 specular 高光弧 |
-| 角度起点 | -90° | 槽 0 始终对准 12 点 |
-| 单瓣角度公式 | `360°/N` | 自动计算 |
+> v1.0 这一节标的是 hardcoded `Halo 外盘直径 320 pt`。v1.1 后所有几何项都通过 Settings → 通用 → 外观与轮盘布局调节, 并且整体可用 `面板大小` slider 套一层 0.80–1.50× 缩放。下表给出**默认值**与**用户可调范围**。
+
+| 维度 | 默认值 | 可调范围 | 备注 |
+| --- | --- | --- | --- |
+| Halo 外盘直径 | **380 pt** | 280–440 pt | 用户在 Settings 中可调; 不随 N 变化, 瓣自适应 |
+| 内圈直径 (deadzone) | **112 pt** | 固定 | 不可调; 中心图标居中显示当前应用 |
+| 图标尺寸 | **48 pt** | 36–64 pt | 用户可调 |
+| 图标到圆心距离 | 自动计算 | `[deadzone+iconHalf+4, visibleOuter-iconHalf-4]` | 上下限随直径 / 图标尺寸联动, 越界自动 clamp |
+| 面板缩放 panelScale | **1.00x** | 0.80–1.50x | 渲染期统一倍率, 命中测试同步除以该值 |
+| 面板外框 | `直径 + 200 pt` | — | 含 halo 溢出 + 阴影 + 弧外 label |
+| 瓣间缝隙 | 1° 角度切缝 | 固定 | 沿径向切出, 非 stroke |
+| 外盘描边 | 0.6–0.8 pt 渐变 | 固定 | 上亮下暗 + 顶部 specular 高光弧 |
+| 角度起点 | -90° | 固定 | 槽 0 始终对准 12 点 |
+| 单瓣角度公式 | `360°/N` | 固定 | 自动计算 |
 | Icon 尺寸 | 48 × 48 | 瓣内居中显示 |
 | Label 字体 | SF Pro Medium 12pt | 浮在瓣外沿弧外 28pt |
 
@@ -370,7 +381,6 @@ ripple 不在 hover/preview 阶段出现；它专门标记"我刚刚做出了选
 | 资产 | 状态 | 备注 |
 | --- | --- | --- |
 | 8 槽几何 SVG | 在 `mockups/halo.html` 中由 JS 生成 | 后续可固化为 `.svg` 资源 |
-| 8 色 fallback 调色板 | 本文档 §4.2 | OKLCH + Hex 双格式 |
-| Settings 视觉稿 | TBD | v0.1 实现期补 |
-| 菜单栏图标 | TBD | template image（黑白 PDF） |
-| App icon 占位符号集（mockup） | 见 `mockups/halo.html` | ✈ 𝐅 # ✓ ◇ ♫ ◎ ▷ |
+| Settings 视觉稿 | 已落地 | 见 `mockups/halo-settings.html`(v1.1) |
+| 菜单栏图标 | TBD | template image(黑白 PDF) |
+| App icon 占位符号集(mockup) | 见 `mockups/halo.html` | ✈ 𝐅 # ✓ ◇ ♫ ◎ ▷ |

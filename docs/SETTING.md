@@ -48,7 +48,7 @@
 |---|---|---|---|
 | `.leftOption` | `⌥ Option (Left)` | `flagsChanged` + `keyCode == 58` | 重度使用 `⌘` 类编辑快捷键的人，把左 ⌥ 让给 Halo |
 | `.rightOption` | `⌥ Option (Right)` | `flagsChanged` + `keyCode == 61` | 中文输入习惯用左手、右手 ⌥ 几乎空闲的人 |
-| `.command` | `⌘ Command` | `flagsChanged` + `keyCode == 54/55` | 默认；与现有 `CommandLongPressMonitor` 行为一致 |
+| `.command` | `⌘ Command` | `flagsChanged` + `keyCode == 54/55` | 默认；与现有 `DoubleTapMonitor` 行为一致 |
 | `.control` | `⌃ Control` | `flagsChanged` + `keyCode == 59/62` | 接受 emacs 风格 `⌃` 习惯，且不常用 Mission Control 自定义快捷键的人 |
 | `.middleMouse` | `Mouse 3 (Middle)` | `otherMouseDown` + `buttonNumber == 2` | 配有可编程鼠标的桌面用户；可绕开所有键盘修饰冲突 |
 
@@ -67,7 +67,7 @@
 
 实现钩子：
 - `AppPreferences` 增 `doubleTapTrigger: DoubleTapTrigger` 枚举与 `doubleTapGap`（沿用 `cmdDoubleTapGap` 存储键以保持迁移兼容）。
-- 把 `CommandLongPressMonitor` 重命名/泛化为 `DoubleTapMonitor`，按枚举值切换内部状态机：键盘路径监听 `flagsChanged`，鼠标路径监听 `otherMouseDown`。
+- 把 `DoubleTapMonitor` 重命名/泛化为 `DoubleTapMonitor`，按枚举值切换内部状态机：键盘路径监听 `flagsChanged`，鼠标路径监听 `otherMouseDown`。
 - 选项切换需要重建事件 tap（中键路径需要 `.otherMouseDown` mask，键盘路径不需要）。
 
 ### 2.3 导航与切换
@@ -180,7 +180,7 @@ Halo 的核心触发路径之一是 `⌥` 或包含 `⌥` 的 chord，但 `⌥` 
 - **3D / 游戏**：Blender、Unity、Roblox Studio、各类原生游戏 — `⌥` 是旋转视角或绑定动作
 - **远程桌面 / 虚拟化**：Parallels、VMware、Microsoft Remote Desktop、Citrix — 任何召唤都意味着把按键吃掉，远端进程收不到
 
-白名单的语义是：**当前 frontmost 应用属于白名单时，HaloHotkey 与 CommandLongPressMonitor 都直接忽略事件，不召唤 Halo**。
+白名单的语义是：**当前 frontmost 应用属于白名单时，HaloHotkey 与 DoubleTapMonitor 都直接忽略事件，不召唤 Halo**。
 
 ### 4.2 数据模型
 
@@ -191,7 +191,7 @@ public var whitelistedBundleIDs: [String]
 public func isHaloSuppressed(forFrontmost bundleID: String?) -> Bool
 ```
 
-抑制判定在 `HaloHotkey` / `CommandLongPressMonitor` 的事件 tap 内联调用，确保事件不被消费、能正常下传给目标 App。
+抑制判定在 `HaloHotkey` / `DoubleTapMonitor` 的事件 tap 内联调用，确保事件不被消费、能正常下传给目标 App。
 
 ### 4.3 UI 结构
 
@@ -221,9 +221,11 @@ public func isHaloSuppressed(forFrontmost bundleID: String?) -> Bool
 
 空状态：列表为空时用 placeholder `"暂无白名单 — 在 IDE 或游戏里 Halo 会照常召唤"` + 主按钮 `应用推荐白名单`，让新用户一键到位。
 
-### 4.4 推荐白名单（首次启动种子）
+### 4.4 推荐白名单（用户驱动，非自动种子）
 
-首次启动且未导入旧偏好时，预置以下 bundle ID（在系统里存在才生效，避免空 icon 占位）：
+> **v1.1 落地说明**：本节标题原写"首次启动种子"，但 v1.1 最终实现**不**在首启时自动种入任何白名单——避免误判用户习惯。`WhitelistSuggestions.installedSubset()` 只在用户主动点击 Settings → 白名单 → 「应用推荐」按钮时, 把下表中**当前系统已安装的** bundle ID 写入白名单。这与 §6 默认配置策略中"白名单：种子推荐空(v1)"的描述对齐。
+
+下表是推荐集的内容(在系统里存在才生效, 避免空 icon 占位)：
 
 | 类型 | Bundle ID |
 |---|---|
@@ -279,6 +281,6 @@ Halo 倾向于"开箱即用、低惊讶"：
 建议下一步：
 
 - 在 `AppPreferences` 中落 `whitelistedBundleIDs` 与 `isHaloSuppressed(forFrontmost:)`。
-- 在 `HaloHotkey` 与 `CommandLongPressMonitor` 的事件入口处插入抑制判断，确保事件不被消费。
+- 在 `HaloHotkey` 与 `DoubleTapMonitor` 的事件入口处插入抑制判断，确保事件不被消费。
 - 给 chord capture 与白名单"恢复推荐"两个高影响操作补充 tooltip 或 Alert 说明。
 - 把 §2.4 反馈与动效组放进 roadmap，下一次 settings 迭代时打开。
