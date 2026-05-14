@@ -44,6 +44,13 @@ final class SettingsWindowController {
         }
     }
 
+    /// Focus the Actions tab and pre-select `bundleID`. Used by AppDelegate
+    /// when the user commits an empty action slot — opens Settings already
+    /// scrolled to the right app so they can configure on the spot.
+    func focusActionsTab(bundleID: String) {
+        SettingsFocusCoordinator.shared.requestFocus(.actions, bundleID: bundleID)
+    }
+
     /// Centres on the screen the cursor is currently on, not on `NSScreen.main`.
     /// On multi-display setups the user expects Settings to land where they're
     /// looking — usually the same display as the menu-bar item they just
@@ -98,13 +105,33 @@ private final class WindowCloseObserver {
 /// Liquid Glass on macOS 26. macOS 12 falls back to a hand-built `HStack`.
 struct SettingsRootView: View {
     @ObservedObject var prefs: AppPreferences
+    @StateObject private var focus = SettingsFocusCoordinator.shared
     @State private var selection: SettingsSection = .general
+    /// BundleID forwarded from `AppDelegate.openActionEditor` when the
+    /// user commits an empty action slot. Cleared once consumed by
+    /// `ActionsTab`.
+    @State private var pendingActionsBundleID: String?
 
     var body: some View {
-        if #available(macOS 13.0, *) {
-            nativeSplit
-        } else {
-            legacySplit
+        Group {
+            if #available(macOS 13.0, *) {
+                nativeSplit
+            } else {
+                legacySplit
+            }
+        }
+        .onAppear { applyPendingFocus() }
+        .onChange(of: focus.tick) { _ in applyPendingFocus() }
+    }
+
+    private func applyPendingFocus() {
+        if let section = focus.pendingSection {
+            selection = section
+            focus.pendingSection = nil
+        }
+        if let bid = focus.pendingActionsBundleID {
+            pendingActionsBundleID = bid
+            focus.pendingActionsBundleID = nil
         }
     }
 
@@ -147,8 +174,30 @@ struct SettingsRootView: View {
         case .general:   GeneralTab(prefs: prefs)
         case .apps:      AppsTab(prefs: prefs)
         case .whitelist: WhitelistTab(prefs: prefs)
+        case .actions:   ActionsTab(prefs: prefs, focusBundleID: $pendingActionsBundleID)
         case .about:     AboutTab()
         }
+    }
+}
+
+/// Cross-component pipe so `AppDelegate.openActionEditor` can request the
+/// Settings window switch to a specific tab + pre-select a bundleID
+/// without us having to refactor SettingsRootView's state ownership.
+/// The tick counter exists because SwiftUI's `onChange` doesn't fire on
+/// repeated identical values — we want a re-trigger if the user commits
+/// the same empty slot twice in a row.
+@MainActor
+final class SettingsFocusCoordinator: ObservableObject {
+    static let shared = SettingsFocusCoordinator()
+    @Published var pendingSection: SettingsSection?
+    @Published var pendingActionsBundleID: String?
+    @Published var tick: Int = 0
+    private init() {}
+
+    func requestFocus(_ section: SettingsSection, bundleID: String? = nil) {
+        pendingSection = section
+        pendingActionsBundleID = bundleID
+        tick &+= 1
     }
 }
 

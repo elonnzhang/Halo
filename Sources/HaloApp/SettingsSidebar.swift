@@ -8,6 +8,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case general
     case apps
     case whitelist
+    case actions
     case about
 
     var id: String { rawValue }
@@ -17,6 +18,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .general:   return "General"
         case .apps:      return "Apps"
         case .whitelist: return "Whitelist"
+        case .actions:   return "Actions"
         case .about:     return "About"
         }
     }
@@ -26,6 +28,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .general:   return "gearshape.fill"
         case .apps:      return "square.grid.2x2.fill"
         case .whitelist: return "shield.fill"
+        case .actions:   return "bolt.fill"
         case .about:     return "info.circle.fill"
         }
     }
@@ -45,6 +48,9 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .whitelist:
             colors = [Color(red: 0.19, green: 0.82, blue: 0.35),
                       Color(red: 0.20, green: 0.78, blue: 0.35)]
+        case .actions:
+            colors = [Color(red: 1.00, green: 0.58, blue: 0.18),
+                      Color(red: 0.92, green: 0.32, blue: 0.46)]
         case .about:
             colors = [Color(red: 0.39, green: 0.82, blue: 1.00),
                       Color(red: 0.04, green: 0.52, blue: 1.00)]
@@ -62,7 +68,7 @@ struct SettingsSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach([SettingsSection.general, .apps, .whitelist], id: \.id) { section in
+            ForEach([SettingsSection.general, .apps, .whitelist, .actions], id: \.id) { section in
                 row(section)
             }
             Divider().padding(.vertical, 6).padding(.horizontal, 6)

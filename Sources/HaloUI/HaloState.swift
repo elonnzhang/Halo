@@ -13,8 +13,40 @@ public final class HaloState: ObservableObject {
         case committing(Int)
     }
 
+    /// Which ring is currently rendered. Layer 1 is the existing app
+    /// switcher; layer 2 (Action Ring) overlays per-app local actions while
+    /// the user holds ⇧ over an app slot. See
+    /// `docs/superpowers/specs/2026-05-14-action-ring-design.md`.
+    public enum Layer: Equatable {
+        case slots
+        case actions(ActionContext)
+    }
+
+    /// Carries the bundleID + display info needed to render layer 2
+    /// without the renderer reaching back into the slot array. The
+    /// `originSlotIndex` is the slot the user was hovering when ⇧ was
+    /// pressed — used to highlight that same index when popping back to
+    /// layer 1 (spec §2).
+    public struct ActionContext: Equatable {
+        public let bundleID: String
+        public let appName: String
+        public let identityColor: IdentityColor
+        public let originSlotIndex: Int
+        public init(bundleID: String, appName: String, identityColor: IdentityColor, originSlotIndex: Int) {
+            self.bundleID = bundleID
+            self.appName = appName
+            self.identityColor = identityColor
+            self.originSlotIndex = originSlotIndex
+        }
+    }
+
     @Published public var phase: Phase = .hidden
     @Published public var slots: [HaloSlot] = []
+    /// Layer-2 sectors for the currently-targeted app. Empty entries render
+    /// as "+ Configure" placeholders (spec §7). Populated by AppDelegate's
+    /// layer-toggle logic; cleared whenever `layer` returns to `.slots`.
+    @Published public var actionSlots: [HaloActionSlot] = []
+    @Published public var layer: Layer = .slots
     /// Effective slot count for the current draw. Pulled from
     /// `AppPreferences.slotCount` (the user-configured max, 4...12) by
     /// default, but `AppDelegate.refreshSlots` may shrink it dynamically
@@ -90,6 +122,45 @@ public final class HaloState: ObservableObject {
         }
     }
 
+    /// Switch into layer 2 for `context`, populating `actionSlots` from
+    /// `actions` (capped at `slotCount`, padded with placeholders to fill
+    /// the wheel). Phase is reset to `.hovering(originSlotIndex)` so the
+    /// user lands on the same angular position they entered from. No-op
+    /// when Halo is hidden.
+    public func enterActionRing(_ context: ActionContext, actions: [HaloAction]) {
+        guard phase != .hidden else { return }
+        let cap = slotCount
+        let placed: [HaloAction?] = (0..<cap).map { i in
+            actions.indices.contains(i) ? actions[i] : nil
+        }
+        actionSlots = placed.enumerated().map { i, action in
+            HaloActionSlot(id: i, action: action, identityColor: context.identityColor)
+        }
+        layer = .actions(context)
+        let landing = min(max(0, context.originSlotIndex), cap - 1)
+        phase = .hovering(landing)
+    }
+
+    /// Return to layer 1, dropping the action slots. Highlight whatever
+    /// slot index we were on in layer 2 (so the user can press the hotkey
+    /// to commit the same-direction app, or release ⇧ and continue moving).
+    /// No-op when not currently in `.actions`.
+    public func exitActionRing() {
+        guard case .actions = layer else { return }
+        actionSlots = []
+        layer = .slots
+        // Keep the angular position; if we were idle in layer 2 (cursor
+        // outside the wheel), fall back to .idle.
+        switch phase {
+        case .hovering, .previewing, .committing:
+            // currentHoverSlot already returns the right index for these,
+            // so leaving phase alone keeps the highlight on the same sector.
+            break
+        case .idle, .hidden:
+            break
+        }
+    }
+
     public func updateHover(slot: Int?) {
         switch (phase, slot) {
         case (.hidden, _):
@@ -136,6 +207,21 @@ public struct HaloSlot: Identifiable, Equatable {
 
     public static func emptySlot(id: Int, fallback: IdentityColor) -> HaloSlot {
         HaloSlot(id: id, app: nil, identityColor: fallback, runState: .empty)
+    }
+}
+
+/// One sector on layer 2 (Action Ring). `action == nil` is the
+/// "+ Configure"/"+ Add action" placeholder rendered when the user hasn't
+/// bound an action for that index (spec §7).
+public struct HaloActionSlot: Identifiable, Equatable {
+    public let id: Int
+    public var action: HaloAction?
+    public var identityColor: IdentityColor
+
+    public init(id: Int, action: HaloAction?, identityColor: IdentityColor) {
+        self.id = id
+        self.action = action
+        self.identityColor = identityColor
     }
 }
 

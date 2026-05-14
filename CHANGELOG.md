@@ -2,6 +2,17 @@
 
 All notable changes to Halo.
 
+## Unreleased
+
+### Action Ring (二段手势, layer 2)
+
+- Hold ⇧ while hovering an app slot to surface the **Action Ring** — a second layer of the same wheel that exposes per-app local actions. Release ⇧ to drop back to the slot ring (same angular position preserved); release the trigger to commit. Layer 1 hot path is unchanged.
+- Three action kinds in v1, all shell-free and local: **Open folder** (NSWorkspace.open on a path; `~` expanded at run time), **Open URL** (any scheme NSWorkspace accepts), **Run Shortcut** (routes through `shortcuts://run-shortcut?name=<url-encoded>` via URLComponents so reserved chars like `&` round-trip cleanly).
+- Settings → **Actions** (new sidebar tab): left column lists configured apps, right column shows that app's action list with reorder / edit / delete. Add-action sheet picks kind + label + payload + optional SF Symbol override. Committing an empty layer-2 sector opens this tab pre-targeted to the right bundleID via `SettingsFocusCoordinator`.
+- Visual differentiation from layer 1: hub shows the target app icon + an "ACTIONS" subtitle in the identity colour, idle sectors carry a warmer 6 % accent fill (vs layer 1's 1.5 % white), and a thin accent rim ring sits inside the visible disc edge.
+- Storage: `halo.prefs.actionBindings.v1` UserDefaults key holds `[bundleID: [HaloAction]]`. Render takes the first `slotCount` per app; storage is cap-free and doesn't shuffle when the user changes slot count.
+- 19 new unit tests across `HaloActionStoreTests` / `ActionExecutorTests` / `HaloStateLayerTests`.
+
 ## [1.1.2] — 2026-05-14
 
 ### Wheel UX

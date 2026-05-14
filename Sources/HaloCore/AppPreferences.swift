@@ -75,6 +75,7 @@ public final class AppPreferences: ObservableObject {
         static let doubleTapTrigger = "halo.prefs.doubleTapTrigger"
         static let whitelist       = "halo.prefs.whitelist.v1"
         static let soundEffects    = "halo.prefs.soundEffectsEnabled"
+        static let actionBindings  = "halo.prefs.actionBindings.v1"
         static let onboardingShown = "halo.onboarding.shown"
     }
 
@@ -515,6 +516,67 @@ public final class AppPreferences: ObservableObject {
     public func isHaloSuppressed(forFrontmost bundleID: String?) -> Bool {
         guard let bundleID = bundleID else { return false }
         return whitelistedBundleIDs.contains(bundleID)
+    }
+
+    // MARK: - Action bindings (Action Ring layer 2)
+
+    /// JSON-encoded map of bundleID → ordered list of HaloAction. Stored as
+    /// a single Data blob so the existing `objectWillChange` plumbing fires
+    /// on any edit and so we don't pollute UserDefaults with one key per
+    /// bundle. Cap-free at storage; the renderer takes the first
+    /// `slotCount` entries (spec §7).
+    public func actions(forBundleID bundleID: String) -> [HaloAction] {
+        loadActionMap()[bundleID] ?? []
+    }
+
+    /// All bundleIDs that currently have at least one bound action.
+    /// Used by Settings to list configured apps. Order is the JSON dictionary's
+    /// iteration order (undefined), so callers sort however they need.
+    public var actionBoundBundleIDs: [String] {
+        Array(loadActionMap().keys)
+    }
+
+    public func setActions(_ actions: [HaloAction], forBundleID bundleID: String) {
+        objectWillChange.send()
+        var map = loadActionMap()
+        if actions.isEmpty {
+            map.removeValue(forKey: bundleID)
+        } else {
+            map[bundleID] = actions
+        }
+        saveActionMap(map)
+    }
+
+    /// Convenience: replace the action at `index`. No-op when out of bounds.
+    public func updateAction(_ action: HaloAction, at index: Int, forBundleID bundleID: String) {
+        var current = actions(forBundleID: bundleID)
+        guard current.indices.contains(index) else { return }
+        current[index] = action
+        setActions(current, forBundleID: bundleID)
+    }
+
+    public func removeAction(at index: Int, forBundleID bundleID: String) {
+        var current = actions(forBundleID: bundleID)
+        guard current.indices.contains(index) else { return }
+        current.remove(at: index)
+        setActions(current, forBundleID: bundleID)
+    }
+
+    private func loadActionMap() -> [String: [HaloAction]] {
+        guard let data = defaults.data(forKey: Keys.actionBindings),
+              let decoded = try? JSONDecoder().decode([String: [HaloAction]].self, from: data)
+        else { return [:] }
+        return decoded
+    }
+
+    private func saveActionMap(_ map: [String: [HaloAction]]) {
+        if map.isEmpty {
+            defaults.removeObject(forKey: Keys.actionBindings)
+            return
+        }
+        if let data = try? JSONEncoder().encode(map) {
+            defaults.set(data, forKey: Keys.actionBindings)
+        }
     }
 
     // MARK: - Bindings

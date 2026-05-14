@@ -21,11 +21,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let resolver = IdentityConflictResolver()
     private let extractor = DominantColorExtractor()
     private let switcher = Switcher.live()
+    private let actionExecutor = ActionExecutor.live()
 
     private var keyMonitor: Any?
+    private var flagsMonitor: Any?
     private var clickOutsideMonitor: Any?
     private var scrollMonitor: Any?
     private var scrollAccumDelta: Double = 0
+    /// Tracks the last observed ⇧ flag state so `installFlagsMonitor` only
+    /// reacts on transitions. NSEvent.modifierFlags reads the live HID
+    /// state, but the flagsChanged stream fires on every modifier change
+    /// (including ⌘/⌥ chord additions during a double-tap), so we filter
+    /// for ⇧ deltas explicitly.
+    private var shiftHeld: Bool = false
     private var prefsObserver: AnyCancellable?
     private var nameCache: [String: String] = [:]
     private var identityColorCache: [String: IdentityColor] = [:]
@@ -55,6 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         registerHotkey()
 
         installKeyMonitor()
+        installFlagsMonitor()
         installClickOutsideMonitor()
         installScrollMonitor()
 
@@ -343,6 +352,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Slots are kept current by the activation observer and by prefs
         // changes; we don't need to re-extract dominant colors here — that
         // burns ~100ms/icon and makes Halo feel sluggish.
+        // Always start a summon on layer 1; ⇧ being held from a previous
+        // session shouldn't yank the user straight into the action ring
+        // for an undefined context.
+        state.layer = .slots
+        state.actionSlots = []
+        shiftHeld = NSEvent.modifierFlags.contains(.shift)
         let position = prefs.summonPosition
         switch position {
         case .mouse:
@@ -405,7 +420,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         onboarding.dismiss()
         scrollAccumDelta = 0
         state.scrollAnchor = nil
-        HaloLog.summon.debug("commit phase=\(String(describing: self.state.phase)) hover=\(String(describing: self.state.currentHoverSlot))")
+        HaloLog.summon.debug("commit phase=\(String(describing: self.state.phase)) hover=\(String(describing: self.state.currentHoverSlot)) layer=\(String(describing: self.state.layer))")
+        // Layer 2: dispatch to ActionExecutor instead of Switcher.
+        if case .actions(let ctx) = state.layer {
+            commitActionSelection(ctx: ctx)
+            return
+        }
         guard let i = state.currentHoverSlot,
               let slot = state.slots.first(where: { $0.id == i })
         else {
@@ -470,11 +490,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.slots[idx] = s
     }
 
+    private func commitActionSelection(ctx: HaloState.ActionContext) {
+        guard let i = state.currentHoverSlot,
+              let slot = state.actionSlots.first(where: { $0.id == i })
+        else {
+            cancel()
+            return
+        }
+        guard let action = slot.action else {
+            // Empty action slot → open Settings → Actions and pre-target
+            // this bundleID so the user can configure on the spot.
+            window.dismiss(animated: true)
+            openActionEditor(forBundleID: ctx.bundleID)
+            return
+        }
+
+        SoundEffectPlayer.shared.play(.commit)
+        state.phase = .committing(i)
+
+        // Layer-2 commit mirrors layer-1's running-app path: kick the fade
+        // first so the ripple is visible, then call openURL/openFile.
+        // `NSWorkspace.open` already returns synchronously and is non-blocking.
+        window.fireRipple(color: slot.identityColor)
+        window.dismiss()
+        let outcome = actionExecutor.execute(action)
+        if outcome == .failed {
+            // No persistent failure UI to "stick to" here (the wheel is
+            // already dismissing), but the shake is queued before dismiss
+            // completes if we still have a chance.
+            HaloLog.switcher.info("action commit failed bundleID=\(ctx.bundleID) action=\(action.label)")
+        }
+        // Reset layer for the next summon.
+        state.layer = .slots
+        state.actionSlots = []
+    }
+
+    private func openActionEditor(forBundleID bundleID: String) {
+        openSettings()
+        settingsWindowController?.focusActionsTab(bundleID: bundleID)
+    }
+
     private func cancel() {
         HaloLog.summon.debug("cancel")
         onboarding.dismiss()
         scrollAccumDelta = 0
         state.scrollAnchor = nil
+        state.layer = .slots
+        state.actionSlots = []
         window.dismiss(animated: true, restorePreviousFront: true)
     }
 
@@ -564,6 +626,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// from slot 0/n-1 even when frontmost-highlight was on.
     private func cycleHighlight(by delta: Int) {
         state.advanceSelection(by: delta)
+    }
+
+    // MARK: - Action Ring (⇧ layer toggle)
+
+    /// Monitors ⇧ flagsChanged while Halo is up. On ⇧ press we try to
+    /// enter the Action Ring for whatever slot is hovered; on ⇧ release we
+    /// drop back to the slot ring. Other modifier transitions (⌘ release
+    /// during double-tap, ⌥, ⌃) are ignored.
+    private func installFlagsMonitor() {
+        flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
+            guard let self = self, self.state.phase != .hidden else { return event }
+            let nowHeld = event.modifierFlags.contains(.shift)
+            if nowHeld == self.shiftHeld { return event }
+            self.shiftHeld = nowHeld
+            if nowHeld {
+                self.tryEnterActionRing()
+            } else {
+                self.exitActionRingIfActive()
+            }
+            return event
+        }
+    }
+
+    /// Try to switch into layer 2 (Action Ring). Requires:
+    ///   - currently on `.slots` layer
+    ///   - phase has a non-empty slot under highlight
+    ///   - that slot carries an `app`
+    /// Otherwise no-op. The action list comes from `prefs.actions(forBundleID:)`;
+    /// an empty list still enters layer 2 (renders "+ Configure" placeholders
+    /// per spec §7).
+    private func tryEnterActionRing() {
+        guard case .slots = state.layer else { return }
+        guard let i = state.currentHoverSlot,
+              let slot = state.slots.first(where: { $0.id == i }),
+              let app = slot.app
+        else { return }
+        let actions = prefs.actions(forBundleID: app.bundleID)
+        let context = HaloState.ActionContext(
+            bundleID: app.bundleID,
+            appName: app.name,
+            identityColor: slot.identityColor,
+            originSlotIndex: i
+        )
+        state.enterActionRing(context, actions: actions)
+        HaloLog.summon.debug("enter action ring app=\(app.bundleID) actions=\(actions.count)")
+    }
+
+    /// Drop back to layer 1 if we're in layer 2. Highlight stays on the
+    /// same angular index (HaloState.exitActionRing handles that).
+    private func exitActionRingIfActive() {
+        guard case .actions = state.layer else { return }
+        state.exitActionRing()
+        HaloLog.summon.debug("exit action ring")
     }
 
     /// Local monitor that translates scrollWheel events into slot-cycle
