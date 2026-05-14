@@ -50,13 +50,15 @@ public final class DoubleTapMonitor {
     /// a tap. Real chord presses hold longer than this; pure taps don't.
     private let firstTapMax: TimeInterval = 0.20
 
-    private enum State {
+    /// Internal access so HaloUITests can drive the state machine
+    /// synthetically without needing real NSEvent monitors.
+    enum State: Equatable {
         case idle
         case firstDown(since: Date)
         case firstReleased(at: Date)
         case secondDown
     }
-    private var state: State = .idle
+    var state: State = .idle
 
     private var localFlagsMonitor: Any?
     private var globalFlagsMonitor: Any?
@@ -156,7 +158,8 @@ public final class DoubleTapMonitor {
         globalFlagsMonitor = globalToken
     }
 
-    private func handleFlagsChanged(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags, at now: Date) {
+    /// Internal so HaloUITests can synthesize input events.
+    func handleFlagsChanged(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags, at now: Date) {
         let isMatchedKey = keyCodeMatches(keyCode)
 
         let pressed = matchedFlagPresent(in: modifierFlags)
@@ -250,7 +253,7 @@ public final class DoubleTapMonitor {
         }
     }
 
-    private func handleMiddleMouseDown(at now: Date) {
+    func handleMiddleMouseDown(at now: Date) {
         switch state {
         case .idle:
             state = .firstDown(since: now)
@@ -267,7 +270,7 @@ public final class DoubleTapMonitor {
         }
     }
 
-    private func handleMiddleMouseUp(at now: Date) {
+    func handleMiddleMouseUp(at now: Date) {
         switch state {
         case .firstDown(let since):
             let held = now.timeIntervalSince(since)

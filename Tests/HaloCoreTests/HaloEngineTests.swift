@@ -71,9 +71,9 @@ final class HaloEngineTests: XCTestCase {
         XCTAssertEqual(result, [notes, mail, slack, safari])
     }
 
-    func test_top8_balancedSplitsSixMFU_andTwoMRU() {
-        // n=8, balanced: ceil(8*0.6)=5 MFU + 3 MRU? No — handoff formula is over the
-        // post-pin remaining count; with no pins, remaining=8, so MFU=ceil(8*0.6)=5, MRU=3.
+    func test_top8_balancedSplitsFiveMFU_andThreeMRU() {
+        // n=8, balanced: handoff formula is over the post-pin remaining count;
+        // with no pins, remaining=8, so MFU=ceil(8*0.6)=5, MRU=3.
         let now = Date(timeIntervalSince1970: 1_000_000)
         let apps = (0..<10).map { i in AppRef(bundleID: "app.\(i)", name: "App\(i)") }
         // Activations descend; recency ascends (older index = more recent).

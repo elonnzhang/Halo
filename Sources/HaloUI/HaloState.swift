@@ -90,6 +90,12 @@ public final class HaloState: ObservableObject {
         switch (phase, slot) {
         case (.hidden, _):
             return
+        // Latch committing BEFORE the nil-fallback case — otherwise a
+        // cursor move during the brief commit-dismiss animation would
+        // drop phase back to .idle and visually lose the scaled "slot
+        // is committing" treatment. Coverage: HaloStateHoverTests.
+        case (.committing, _):
+            return
         case (_, nil):
             if phase != .idle { phase = .idle }
         case (.idle, .some(let i)),
@@ -98,8 +104,6 @@ public final class HaloState: ObservableObject {
             if case .hovering(let prev) = phase, prev == i { return }
             if case .previewing(let prev) = phase, prev == i { return }
             phase = .hovering(i)
-        case (.committing, _):
-            return
         }
     }
 }

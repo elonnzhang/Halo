@@ -38,6 +38,30 @@ final class SlotCycleTests: XCTestCase {
         XCTAssertEqual(next, 1)
     }
 
+    func test_scrollAnchor_ignored_atBoundary() {
+        // Boundary: anchor == slotCount should be rejected (slots are
+        // 0..<slotCount). Pre-fix the `< slotCount` check would have
+        // been satisfied by `<=` and called 8 a valid index in an 8-slot
+        // wheel, advancing into slot 9 (which doesn't exist).
+        let next = SlotCycle.nextIndex(
+            delta: 1, slotCount: 8,
+            currentHover: nil, scrollAnchor: 8
+        )
+        XCTAssertEqual(next, 1, "anchor == slotCount must fall back to slot 0, advance to 1")
+    }
+
+    func test_scrollAnchor_negative_isAccepted_butWrapsCorrectly() {
+        // Defensive: negative anchor isn't a normal value but math
+        // shouldn't trap. Fallback via the `< slotCount` predicate; -1
+        // satisfies it. Wrap-around modulo handles the rest.
+        let next = SlotCycle.nextIndex(
+            delta: 1, slotCount: 8,
+            currentHover: nil, scrollAnchor: -1
+        )
+        // (-1 + 1) % 8 = 0 → 0
+        XCTAssertEqual(next, 0)
+    }
+
     func test_noHoverNoAnchor_anchorsToSlotZero() {
         let next = SlotCycle.nextIndex(
             delta: 1, slotCount: 8,
