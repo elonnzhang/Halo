@@ -525,14 +525,10 @@ public struct RadialView: View {
     }
 
     private func sectorIndex(at location: CGPoint) -> Int? {
-        // location is in view-local coords (origin top-left, y-down).
-        // Convert to center-origin, y-up.
-        let centered = CGPoint(
-            x: location.x - HaloUI.Geometry.totalDiameter / 2,
-            y: HaloUI.Geometry.totalDiameter / 2 - location.y
-        )
-        return RadialGeometry.sectorIndex(
-            for: centered,
+        RadialGeometry.sectorIndex(
+            forGestureLocation: location,
+            panelScale: HaloUI.Geometry.panelScale,
+            totalDiameter: HaloUI.Geometry.totalDiameter,
             sectorCount: state.slotCount,
             innerRadius: HaloUI.Geometry.deadzoneDiameter / 2,
             outerRadius: HaloUI.Geometry.haloDiameter / 2

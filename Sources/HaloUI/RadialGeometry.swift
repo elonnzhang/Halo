@@ -109,6 +109,44 @@ public enum RadialGeometry {
         return Int(floor(theta / slice)) % sectorCount
     }
 
+    /// Variant for callers that receive a gesture location in **scaled**
+    /// view coordinates (post-`scaleEffect(panelScale)`) and need to
+    /// hit-test against the **unscaled** geometry. Mirrors the cursor
+    /// timer path in `HaloWindow.updateHoverFromCursor`. Returns the
+    /// same nil semantics (deadzone / outside rim) as
+    /// `sectorIndex(for:sectorCount:innerRadius:outerRadius:)`.
+    ///
+    /// Bug history: before this helper existed, `RadialView.sectorIndex`
+    /// fed `value.location` (scaled) straight into the unscaled math,
+    /// so any non-1.0 `panelScale` shifted hit-tests by a factor of
+    /// `panelScale`. On a 1.3x panel a click on slot 0 hit-tested to
+    /// slot 1, briefly flashing the next slot before commit.
+    public static func sectorIndex(
+        forGestureLocation location: CGPoint,
+        panelScale: CGFloat,
+        totalDiameter: CGFloat,
+        sectorCount: Int,
+        innerRadius: CGFloat,
+        outerRadius: CGFloat
+    ) -> Int? {
+        // Belt and braces — `AppPreferences.panelScale` is already
+        // clamped to [0.80, 1.50] on write so this clamp is a defensive
+        // guard against future callers or test inputs.
+        let scale = max(panelScale, 0.001)
+        let x = location.x / scale
+        let y = location.y / scale
+        let centered = CGPoint(
+            x: x - totalDiameter / 2,
+            y: totalDiameter / 2 - y
+        )
+        return sectorIndex(
+            for: centered,
+            sectorCount: sectorCount,
+            innerRadius: innerRadius,
+            outerRadius: outerRadius
+        )
+    }
+
     /// Center point of a sector at a given radius (y-up, center-origin).
     /// Sector 0 is at 12 o'clock; subsequent sectors advance clockwise.
     public static func center(of sectorIndex: Int, sectorCount: Int, radius: CGFloat) -> CGPoint {

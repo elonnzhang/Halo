@@ -326,20 +326,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// When Settings → Navigation → Highlight frontmost on summon is on,
-    /// seed the highlighted slot to the index of the frontmost app's pin
-    /// (if pinned) so a "Halo → scroll once → switch back" gesture is a
-    /// single tick away. Falls back to slot 0 (12 o'clock) otherwise.
+    /// store the frontmost app's pinned slot as the scroll anchor so a
+    /// single scroll tick lands on it. Does NOT write to `state.phase` —
+    /// the 1/60s gap between this synchronous seed and the first cursor
+    /// poll would otherwise drive the 0.14s sector animation through an
+    /// unrelated slot before settling under the cursor (visible as a
+    /// brief "next slot lights up" flash). The "highlight" is therefore
+    /// virtual: it influences scroll routing only, never rendering.
     private func applyFrontmostHighlight() {
-        guard prefs.highlightFrontmostOnSummon else { return }
-        let initial: Int
-        if let bundleID = lastFrontmostBundleID,
-           let idx = prefs.pinnedBundleIDs.firstIndex(where: { $0 == bundleID }) {
-            initial = idx
-        } else {
-            initial = 0
+        guard prefs.highlightFrontmostOnSummon else {
+            state.scrollAnchor = nil
+            return
         }
-        if initial < state.slotCount {
-            state.phase = .hovering(initial)
+        if let bundleID = lastFrontmostBundleID,
+           let idx = prefs.pinnedBundleIDs.firstIndex(where: { $0 == bundleID }),
+           idx < state.slotCount {
+            state.scrollAnchor = idx
+        } else {
+            state.scrollAnchor = nil
         }
     }
 
@@ -364,6 +368,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // commits — the lesson is over, no need to keep the hint floating.
         onboarding.dismiss()
         scrollAccumDelta = 0
+        state.scrollAnchor = nil
         HaloLog.summon.debug("commit phase=\(String(describing: self.state.phase)) hover=\(String(describing: self.state.currentHoverSlot))")
         guard let i = state.currentHoverSlot,
               let slot = state.slots.first(where: { $0.id == i })
@@ -426,6 +431,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HaloLog.summon.debug("cancel")
         onboarding.dismiss()
         scrollAccumDelta = 0
+        state.scrollAnchor = nil
         window.dismiss(animated: true, restorePreviousFront: true)
     }
 
@@ -508,17 +514,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Arrow-key navigation. Routes through `advanceSelection` so the
+    /// keyboard path honours `scrollAnchor` (frontmost slot) on the
+    /// first press, matching the scroll-wheel path. Pre-fix the two
+    /// paths used different anchor logic — left/right always seeded
+    /// from slot 0/n-1 even when frontmost-highlight was on.
     private func cycleHighlight(by delta: Int) {
-        let n = state.slotCount
-        guard n > 0 else { return }
-        let current = state.currentHoverSlot
-        let next: Int
-        if let c = current {
-            next = (c + delta + n) % n
-        } else {
-            next = delta >= 0 ? 0 : n - 1
-        }
-        state.phase = .hovering(next)
+        state.advanceSelection(by: delta)
     }
 
     /// Local monitor that translates scrollWheel events into slot-cycle

@@ -54,14 +54,35 @@ public final class HaloState: ObservableObject {
     /// input. Owned here so both the cursor timer (HaloWindow) and the
     /// fallback DragGesture (RadialView) push through the same gate.
 
+    /// Optional anchor slot for the first `advanceSelection` of a summon.
+    /// Set by AppDelegate when "Highlight frontmost on summon" is enabled
+    /// so a single scroll tick lands on the previous frontmost app's slot.
+    /// Not @Published — this is consumed by scroll logic, never rendered;
+    /// writing to phase here would flash an unrelated sector through the
+    /// 0.14s sector animation before the cursor poll clears it.
+    public var scrollAnchor: Int?
+
     /// Move the highlighted slot by `delta` (positive = clockwise, in
     /// natural slot-index order), wrapping modulo `slotCount`. Called by
     /// AppDelegate's scrollWheel monitor when Settings → Navigation →
     /// Scroll to switch slots is on. No-op when Halo is hidden or empty.
+    ///
+    /// Anchor priority lives in `SlotCycle.nextIndex` (pure, tested).
     public func advanceSelection(by delta: Int) {
         guard slotCount > 0, phase != .hidden else { return }
-        let current = currentHoverSlot ?? 0
-        let next = ((current + delta) % slotCount + slotCount) % slotCount
+        let next = SlotCycle.nextIndex(
+            delta: delta,
+            slotCount: slotCount,
+            currentHover: currentHoverSlot,
+            scrollAnchor: scrollAnchor
+        )
+        if SlotCycle.consumedScrollAnchor(
+            currentHover: currentHoverSlot,
+            scrollAnchor: scrollAnchor,
+            slotCount: slotCount
+        ) {
+            scrollAnchor = nil
+        }
         phase = .hovering(next)
     }
 

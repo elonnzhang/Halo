@@ -30,6 +30,11 @@ let package = Package(
             dependencies: ["HaloCore"],
             path: "Tests/HaloCoreTests"
         ),
+        .testTarget(
+            name: "HaloUITests",
+            dependencies: ["HaloUI", "HaloCore"],
+            path: "Tests/HaloUITests"
+        ),
     ],
     swiftLanguageModes: [.v6]
 )
