@@ -31,6 +31,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var identityColorCache: [String: IdentityColor] = [:]
     private var doubleTapMonitor: DoubleTapMonitor?
 
+    /// Snapshots of prefs the hot-path needs without going through
+    /// `AppPreferences` (which decodes JSON or hits UserDefaults). Rebuilt
+    /// by `applyPreferences()` and read inside event-tap closures.
+    private var whitelistSet: Set<String> = []
+    private var lastRegisteredHotkeyKeyCode: UInt32?
+    private var lastRegisteredHotkeyMods: HotkeyModifiers?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         HaloLog.lifecycle.info("Halo \(Halo.version) launching")
         installActivationObserver()
@@ -51,11 +58,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installClickOutsideMonitor()
         installScrollMonitor()
 
-        // Re-react whenever the user touches prefs.
+        // Re-react whenever the user touches prefs. `objectWillChange`
+        // fires synchronously *before* the value changes, so we defer
+        // through the MainActor queue to see the post-mutation state.
         prefsObserver = prefs.objectWillChange.sink { [weak self] _ in
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated { self?.applyPreferences() }
-            }
+            Task { @MainActor in self?.applyPreferences() }
         }
         applyPreferences()
         refreshSlots()
@@ -68,11 +75,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         monitor.onReleased = { [weak self] in self?.commitSelection() }
         monitor.suppressionGate = { [weak self] in
             guard let self = self else { return false }
-            let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-            return self.prefs.isHaloSuppressed(forFrontmost: frontmost)
+            guard let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+                  frontmost != Bundle.main.bundleIdentifier
+            else { return false }
+            return self.whitelistSet.contains(frontmost)
         }
         monitor.start()
         doubleTapMonitor = monitor
+
+        // If Accessibility is denied, surface a one-shot alert so the
+        // user understands why double-tap might "do nothing". The chord
+        // path doesn't need AX (Carbon RegisterEventHotKey works
+        // without it), so we only flag this when the double-tap monitor
+        // actually wanted global events.
+        if monitor.lacksAccessibilityPermission {
+            presentAccessibilityHint()
+        }
 
         // First-launch welcome card. Deferred one runloop tick so the menu
         // bar item finishes mounting and the user sees it referenced from
@@ -85,6 +103,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Public so Settings → General can replay the welcome card on demand.
     func replayWelcome() {
         welcome.showAgain()
+    }
+
+    /// One-shot alert when `AXIsProcessTrusted()` returned false at
+    /// DoubleTapMonitor.start(). Without Accessibility the global event
+    /// monitor doesn't receive `.flagsChanged` outside Halo's own
+    /// process so the cross-app double-tap trigger silently fails.
+    private func presentAccessibilityHint() {
+        let alert = NSAlert()
+        alert.messageText = NSLocalizedString(
+            "Halo needs Accessibility access for double-tap triggers",
+            comment: "Alert shown on launch when AX permission is denied"
+        )
+        alert.informativeText = NSLocalizedString(
+            "Open System Settings → Privacy & Security → Accessibility and enable Halo. The ⌘⌥ Space chord works either way, but ⌥ / ⌘ / Mouse 3 double-tap needs this permission to receive events outside Halo's own window.",
+            comment: "Alert body explaining what to do about denied AX"
+        )
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: NSLocalizedString("Open System Settings", comment: ""))
+        alert.addButton(withTitle: NSLocalizedString("Later", comment: ""))
+        let response = alert.runModal()
+        if response == .alertFirstButtonReturn {
+            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
+            NSWorkspace.shared.open(url)
+        }
     }
 
     /// Suspend global hotkey + double-tap processing while the welcome
@@ -107,10 +149,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if state.slotCount != prefs.slotCount {
             state.slotCount = prefs.slotCount
         }
-        // Re-register hotkey if it changed.
-        registerHotkey()
+        // Re-register the Carbon hotkey ONLY when the chord changed.
+        // Pre-fix this fired on every prefs mutation (slider drag → 10
+        // re-registrations per second), each one a short race where the
+        // chord wasn't claimed and could leak to other apps.
+        let currentKeyCode = prefs.hotkeyKeyCode
+        let currentMods = prefs.hotkeyModifiers
+        if currentKeyCode != lastRegisteredHotkeyKeyCode
+            || currentMods != lastRegisteredHotkeyMods {
+            registerHotkey()
+            lastRegisteredHotkeyKeyCode = currentKeyCode
+            lastRegisteredHotkeyMods = currentMods
+        }
         doubleTapMonitor?.gap = prefs.cmdDoubleTapGap
         doubleTapMonitor?.trigger = prefs.doubleTapTrigger
+        // Cache the whitelist as a Set so the hotkey/double-tap gates
+        // don't decode JSON on every keypress.
+        whitelistSet = Set(prefs.whitelistedBundleIDs)
         refreshSlots()
     }
 
@@ -126,11 +181,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Wire the whitelist gate on every (re)registration — Carbon
         // recreates the hotkey ref each time so the gate has to be
-        // re-installed alongside the new listener.
+        // re-installed alongside the new listener. Reads the cached
+        // `whitelistSet` instead of decoding prefs JSON on every press.
         hotkey.suppressionGate = { [weak self] in
             guard let self = self else { return false }
-            let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-            return self.prefs.isHaloSuppressed(forFrontmost: frontmost)
+            guard let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+                  frontmost != Bundle.main.bundleIdentifier
+            else { return false }
+            return self.whitelistSet.contains(frontmost)
         }
         let chord = "\(self.prefs.hotkeyModifiers.symbols)key:\(self.prefs.hotkeyKeyCode)"
         if ok {
@@ -157,7 +215,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // notifications during lock/unlock and lockscreen transitions; if
             // we count them they trend high enough to land in the MFU top-N.
             guard app.activationPolicy == .regular else { return }
-            MainActor.assumeIsolated {
+            // The notification fires on the queue we passed (.main), so
+            // we're already on the main runloop. Sendable hop is the
+            // Swift 6 idiom — extract primitives before crossing the
+            // isolation boundary (Notification + NSRunningApplication
+            // are not Sendable).
+            Task { @MainActor in
                 guard let self = self, bid != Bundle.main.bundleIdentifier else { return }
                 let ref = AppRef(bundleID: bid, name: name)
                 self.usageStore.recordActivation(of: ref)
@@ -386,22 +449,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         state.phase = .committing(i)
 
-        // If the app isn't running, mark the petal as launching, hold Halo a
-        // bit so the spinner is visible, then commit-ripple + dismiss. Failed
-        // launches do not ripple and shake Halo.
+        // If the app isn't running, mark the petal as launching, then
+        // await the real `openApplication` outcome so a corrupt /
+        // quarantined / moved bundle drops into shake-and-dismiss
+        // instead of optimistic ripple-and-vanish. The Task suspends
+        // while waiting; the main thread keeps drawing the fade-out.
         if slot.runState == .launchable {
             updateSlot(slotID: i) { $0.runState = .launching }
-            let outcome = switcher.switchTo(bundleID: app.bundleID)
-            if outcome == .failed {
-                updateSlot(slotID: i) { $0.runState = .failed }
-                shakeAndDismiss()
-                return
-            }
-            // Give the launch ~0.9s to surface before we fire the commit ripple.
             let color = slot.identityColor
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
-                MainActor.assumeIsolated {
-                    guard let self = self else { return }
+            let bundleID = app.bundleID
+            let switcher = self.switcher
+            Task { @MainActor [weak self] in
+                // Hold Halo for ~0.9s so the spinner is visible even
+                // when the launch resolves faster than that.
+                async let dwell: () = Task.sleep(nanoseconds: 900_000_000)
+                async let outcome = switcher.switchToAsync(bundleID: bundleID)
+                let result = await outcome
+                _ = try? await dwell
+                guard let self = self else { return }
+                if result == .failed {
+                    self.updateSlot(slotID: i) { $0.runState = .failed }
+                    self.shakeAndDismiss()
+                } else {
                     self.window.fireRipple(color: color)
                     self.window.dismiss()
                 }
@@ -559,9 +628,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         clickOutsideMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown]
         ) { [weak self] _ in
-            MainActor.assumeIsolated {
+            // Hop to MainActor instead of `assumeIsolated`: global event
+            // monitors are documented to fire on main, but
+            // `assumeIsolated` is a runtime trap if that ever changes,
+            // and Swift 6 strict concurrency wants explicit isolation.
+            let mouse = NSEvent.mouseLocation
+            Task { @MainActor in
                 guard let self = self, self.state.phase != .hidden else { return }
-                let mouse = NSEvent.mouseLocation
                 if !self.window.panel.frame.contains(mouse) {
                     self.cancel()
                 }

@@ -2,23 +2,38 @@
 
 All notable changes to Halo.
 
-## [1.1.0] — Unreleased
+## [1.1.0] — 2026-05-14
 
 ### Settings panel
 
-- Rebuilt around a sidebar (General / Apps / Whitelist / About). 720×620 fixed window, matches `mockups/halo-settings.html`. Replaces the v1.0 `TabView` shell.
-- General → Navigation: scroll-to-switch-slots / digit-key commit (now via keyCode table covering `1–9 0 - =`) / highlight-frontmost-on-summon.
-- General → Appearance: `Panel size` slider applies a renderer-time scale (0.80–1.50x) to the whole wheel; live hit-test divides cursor offset by the scale.
-- General → Trigger: double-tap picker now offers five keys (⌥ Left, ⌥ Right, ⌘, ⌃, Mouse 3 Middle). State machine moved into `DoubleTapMonitor`; the keyboard path uses `flagsChanged` with keyCode discrimination (kVK 58/61/54/55/59/62) since `NSEvent.ModifierFlags` doesn't expose a stable left/right bit. `CommandLongPressMonitor` removed.
+- Rebuilt around a sidebar (General / Apps / Whitelist / About). On macOS 13+ uses native `NavigationSplitView` + `Form(.grouped)` — translucent sidebar, accent-tinted selection pill, Liquid Glass on macOS 26. macOS 12 falls back to a custom HStack. Default frame 880×720, min 760×600, resizable.
+- General → Navigation: scroll-to-switch-slots / digit-key commit (now via keyCode table covering `1–9 0 - =`) / highlight-frontmost-on-summon (refactored to a non-rendering `scrollAnchor` after a hover-flash regression — see hit-test fix below).
+- General → Appearance: `Panel size` slider applies a renderer-time scale (0.80–1.50x) to the whole wheel; live hit-test now divides gesture coords by the scale (regression fix; pre-fix a 1.3x panel caused the next slot to flash and silently commit the wrong app).
+- General → Trigger: double-tap picker now offers five keys (⌥ Left, ⌥ Right, ⌘, ⌃, Mouse 3 Middle). State machine moved into `DoubleTapMonitor`; keyboard path uses `flagsChanged` with keyCode discrimination (kVK 58/61/54/55/59/62) since `NSEvent.ModifierFlags` doesn't expose a stable left/right bit. `CommandLongPressMonitor` removed.
+- Arrow-key navigation now shares the same `SlotCycle` anchor logic as the scroll wheel.
+- Display language picker localises in-app — restart required to apply.
 
 ### Whitelist (new)
 
-- New `Whitelist` tab + preference key `halo.prefs.whitelist.v1` (`[String]` of bundle IDs). When the frontmost app is whitelisted, both `HaloHotkey` and `DoubleTapMonitor` short-circuit before firing — Halo is silent in that app.
-- `WhitelistSuggestions.installedSubset()` seeds Xcode / VS Code family / JetBrains / Figma / Sketch / Adobe / Blender / Unity / Roblox Studio / Parallels / VMware / Microsoft RDC — only apps actually installed get included via `NSWorkspace.urlForApplication`.
+- New `Whitelist` tab + preference key `halo.prefs.whitelist.v1` (`[String]` of bundle IDs). When the frontmost app is whitelisted, both `HaloHotkey` and `DoubleTapMonitor` short-circuit before firing — Halo is silent in that app. Carbon registration stays installed so the chord never escapes to other apps mid-session.
+- `WhitelistSuggestions.installedSubset()` seeds Xcode / VS Code family / JetBrains / Figma / Sketch / Adobe / Blender / Unity / Roblox Studio / Parallels / VMware / Microsoft RDC — only apps actually installed get included via `NSWorkspace.urlForApplication`. No auto-seed on first launch; user-driven "Apply recommended" only.
+
+### Runtime safety
+
+- DoubleTapMonitor + AppDelegate global `NSEvent` monitors now extract sendable primitives in the closure and hop to MainActor via `Task { @MainActor in }` instead of `MainActor.assumeIsolated`. Fixes Swift 6 strict-concurrency drift and silent main-thread requirements.
+- `Switcher.switchToAsync` awaits `NSWorkspace.openApplication`'s real completion handler — corrupt / moved / quarantined bundles now drop into shake-and-dismiss instead of optimistic ripple-and-vanish.
+- `UsageStore` prunes the 7-day window on every write (was read-only filtered, JSON grew unbounded).
+- `AppPreferences` whitelist is cached as a `Set<String>` inside AppDelegate; hot-path gate no longer decodes JSON per keypress. `registerHotkey()` now only fires when the chord actually changed (was running ~10×/sec while dragging Panel Size slider).
+- DoubleTapMonitor probes `AXIsProcessTrusted()` at start and surfaces a one-shot alert with deep link to Privacy & Security → Accessibility when global events would be silently dropped.
 
 ### Localization
 
 - en + zh-Hans translations added for every new section (sidebar, navigation toggles, trigger picker, panel size, whitelist UI, DoubleTapTrigger labels).
+- zh-Hans Frequency profile uses Chinese short labels (`最常用 / 平衡 / 最近用`).
+
+### Tests
+
+- 57+ tests across `HaloCoreTests` + new `HaloUITests` target. Regression coverage for `SlotCycle` anchor priority, `RadialGeometry.sectorIndex(forGestureLocation:…)` panelScale hit-test, and `HaloState.scrollAnchor` lifecycle. v1.0 had 27 tests.
 
 ## [1.0.0] — 2026-05-13
 

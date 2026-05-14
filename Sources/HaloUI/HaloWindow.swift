@@ -133,7 +133,9 @@ public final class HaloWindow {
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
                 panel.animator().alphaValue = 0
             }, completionHandler: {
-                MainActor.assumeIsolated {
+                // Completion handler is called on main; hop explicitly
+                // so the @MainActor isolation is statically verified.
+                Task { @MainActor in
                     panel.orderOut(nil)
                     panel.alphaValue = 1
                 }

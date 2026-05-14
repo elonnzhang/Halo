@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import HaloCore
 
 /// Detects a double-tap on the configured `DoubleTapTrigger` and emits
@@ -69,7 +70,23 @@ public final class DoubleTapMonitor {
         self.gap = gap
     }
 
+    /// True after `start()` if the OS reports that Halo lacks the
+    /// Accessibility permission. Global event monitors silently
+    /// receive nothing without AX — exposing this so the AppDelegate
+    /// can route a one-shot user prompt instead of leaving the user
+    /// wondering why their double-tap doesn't work.
+    public private(set) var lacksAccessibilityPermission: Bool = false
+
     public func start() {
+        // Global NSEvent monitors deliver `.flagsChanged` / `.otherMouseDown`
+        // events only when Halo has the macOS Accessibility permission.
+        // Probe non-interactively (no prompt) and remember the result;
+        // local monitors still work without AX so the in-app paths
+        // continue to function, just not the cross-app trigger.
+        lacksAccessibilityPermission = !AXIsProcessTrusted()
+        if lacksAccessibilityPermission {
+            HaloLog.hotkey.error("AXIsProcessTrusted() == false — global double-tap monitor will be inert until the user grants Accessibility access in System Settings → Privacy & Security → Accessibility.")
+        }
         rebuildMonitors()
     }
 
@@ -113,26 +130,37 @@ public final class DoubleTapMonitor {
     }
 
     private func installFlagsMonitors() {
-        let handler: (NSEvent) -> Void = { [weak self] event in
-            guard let self = self else { return }
-            self.handleFlagsChanged(event)
-        }
-        localFlagsMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { event in
-            handler(event)
+        // NSEvent monitors fire on the main runloop, but the closure
+        // signature is non-isolated `Sendable`. NSEvent itself is not
+        // Sendable, so we extract the primitive fields synchronously
+        // (cheap, off-actor-safe) and hop back to MainActor before
+        // touching state. Avoids `MainActor.assumeIsolated` at hot path.
+        let localToken = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
+            let keyCode = event.keyCode
+            let modifierFlags = event.modifierFlags
+            let now = Date()
+            Task { @MainActor in
+                self?.handleFlagsChanged(keyCode: keyCode, modifierFlags: modifierFlags, at: now)
+            }
             return event
         }
-        globalFlagsMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged]) { event in
-            handler(event)
+        let globalToken = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
+            let keyCode = event.keyCode
+            let modifierFlags = event.modifierFlags
+            let now = Date()
+            Task { @MainActor in
+                self?.handleFlagsChanged(keyCode: keyCode, modifierFlags: modifierFlags, at: now)
+            }
         }
+        localFlagsMonitor = localToken
+        globalFlagsMonitor = globalToken
     }
 
-    private func handleFlagsChanged(_ event: NSEvent) {
-        let keyCode = event.keyCode
+    private func handleFlagsChanged(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags, at now: Date) {
         let isMatchedKey = keyCodeMatches(keyCode)
-        let now = Date()
 
-        let pressed = matchedFlagPresent(in: event.modifierFlags)
-        let onlyMatchedDown = pressed && !otherModifierPresent(matched: trigger, flags: event.modifierFlags)
+        let pressed = matchedFlagPresent(in: modifierFlags)
+        let onlyMatchedDown = pressed && !otherModifierPresent(matched: trigger, flags: modifierFlags)
 
         switch state {
         case .idle:
@@ -195,25 +223,30 @@ public final class DoubleTapMonitor {
     // MARK: - Mouse path
 
     private func installMouseMonitors() {
-        let downHandler: (NSEvent) -> Void = { [weak self] event in
-            guard let self = self, event.buttonNumber == 2 else { return }
-            self.handleMiddleMouseDown(at: Date())
+        // Same threading discipline as `installFlagsMonitors`: extract
+        // sendable primitives in the monitor closure, hop to MainActor
+        // before mutating state.
+        localMouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown]) { [weak self] event in
+            guard event.buttonNumber == 2 else { return event }
+            let now = Date()
+            Task { @MainActor in self?.handleMiddleMouseDown(at: now) }
+            return event
         }
-        let upHandler: (NSEvent) -> Void = { [weak self] event in
-            guard let self = self, event.buttonNumber == 2 else { return }
-            self.handleMiddleMouseUp(at: Date())
+        globalMouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.otherMouseDown]) { [weak self] event in
+            guard event.buttonNumber == 2 else { return }
+            let now = Date()
+            Task { @MainActor in self?.handleMiddleMouseDown(at: now) }
         }
-        localMouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown]) { event in
-            downHandler(event); return event
+        localMouseUpMonitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseUp]) { [weak self] event in
+            guard event.buttonNumber == 2 else { return event }
+            let now = Date()
+            Task { @MainActor in self?.handleMiddleMouseUp(at: now) }
+            return event
         }
-        globalMouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.otherMouseDown]) { event in
-            downHandler(event)
-        }
-        localMouseUpMonitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseUp]) { event in
-            upHandler(event); return event
-        }
-        globalMouseUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.otherMouseUp]) { event in
-            upHandler(event)
+        globalMouseUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.otherMouseUp]) { [weak self] event in
+            guard event.buttonNumber == 2 else { return }
+            let now = Date()
+            Task { @MainActor in self?.handleMiddleMouseUp(at: now) }
         }
     }
 

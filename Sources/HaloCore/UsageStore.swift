@@ -20,7 +20,13 @@ public final class UsageStore: @unchecked Sendable {
     public func recordActivation(of app: AppRef) {
         queue.sync {
             var blob = loadBlob()
-            blob.timestamps[app, default: []].append(clock())
+            let now = clock()
+            // Prune stale timestamps before appending. Without this the
+            // JSON blob grew unbounded — `allRecords()` filtered at read
+            // time but never wrote the filtered view back, so the on-disk
+            // representation kept every activation forever.
+            blob = pruned(blob, now: now)
+            blob.timestamps[app, default: []].append(now)
             blob.names[app.bundleID] = app.name
             saveBlob(blob)
         }
@@ -42,6 +48,31 @@ public final class UsageStore: @unchecked Sendable {
                 )
             }
         }
+    }
+
+    /// Force-prune storage. Useful on app launch to reclaim disk after
+    /// a long idle period without waiting for the next activation.
+    public func compact() {
+        queue.sync {
+            let now = clock()
+            let blob = pruned(loadBlob(), now: now)
+            saveBlob(blob)
+        }
+    }
+
+    private func pruned(_ blob: Blob, now: Date) -> Blob {
+        let cutoff = now.addingTimeInterval(-Self.windowSeconds)
+        var out = blob
+        var prunedNames: [String: String] = [:]
+        out.timestamps = out.timestamps.compactMapValues { stamps -> [Date]? in
+            let recent = stamps.filter { $0 >= cutoff }
+            return recent.isEmpty ? nil : recent
+        }
+        for (app, _) in out.timestamps {
+            if let name = blob.names[app.bundleID] { prunedNames[app.bundleID] = name }
+        }
+        out.names = prunedNames
+        return out
     }
 
     public func reset() {

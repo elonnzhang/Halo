@@ -133,13 +133,11 @@ public final class HaloHotkey {
                 else { return noErr }
 
                 let kind = GetEventKind(eventRef)
-                DispatchQueue.main.async {
-                    MainActor.assumeIsolated {
-                        if kind == UInt32(kEventHotKeyPressed) {
-                            hotkey.handlePress()
-                        } else if kind == UInt32(kEventHotKeyReleased) {
-                            hotkey.handleRelease()
-                        }
+                Task { @MainActor in
+                    if kind == UInt32(kEventHotKeyPressed) {
+                        hotkey.handlePress()
+                    } else if kind == UInt32(kEventHotKeyReleased) {
+                        hotkey.handleRelease()
                     }
                 }
                 return noErr
