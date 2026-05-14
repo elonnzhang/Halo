@@ -81,9 +81,7 @@ mockups/                Clickable UI mockups — halo.html (live wheel), halo-se
 
 ## Permissions
 
-The **primary chord** (`⌘⌥ Space`) needs **no Accessibility permission** — Carbon `RegisterEventHotKey` works without it. Activation tracking uses `NSWorkspace` notifications; switching uses `NSWorkspace.openApplication` (cooperative activation on macOS 14+).
-
-The **double-tap auxiliary trigger** (⌥ / ⌘ / ⌃ / Mouse 3) does need **Accessibility permission** because it listens to global `NSEvent.flagsChanged` / `.otherMouseDown`. Halo probes `AXIsProcessTrusted()` on launch and surfaces a one-shot alert with a deep link to System Settings if access is denied. The chord path keeps working either way.
+Halo needs **no Accessibility permission**. Both trigger paths are passive state queries: the primary chord uses Carbon `RegisterEventHotKey`; the double-tap auxiliary polls `CGEventSource.keyState` for keyboard triggers (keyCode-aware so left/right Option/Control are distinguishable) and `NSEvent.pressedMouseButtons` for middle mouse. Activation tracking uses `NSWorkspace` notifications. No event taps, no accessibility-tree reads, no input monitoring.
 
 ## Language
 

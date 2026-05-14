@@ -1,47 +1,41 @@
 import AppKit
-import ApplicationServices
+import CoreGraphics
 import HaloCore
 
 /// Detects a double-tap on the configured `DoubleTapTrigger` and emits
 /// `onTriggered` on the second press, `onReleased` on the second release.
 ///
-/// Keyboard paths listen to `flagsChanged` (with keyCode discrimination
-/// for L/R Option / L/R Control / L/R Command — macOS doesn't publish a
-/// stable left/right bit in `NSEvent.ModifierFlags`, so we match the raw
-/// keyCode). The middle-mouse path listens to `otherMouseDown` /
-/// `otherMouseUp` filtered to `buttonNumber == 2`.
+/// Implementation: a 25 Hz `Timer` polls the live keyboard / mouse state.
+///   - `CGEventSource.keyState(.combinedSessionState, key: <keyCode>)`
+///     for keyboard triggers — keyCode-discriminated so left vs right
+///     Option / Control are distinguishable.
+///   - `NSEvent.pressedMouseButtons` bitmask for middle mouse.
+///   - `NSEvent.modifierFlags` for the "other modifier joined" check
+///     that rejects ⌘+key chords as accidental taps.
 ///
-/// Both local AND global monitors are installed for every path so the
-/// detector fires regardless of which app is frontmost. Local catches
-/// events when Halo/Settings is key; global catches everything else.
-/// The Carbon hotkey path (`HaloHotkey`) is unaffected — this monitor is
-/// strictly the second, single-handed trigger.
+/// All three APIs are passive state queries — no Accessibility permission
+/// needed, no event tap, no entitlement. v1.0's `CommandLongPressMonitor`
+/// used the same idiom (just keyboard-only).
 @MainActor
 public final class DoubleTapMonitor {
     public var onTriggered: (() -> Void)?
     public var onReleased: (() -> Void)?
 
-    /// Max delay between releasing the first tap and pressing the second.
-    /// Mutable at runtime so Settings changes take effect without
-    /// rebuilding the monitor.
+    /// Max delay between releasing the first tap and pressing the
+    /// second. Mutable at runtime so Settings changes take effect
+    /// without rebuilding the monitor.
     public var gap: TimeInterval
 
-    /// Which physical key/button this monitor watches. Changing it tears
-    /// down + reinstalls the underlying event monitors so we never tap
-    /// `.flagsChanged` and `.otherMouseDown` at the same time.
+    /// Which physical key/button this monitor watches. Changing it
+    /// resets the state machine so a half-completed tap on the old
+    /// trigger doesn't survive the switch.
     public var trigger: DoubleTapTrigger {
         didSet {
-            if oldValue != trigger {
-                let wasRunning = (localFlagsMonitor != nil
-                    || globalFlagsMonitor != nil
-                    || localMouseDownMonitor != nil
-                    || globalMouseDownMonitor != nil)
-                if wasRunning { rebuildMonitors() }
-            }
+            if oldValue != trigger { state = .idle }
         }
     }
 
-    /// Optional gate: when this returns true, the monitor swallows the
+    /// Optional gate: when this returns true the monitor swallows the
     /// gesture without firing `onTriggered`. Used by AppDelegate to
     /// enforce the whitelist suppression.
     public var suppressionGate: (() -> Bool)?
@@ -49,9 +43,10 @@ public final class DoubleTapMonitor {
     /// Longest the first tap can be held before we stop counting it as
     /// a tap. Real chord presses hold longer than this; pure taps don't.
     private let firstTapMax: TimeInterval = 0.20
+    private let pollInterval: TimeInterval = 0.04
 
     /// Internal access so HaloUITests can drive the state machine
-    /// synthetically without needing real NSEvent monitors.
+    /// synthetically without spinning the real Timer.
     enum State: Equatable {
         case idle
         case firstDown(since: Date)
@@ -60,122 +55,87 @@ public final class DoubleTapMonitor {
     }
     var state: State = .idle
 
-    private var localFlagsMonitor: Any?
-    private var globalFlagsMonitor: Any?
-    private var localMouseDownMonitor: Any?
-    private var globalMouseDownMonitor: Any?
-    private var localMouseUpMonitor: Any?
-    private var globalMouseUpMonitor: Any?
+    private var timer: Timer?
+
+    /// `NSEvent.pressedMouseButtons` bit position for the middle button
+    /// (Mouse 3). Bit 0 = left, 1 = right, 2 = middle.
+    private static let middleMouseMask: Int = 1 << 2
 
     public init(trigger: DoubleTapTrigger, gap: TimeInterval) {
         self.trigger = trigger
         self.gap = gap
     }
 
-    /// True after `start()` if the OS reports that Halo lacks the
-    /// Accessibility permission. Global event monitors silently
-    /// receive nothing without AX — exposing this so the AppDelegate
-    /// can route a one-shot user prompt instead of leaving the user
-    /// wondering why their double-tap doesn't work.
-    public private(set) var lacksAccessibilityPermission: Bool = false
-
     public func start() {
-        // Global NSEvent monitors deliver `.flagsChanged` / `.otherMouseDown`
-        // events only when Halo has the macOS Accessibility permission.
-        // Probe non-interactively (no prompt) and remember the result;
-        // local monitors still work without AX so the in-app paths
-        // continue to function, just not the cross-app trigger.
-        lacksAccessibilityPermission = !AXIsProcessTrusted()
-        if lacksAccessibilityPermission {
-            HaloLog.hotkey.error("AXIsProcessTrusted() == false — global double-tap monitor will be inert until the user grants Accessibility access in System Settings → Privacy & Security → Accessibility.")
+        guard timer == nil else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.tick() }
         }
-        rebuildMonitors()
     }
 
     public func stop() {
-        for token in [localFlagsMonitor, globalFlagsMonitor,
-                      localMouseDownMonitor, globalMouseDownMonitor,
-                      localMouseUpMonitor, globalMouseUpMonitor] {
-            if let token = token { NSEvent.removeMonitor(token) }
-        }
-        localFlagsMonitor = nil
-        globalFlagsMonitor = nil
-        localMouseDownMonitor = nil
-        globalMouseDownMonitor = nil
-        localMouseUpMonitor = nil
-        globalMouseUpMonitor = nil
+        timer?.invalidate()
+        timer = nil
         state = .idle
     }
 
-    private func rebuildMonitors() {
-        stop()
-        if trigger.isKeyboard {
-            installFlagsMonitors()
-        } else {
-            installMouseMonitors()
-        }
-    }
-
-    // MARK: - Keyboard path
-
-    /// kVK_LeftOption=58, kVK_RightOption=61,
-    /// kVK_RightCommand=54, kVK_Command=55,
-    /// kVK_Control=59, kVK_RightControl=62.
-    private func keyCodeMatches(_ code: UInt16) -> Bool {
+    private func tick() {
+        let now = Date()
         switch trigger {
-        case .leftOption:   return code == 58
-        case .rightOption:  return code == 61
-        case .command:      return code == 54 || code == 55
-        case .control:      return code == 59 || code == 62
-        case .middleMouse:  return false
+        case .leftOption:
+            tickKeyboard(matchedKeyDown: Self.isKeyDown(58),
+                         otherModifiersPresent: otherModifiers(excluding: .option),
+                         at: now)
+        case .rightOption:
+            tickKeyboard(matchedKeyDown: Self.isKeyDown(61),
+                         otherModifiersPresent: otherModifiers(excluding: .option),
+                         at: now)
+        case .command:
+            // Accept either side of the Command key (54 / 55).
+            let matched = Self.isKeyDown(54) || Self.isKeyDown(55)
+            tickKeyboard(matchedKeyDown: matched,
+                         otherModifiersPresent: otherModifiers(excluding: .command),
+                         at: now)
+        case .control:
+            let matched = Self.isKeyDown(59) || Self.isKeyDown(62)
+            tickKeyboard(matchedKeyDown: matched,
+                         otherModifiersPresent: otherModifiers(excluding: .control),
+                         at: now)
+        case .middleMouse:
+            let pressed = (NSEvent.pressedMouseButtons & Self.middleMouseMask) != 0
+            tickMouse(pressed: pressed, at: now)
         }
     }
 
-    private func installFlagsMonitors() {
-        // NSEvent monitors fire on the main runloop, but the closure
-        // signature is non-isolated `Sendable`. NSEvent itself is not
-        // Sendable, so we extract the primitive fields synchronously
-        // (cheap, off-actor-safe) and hop back to MainActor before
-        // touching state. Avoids `MainActor.assumeIsolated` at hot path.
-        let localToken = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
-            let keyCode = event.keyCode
-            let modifierFlags = event.modifierFlags
-            let now = Date()
-            Task { @MainActor in
-                self?.handleFlagsChanged(keyCode: keyCode, modifierFlags: modifierFlags, at: now)
-            }
-            return event
-        }
-        let globalToken = NSEvent.addGlobalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
-            let keyCode = event.keyCode
-            let modifierFlags = event.modifierFlags
-            let now = Date()
-            Task { @MainActor in
-                self?.handleFlagsChanged(keyCode: keyCode, modifierFlags: modifierFlags, at: now)
-            }
-        }
-        localFlagsMonitor = localToken
-        globalFlagsMonitor = globalToken
+    /// `CGEventSource.keyState` reads HID-level keyboard state without
+    /// needing Accessibility — same trust level as
+    /// `NSEvent.modifierFlags`. Wrap into a typed helper for clarity.
+    private static func isKeyDown(_ keyCode: CGKeyCode) -> Bool {
+        CGEventSource.keyState(.combinedSessionState, key: keyCode)
     }
 
-    /// Internal so HaloUITests can synthesize input events.
-    func handleFlagsChanged(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags, at now: Date) {
-        let isMatchedKey = keyCodeMatches(keyCode)
+    private func otherModifiers(excluding match: NSEvent.ModifierFlags) -> Bool {
+        var others: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
+        others.remove(match)
+        return !NSEvent.modifierFlags.intersection(others).isEmpty
+    }
 
-        let pressed = matchedFlagPresent(in: modifierFlags)
-        let onlyMatchedDown = pressed && !otherModifierPresent(matched: trigger, flags: modifierFlags)
+    // MARK: - Keyboard state machine
+
+    /// Visible internally so HaloUITests can drive transitions with
+    /// synthetic (matchedDown, otherPresent) inputs + clock stamps.
+    func tickKeyboard(matchedKeyDown: Bool, otherModifiersPresent: Bool, at now: Date) {
+        let onlyMatched = matchedKeyDown && !otherModifiersPresent
 
         switch state {
         case .idle:
-            if isMatchedKey && onlyMatchedDown {
-                state = .firstDown(since: now)
-            }
+            if onlyMatched { state = .firstDown(since: now) }
         case .firstDown(let since):
-            if pressed && !onlyMatchedDown {
+            if matchedKeyDown && otherModifiersPresent {
                 state = .idle
                 return
             }
-            if isMatchedKey && !pressed {
+            if !matchedKeyDown {
                 let held = now.timeIntervalSince(since)
                 state = (held <= firstTapMax) ? .firstReleased(at: now) : .idle
             }
@@ -184,7 +144,11 @@ public final class DoubleTapMonitor {
                 state = .idle
                 return
             }
-            if isMatchedKey && onlyMatchedDown {
+            if matchedKeyDown && otherModifiersPresent {
+                state = .idle
+                return
+            }
+            if onlyMatched {
                 if suppressionGate?() == true {
                     state = .idle
                     return
@@ -193,93 +157,52 @@ public final class DoubleTapMonitor {
                 onTriggered?()
             }
         case .secondDown:
-            if isMatchedKey && !pressed {
+            if matchedKeyDown && otherModifiersPresent {
+                state = .idle
+                return
+            }
+            if !matchedKeyDown {
                 onReleased?()
                 state = .idle
-            } else if !isMatchedKey && pressed {
-                // Another modifier joined; abandon without commit.
-                state = .idle
             }
         }
     }
 
-    private func matchedFlagPresent(in flags: NSEvent.ModifierFlags) -> Bool {
-        switch trigger {
-        case .leftOption, .rightOption: return flags.contains(.option)
-        case .command:                  return flags.contains(.command)
-        case .control:                  return flags.contains(.control)
-        case .middleMouse:              return false
-        }
-    }
+    // MARK: - Mouse state machine
 
-    private func otherModifierPresent(matched: DoubleTapTrigger, flags: NSEvent.ModifierFlags) -> Bool {
-        var others: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
-        switch matched {
-        case .leftOption, .rightOption: others.remove(.option)
-        case .command:                  others.remove(.command)
-        case .control:                  others.remove(.control)
-        case .middleMouse:              break
-        }
-        return !flags.intersection(others).isEmpty
-    }
-
-    // MARK: - Mouse path
-
-    private func installMouseMonitors() {
-        // Same threading discipline as `installFlagsMonitors`: extract
-        // sendable primitives in the monitor closure, hop to MainActor
-        // before mutating state.
-        localMouseDownMonitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseDown]) { [weak self] event in
-            guard event.buttonNumber == 2 else { return event }
-            let now = Date()
-            Task { @MainActor in self?.handleMiddleMouseDown(at: now) }
-            return event
-        }
-        globalMouseDownMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.otherMouseDown]) { [weak self] event in
-            guard event.buttonNumber == 2 else { return }
-            let now = Date()
-            Task { @MainActor in self?.handleMiddleMouseDown(at: now) }
-        }
-        localMouseUpMonitor = NSEvent.addLocalMonitorForEvents(matching: [.otherMouseUp]) { [weak self] event in
-            guard event.buttonNumber == 2 else { return event }
-            let now = Date()
-            Task { @MainActor in self?.handleMiddleMouseUp(at: now) }
-            return event
-        }
-        globalMouseUpMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.otherMouseUp]) { [weak self] event in
-            guard event.buttonNumber == 2 else { return }
-            let now = Date()
-            Task { @MainActor in self?.handleMiddleMouseUp(at: now) }
-        }
-    }
-
-    func handleMiddleMouseDown(at now: Date) {
+    /// Internal entry for tests; the real Timer feeds the polled
+    /// `NSEvent.pressedMouseButtons` bit mask result.
+    func tickMouse(pressed: Bool, at now: Date) {
         switch state {
         case .idle:
-            state = .firstDown(since: now)
+            if pressed { state = .firstDown(since: now) }
+        case .firstDown(let since):
+            if !pressed {
+                let held = now.timeIntervalSince(since)
+                state = (held <= firstTapMax) ? .firstReleased(at: now) : .idle
+            }
         case .firstReleased(let at):
-            if now.timeIntervalSince(at) <= gap {
-                if suppressionGate?() == true { state = .idle; return }
+            if now.timeIntervalSince(at) > gap {
+                if pressed {
+                    state = .firstDown(since: now)
+                } else {
+                    state = .idle
+                }
+                return
+            }
+            if pressed {
+                if suppressionGate?() == true {
+                    state = .idle
+                    return
+                }
                 state = .secondDown
                 onTriggered?()
-            } else {
-                state = .firstDown(since: now)
             }
-        default:
-            break
-        }
-    }
-
-    func handleMiddleMouseUp(at now: Date) {
-        switch state {
-        case .firstDown(let since):
-            let held = now.timeIntervalSince(since)
-            state = (held <= firstTapMax) ? .firstReleased(at: now) : .idle
         case .secondDown:
-            onReleased?()
-            state = .idle
-        default:
-            break
+            if !pressed {
+                onReleased?()
+                state = .idle
+            }
         }
     }
 }

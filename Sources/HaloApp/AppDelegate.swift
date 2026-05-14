@@ -83,15 +83,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         monitor.start()
         doubleTapMonitor = monitor
 
-        // If Accessibility is denied, surface a one-shot alert so the
-        // user understands why double-tap might "do nothing". The chord
-        // path doesn't need AX (Carbon RegisterEventHotKey works
-        // without it), so we only flag this when the double-tap monitor
-        // actually wanted global events.
-        if monitor.lacksAccessibilityPermission {
-            presentAccessibilityHint()
-        }
-
         // First-launch welcome card. Deferred one runloop tick so the menu
         // bar item finishes mounting and the user sees it referenced from
         // the card's "Customize" tip without it being absent from the bar.
@@ -103,30 +94,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Public so Settings → General can replay the welcome card on demand.
     func replayWelcome() {
         welcome.showAgain()
-    }
-
-    /// One-shot alert when `AXIsProcessTrusted()` returned false at
-    /// DoubleTapMonitor.start(). Without Accessibility the global event
-    /// monitor doesn't receive `.flagsChanged` outside Halo's own
-    /// process so the cross-app double-tap trigger silently fails.
-    private func presentAccessibilityHint() {
-        let alert = NSAlert()
-        alert.messageText = NSLocalizedString(
-            "Halo needs Accessibility access for double-tap triggers",
-            comment: "Alert shown on launch when AX permission is denied"
-        )
-        alert.informativeText = NSLocalizedString(
-            "Open System Settings → Privacy & Security → Accessibility and enable Halo. The ⌘⌥ Space chord works either way, but ⌥ / ⌘ / Mouse 3 double-tap needs this permission to receive events outside Halo's own window.",
-            comment: "Alert body explaining what to do about denied AX"
-        )
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: NSLocalizedString("Open System Settings", comment: ""))
-        alert.addButton(withTitle: NSLocalizedString("Later", comment: ""))
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
-            NSWorkspace.shared.open(url)
-        }
     }
 
     /// Suspend global hotkey + double-tap processing while the welcome

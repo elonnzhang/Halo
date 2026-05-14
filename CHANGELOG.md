@@ -24,7 +24,7 @@ All notable changes to Halo.
 - `Switcher.switchToAsync` awaits `NSWorkspace.openApplication`'s real completion handler — corrupt / moved / quarantined bundles now drop into shake-and-dismiss instead of optimistic ripple-and-vanish.
 - `UsageStore` prunes the 7-day window on every write (was read-only filtered, JSON grew unbounded).
 - `AppPreferences` whitelist is cached as a `Set<String>` inside AppDelegate; hot-path gate no longer decodes JSON per keypress. `registerHotkey()` now only fires when the chord actually changed (was running ~10×/sec while dragging Panel Size slider).
-- DoubleTapMonitor probes `AXIsProcessTrusted()` at start and surfaces a one-shot alert with deep link to Privacy & Security → Accessibility when global events would be silently dropped.
+- `DoubleTapMonitor` switched back to passive state polling (25 Hz Timer reading `CGEventSource.keyState` for keyboard, `NSEvent.pressedMouseButtons` for middle mouse) instead of `NSEvent.addGlobalMonitorForEvents`. **Halo no longer requires Accessibility permission for any trigger path** — the global-monitor approach was an interim v1.1 implementation choice; `CGEventSource.keyState` is keyCode-aware so left/right Option/Control distinctions are preserved. Drops the launch-time AX alert and `AXIsProcessTrusted()` probe.
 
 ### Localization
 

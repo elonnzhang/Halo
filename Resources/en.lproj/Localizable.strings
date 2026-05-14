@@ -126,12 +126,6 @@
 "Add app" = "Add app";
 "Remove selected" = "Remove selected";
 
-/* Accessibility hint */
-"Halo needs Accessibility access for double-tap triggers" = "Halo needs Accessibility access for double-tap triggers";
-"Open System Settings → Privacy & Security → Accessibility and enable Halo. The ⌘⌥ Space chord works either way, but ⌥ / ⌘ / Mouse 3 double-tap needs this permission to receive events outside Halo's own window." = "Open System Settings → Privacy & Security → Accessibility and enable Halo. The ⌘⌥ Space chord works either way, but ⌥ / ⌘ / Mouse 3 double-tap needs this permission to receive events outside Halo's own window.";
-"Open System Settings" = "Open System Settings";
-"Later" = "Later";
-
 /* Welcome window */
 "Welcome to Halo" = "Welcome to Halo";
 "Summon" = "Summon";

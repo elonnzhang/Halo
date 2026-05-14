@@ -264,7 +264,7 @@
 **About**
 - 渐变图标徽章、版本号 + build、GitHub / 许可证链接、运行时元数据、内嵌 "导出诊断日志" 按钮
 
-**Accessibility 权限**: 主组合键不需要 AX (Carbon 路径); 双击触发需要 AX 才能接收 Halo 窗口外的 `flagsChanged` / `.otherMouseDown` 事件. 启动时通过 `AXIsProcessTrusted()` 探测并在被拒时弹一次性提示, 内嵌 "打开系统设置" 深链.
+**Accessibility 权限**: 两条触发路径都**不需要 AX**. 主组合键走 Carbon `RegisterEventHotKey`; 双击辅助键盘路径轮询 `CGEventSource.keyState` (HID 级别, 左右 Option / Control 可区分), 中键路径读 `NSEvent.pressedMouseButtons` bitmask. 均为被动状态查询, 与 `NSEvent.modifierFlags` 同一信任级别.
 
 ## 12. 首次运行
 

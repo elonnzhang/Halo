@@ -81,9 +81,7 @@ mockups/                可点击 UI 原型 —— halo.html(实时轮盘)、hal
 
 ## 权限
 
-**主组合键**(`⌘⌥ Space`)**不需要辅助功能权限** —— Carbon `RegisterEventHotKey` 不依赖 AX。激活追踪使用 `NSWorkspace` 通知;切换使用 `NSWorkspace.openApplication`(macOS 14+ 合作式激活)。
-
-**双击辅助触发**(⌥ / ⌘ / ⌃ / 鼠标中键)**需要辅助功能权限**,因为它要监听全局 `NSEvent.flagsChanged` / `.otherMouseDown`。Halo 启动时通过 `AXIsProcessTrusted()` 非交互探测,若被拒会弹出一次性提示,直接深链到「系统设置 → 隐私与安全性 → 辅助功能」。主组合键路径任何时候都能工作。
+Halo **完全不需要辅助功能权限**。两条触发路径都用被动状态查询:主组合键走 Carbon `RegisterEventHotKey`;双击辅助键盘路径轮询 `CGEventSource.keyState`(keyCode 级别, 左右 Option / Control 可区分), 中键路径读 `NSEvent.pressedMouseButtons` bitmask。激活追踪走 `NSWorkspace` 通知。无 event tap、不读取辅助功能树、无输入监控。
 
 ## 数据与隐私
 

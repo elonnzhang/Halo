@@ -124,11 +124,6 @@
 "Add app" = "添加应用";
 "Remove selected" = "移除所选";
 
-/* Accessibility hint */
-"Halo needs Accessibility access for double-tap triggers" = "Halo 需要辅助功能权限才能识别双击触发";
-"Open System Settings → Privacy & Security → Accessibility and enable Halo. The ⌘⌥ Space chord works either way, but ⌥ / ⌘ / Mouse 3 double-tap needs this permission to receive events outside Halo's own window." = "请在「系统设置 → 隐私与安全性 → 辅助功能」中启用 Halo。⌘⌥ Space 组合键无需权限即可工作,但 ⌥ / ⌘ / Mouse 3 双击需要该权限才能在 Halo 窗口外接收事件。";
-"Open System Settings" = "打开系统设置";
-"Later" = "稍后";
 
 /* Welcome window */
 "Welcome to Halo" = "欢迎使用 Halo";
