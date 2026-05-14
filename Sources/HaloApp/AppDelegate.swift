@@ -260,12 +260,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let pinnedBundleIDs = Set(pinSlots.compactMap { $0 })
         let hasPins = !pinnedBundleIDs.isEmpty
 
-        // Frequency-sorted apps with already-pinned bundleIDs removed —
-        // pinned apps live at fixed indices, freq fills the *unpinned*
-        // slots so no app appears twice in the wheel.
+        // Frequency-sorted apps. Compute the full top-N once; reuse it
+        // for (a) filling unpinned slots and (b) building the resolver's
+        // frequencyRanking dict. Pre-fix this called `freqEngine.top`
+        // twice — fine for ~10 apps but it doubled the work on every
+        // workspace activation event and prefs `objectWillChange`.
         let freqEngine = HaloEngine(profile: prefs.frequencyProfile, pinned: [])
-        let freqApps = freqEngine.top(n: userMaxN, from: records)
-            .filter { !pinnedBundleIDs.contains($0.bundleID) }
+        let freqTopN = freqEngine.top(n: userMaxN, from: records)
+        let freqApps = freqTopN.filter { !pinnedBundleIDs.contains($0.bundleID) }
 
         // Decide what app (if any) sits at each visible slot.
         let placed: [AppRef?]
@@ -316,8 +318,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // to N ∈ 4...12, and `userMaxN` is already clamped to that range;
         // pinned apps that don't make it into the top-N (and empty slots)
         // fall back to `Int.max`, tiebroken by slot index.
-        let frequencyRanking = freqEngine
-            .top(n: userMaxN, from: records)
+        let frequencyRanking = freqTopN
             .enumerated()
             .reduce(into: [String: Int]()) { acc, pair in
                 acc[pair.element.bundleID] = pair.offset
@@ -401,8 +402,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             state.scrollAnchor = nil
             return
         }
+        // Search the rendered slots (pinned + freq-filled) rather than
+        // only the pinned array — otherwise a frontmost app that's
+        // showing up via the frequency model gets ignored and the
+        // anchor falls back to slot 0.
         if let bundleID = lastFrontmostBundleID,
-           let idx = prefs.pinnedBundleIDs.firstIndex(where: { $0 == bundleID }),
+           let idx = state.slots.firstIndex(where: { $0.app?.bundleID == bundleID }),
            idx < state.slotCount {
             state.scrollAnchor = idx
         } else {

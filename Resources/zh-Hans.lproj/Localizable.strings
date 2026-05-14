@@ -40,11 +40,11 @@
 "Double-tap ⌘ window" = "双击 ⌘ 间隔";
 "Second trigger: double-tap ⌘ alone — the second press must land within this window. Hold the second ⌘ to navigate, release to commit." = "第二触发方式:单独双击 ⌘——两次按下需在此时间窗内完成。按住第二次 ⌘ 选择槽位,松开提交。";
 
-/* Apps tab */
+/* Apps tab (v1.0 Colors-tab leftover keys; "Clear" 与下方 destructive
+   alert 的 "Clear" 重复定义,移除此处保留 alert 那行的 "清空") */
 "Auto" = "自动";
 "Pin…" = "选择…";
 "Change" = "更改";
-"Clear" = "清除";
 "Reset color" = "重置颜色";
 "Each slot is either Auto (frequency picks the app) or pinned to a specific app. Pinned apps can have their identity colour overridden inline." = "每个槽位可设为「自动」(按使用频率挑选应用) 或手动选择指定应用。已选择的应用可在右侧覆盖识别色。";
 "Hidden pins (slot count too low)" = "已选择但隐藏的应用 (当前槽位不足)";

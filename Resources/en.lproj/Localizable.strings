@@ -40,11 +40,13 @@
 "Double-tap ⌘ window" = "Double-tap ⌘ window";
 "Second trigger: double-tap ⌘ alone — the second press must land within this window. Hold the second ⌘ to navigate, release to commit." = "Second trigger: double-tap ⌘ alone — the second press must land within this window. Hold the second ⌘ to navigate, release to commit.";
 
-/* Apps tab */
+/* Apps tab (v1.0 Colors tab leftovers — Pin… / Change / Reset color are
+   referenced from BindingWheelView's SlotEditorPopover, not the dead
+   Colors tab. "Clear" was duplicated against the destructive alert
+   button further down; removed here so the alert string wins.) */
 "Auto" = "Auto";
 "Pin…" = "Pin…";
 "Change" = "Change";
-"Clear" = "Clear";
 "Reset color" = "Reset color";
 "Each slot is either Auto (frequency picks the app) or pinned to a specific app. Pinned apps can have their identity colour overridden inline." = "Each slot is either Auto (frequency picks the app) or pinned to a specific app. Pinned apps can have their identity colour overridden inline.";
 "Hidden pins (slot count too low)" = "Hidden pins (slot count too low)";

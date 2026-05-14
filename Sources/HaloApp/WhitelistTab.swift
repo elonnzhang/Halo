@@ -13,6 +13,11 @@ struct WhitelistTab: View {
     @State private var selectedBundleID: String?
     @State private var pickerVisible = false
     @State private var confirmingRecommendedReplace = false
+    // Cache for `displayName(for:)` — `NSWorkspace.urlForApplication` is
+    // a Launch Services hop that's free per-call but the previous impl
+    // ran it per row per SwiftUI redraw, which adds up on a 20-row
+    // whitelist that re-renders on every selection change.
+    @State private var nameCache: [String: String] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -189,8 +194,13 @@ struct WhitelistTab: View {
     }
 
     private func displayName(for bundleID: String) -> String {
+        if let cached = nameCache[bundleID] { return cached }
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID)
         else { return bundleID }
-        return (url.lastPathComponent as NSString).deletingPathExtension
+        let name = (url.lastPathComponent as NSString).deletingPathExtension
+        // @State writes inside view body trigger an immediate re-render
+        // loop, so defer the cache update one runloop tick.
+        DispatchQueue.main.async { nameCache[bundleID] = name }
+        return name
     }
 }
