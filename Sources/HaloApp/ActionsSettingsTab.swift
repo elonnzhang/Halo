@@ -3,13 +3,12 @@ import AppKit
 import HaloCore
 import HaloUI
 
-/// Per-app Action Ring bindings (Settings → Actions).
+/// Settings → Actions: bind ONE custom Action Arc chip per app.
 ///
-/// Left column: all bundleIDs that have at least one bound action, plus an
-/// "Add app…" button that surfaces `AppPickerSheet`.
-/// Right column: the action list for the selected app, with reorder /
-/// edit / delete and an "Add action…" button that opens
-/// `ActionEditorSheet`.
+/// The arc is built into Halo as 3 fixed builtins (close / fullscreen / hide)
+/// plus a 4th user-bound custom. This tab manages that 4th chip per app.
+/// `AppPreferences.actions(forBundleID:)` still stores `[HaloAction]` but
+/// the arc renderer reads only `.first`; users can only have one here.
 struct ActionsTab: View {
     @ObservedObject var prefs: AppPreferences
     @Binding var focusBundleID: String?
@@ -23,7 +22,7 @@ struct ActionsTab: View {
             appList
                 .frame(width: 220)
             Divider()
-            actionList
+            actionDetail
                 .frame(maxWidth: .infinity)
         }
         .padding(.vertical, 8)
@@ -35,8 +34,8 @@ struct ActionsTab: View {
                 if let id = picked {
                     selectedBundleID = id
                     // Open the editor immediately so first-time users land
-                    // on a populated form instead of an empty list.
-                    editing = ActionEditorTarget(bundleID: id, index: nil, action: nil)
+                    // in the form instead of staring at an empty pane.
+                    editing = ActionEditorTarget(bundleID: id, existing: nil)
                 }
             }
         }
@@ -44,7 +43,7 @@ struct ActionsTab: View {
             ActionEditorSheet(target: target) { saved in
                 editing = nil
                 guard let saved = saved else { return }
-                applyEdit(target: target, action: saved)
+                prefs.setActions([saved], forBundleID: target.bundleID)
             }
         }
     }
@@ -66,7 +65,7 @@ struct ActionsTab: View {
                         appRow(id)
                     }
                     if sortedBundleIDs.isEmpty {
-                        Text("No apps configured.\nTap + to bind actions to an app.")
+                        Text("No apps configured.\nTap + to bind a custom action.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -92,7 +91,7 @@ struct ActionsTab: View {
 
     private func appRow(_ id: String) -> some View {
         let isSelected = id == selectedBundleID
-        let count = prefs.actions(forBundleID: id).count
+        let hasCustom = prefs.actions(forBundleID: id).first != nil
         return Button {
             selectedBundleID = id
         } label: {
@@ -109,10 +108,9 @@ struct ActionsTab: View {
                 Text(displayName(for: id))
                     .lineLimit(1)
                 Spacer()
-                Text("\(count)")
-                    .monospacedDigit()
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Circle()
+                    .fill(hasCustom ? Color.accentColor : Color.clear)
+                    .frame(width: 6, height: 6)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
@@ -125,40 +123,21 @@ struct ActionsTab: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Action list (right column)
+    // MARK: - Detail (right column)
 
-    private var actionList: some View {
+    private var actionDetail: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let id = selectedBundleID {
-                actionHeader(for: id)
+                detailHeader(for: id)
                 Divider()
                 ScrollView {
-                    LazyVStack(spacing: 4) {
-                        let actions = prefs.actions(forBundleID: id)
-                        ForEach(Array(actions.enumerated()), id: \.element.id) { idx, action in
-                            actionRow(bundleID: id, index: idx, action: action)
-                        }
-                        if actions.isEmpty {
-                            Text("No actions yet. Tap + Add action to bind your first.")
-                                .foregroundStyle(.secondary)
-                                .padding(.top, 32)
-                                .frame(maxWidth: .infinity, alignment: .center)
-                        }
+                    VStack(alignment: .leading, spacing: 14) {
+                        chipExplainer
+                        currentCustomRow(for: id)
                     }
-                    .padding(.vertical, 8)
-                    .padding(.horizontal, 12)
+                    .padding(.vertical, 14)
+                    .padding(.horizontal, 16)
                 }
-                Divider()
-                Button {
-                    editing = ActionEditorTarget(bundleID: id, index: nil, action: nil)
-                } label: {
-                    Label("Add action…", systemImage: "plus")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: "bolt.circle")
@@ -172,7 +151,7 @@ struct ActionsTab: View {
         }
     }
 
-    private func actionHeader(for id: String) -> some View {
+    private func detailHeader(for id: String) -> some View {
         HStack(spacing: 10) {
             if let icon = AppIconResolver.icon(for: id) {
                 Image(nsImage: icon)
@@ -194,57 +173,100 @@ struct ActionsTab: View {
                 Label("Remove app", systemImage: "trash")
                     .labelStyle(.iconOnly)
             }
-            .help("Remove this app's actions")
+            .help("Remove this app's custom action")
             .buttonStyle(.borderless)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
     }
 
-    private func actionRow(bundleID: String, index: Int, action: HaloAction) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: action.effectiveSFSymbol)
-                .frame(width: 22, height: 22)
-                .foregroundStyle(Color.accentColor)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(action.label)
-                    .font(.system(size: 13, weight: .semibold))
-                Text(payloadPreview(action))
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+    /// Show the arc layout so the user knows where the custom chip sits.
+    private var chipExplainer: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Arc chips")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            HStack(spacing: 12) {
+                chipPreview(symbol: "power", color: Color(red: 1, green: 0.27, blue: 0.23), label: "Quit", builtin: true)
+                chipPreview(symbol: "arrow.up.left.and.arrow.down.right", color: Color(red: 0.97, green: 0.71, blue: 0), label: "Fullscreen", builtin: true)
+                chipPreview(symbol: "moon", color: Color(red: 0.23, green: 0.51, blue: 0.96), label: "Hide", builtin: true)
+                chipPreview(symbol: "wand.and.stars", color: Color(red: 0.11, green: 0.73, blue: 0.33), label: "Custom", builtin: false, isCustomSlot: true)
             }
-            Spacer()
-            Text(slotKeyHint(forIndex: index))
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(.tertiary)
-                .frame(width: 22)
-            Menu {
-                Button("Edit…") {
-                    editing = ActionEditorTarget(bundleID: bundleID, index: index, action: action)
-                }
-                Button("Move up") {
-                    moveAction(bundleID: bundleID, from: index, to: index - 1)
-                }
-                .disabled(index == 0)
-                Button("Move down") {
-                    moveAction(bundleID: bundleID, from: index, to: index + 1)
-                }
-                .disabled(index + 1 >= prefs.actions(forBundleID: bundleID).count)
-                Divider()
-                Button("Delete", role: .destructive) {
-                    prefs.removeAction(at: index, forBundleID: bundleID)
-                }
-            } label: {
-                Image(systemName: "ellipsis.circle")
-            }
-            .menuStyle(.borderlessButton)
-            .frame(width: 28)
+            Text("Three system chips are fixed across every app. The fourth is yours.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.secondary.opacity(0.06)))
+    }
+
+    private func chipPreview(
+        symbol: String,
+        color: Color,
+        label: String,
+        builtin: Bool,
+        isCustomSlot: Bool = false
+    ) -> some View {
+        VStack(spacing: 4) {
+            ZStack {
+                Circle()
+                    .fill(Color.black.opacity(0.55))
+                    .overlay(Circle().strokeBorder(isCustomSlot ? color : color.opacity(0.3), lineWidth: isCustomSlot ? 1.4 : 0.8))
+                    .frame(width: 36, height: 36)
+                Image(systemName: symbol)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(color)
+            }
+            Text(label)
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(builtin ? .secondary : .primary)
+        }
+    }
+
+    private func currentCustomRow(for id: String) -> some View {
+        let current = prefs.actions(forBundleID: id).first
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Your custom chip")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            if let action = current {
+                HStack(spacing: 10) {
+                    Image(systemName: action.effectiveSFSymbol)
+                        .frame(width: 22, height: 22)
+                        .foregroundStyle(Color.accentColor)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(action.label).font(.system(size: 13, weight: .semibold))
+                        Text(payloadPreview(action))
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    Spacer()
+                    Button("Edit") {
+                        editing = ActionEditorTarget(bundleID: id, existing: action)
+                    }
+                    Button(role: .destructive) {
+                        prefs.setActions([], forBundleID: id)
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                }
+                .padding(10)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.08)))
+            } else {
+                Button {
+                    editing = ActionEditorTarget(bundleID: id, existing: nil)
+                } label: {
+                    Label("Add custom action…", systemImage: "plus.circle.fill")
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.borderless)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.06)))
+            }
+        }
     }
 
     private func sectionHeader(_ text: String) -> some View {
@@ -278,47 +300,17 @@ struct ActionsTab: View {
         case .runShortcut: return "⌥ Shortcut · \(action.payload)"
         }
     }
-
-    /// Mirror of `RadialView.keyGlyph(forSlot:)` so the user can preview
-    /// which digit key triggers each action slot. Kept inline rather than
-    /// reaching into HaloUI's fileprivate helper to avoid widening that
-    /// surface for a Settings-only need.
-    private func slotKeyHint(forIndex index: Int) -> String {
-        let table = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "−", "="]
-        return table.indices.contains(index) ? table[index] : ""
-    }
-
-    private func moveAction(bundleID: String, from: Int, to: Int) {
-        var arr = prefs.actions(forBundleID: bundleID)
-        guard arr.indices.contains(from), to >= 0, to < arr.count else { return }
-        let item = arr.remove(at: from)
-        arr.insert(item, at: to)
-        prefs.setActions(arr, forBundleID: bundleID)
-    }
-
-    private func applyEdit(target: ActionEditorTarget, action: HaloAction) {
-        var arr = prefs.actions(forBundleID: target.bundleID)
-        if let idx = target.index, arr.indices.contains(idx) {
-            arr[idx] = action
-        } else {
-            arr.append(action)
-        }
-        prefs.setActions(arr, forBundleID: target.bundleID)
-    }
 }
 
-/// Identifies which row the Action Editor sheet is targeting. `index` /
-/// `action` are nil when adding a new entry.
+/// Identifies which custom-chip the editor is targeting. `existing: nil`
+/// means "add new".
 struct ActionEditorTarget: Identifiable {
     let id = UUID()
     let bundleID: String
-    let index: Int?
-    let action: HaloAction?
+    let existing: HaloAction?
 }
 
-/// Add / edit a single `HaloAction`. Kind picker swaps the payload field's
-/// placeholder + helper text but keeps the same TextField storage so the
-/// user doesn't lose their typing when switching kinds mid-edit.
+/// Add / edit the single user-custom chip for an app.
 struct ActionEditorSheet: View {
     let target: ActionEditorTarget
     let onFinish: (HaloAction?) -> Void
@@ -331,7 +323,7 @@ struct ActionEditorSheet: View {
     init(target: ActionEditorTarget, onFinish: @escaping (HaloAction?) -> Void) {
         self.target = target
         self.onFinish = onFinish
-        let existing = target.action
+        let existing = target.existing
         _label = State(initialValue: existing?.label ?? "")
         _kind = State(initialValue: existing?.kind ?? .openFolder)
         _payload = State(initialValue: existing?.payload ?? "")
@@ -340,7 +332,7 @@ struct ActionEditorSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(target.action == nil ? "Add action" : "Edit action")
+            Text(target.existing == nil ? "Add custom action" : "Edit custom action")
                 .font(.title3.bold())
 
             Form {
@@ -374,7 +366,7 @@ struct ActionEditorSheet: View {
                 Spacer()
                 Button("Cancel") { onFinish(nil) }
                     .keyboardShortcut(.cancelAction)
-                Button(target.action == nil ? "Add" : "Save") {
+                Button(target.existing == nil ? "Add" : "Save") {
                     onFinish(buildAction())
                 }
                 .keyboardShortcut(.defaultAction)
@@ -408,7 +400,7 @@ struct ActionEditorSheet: View {
 
     private func buildAction() -> HaloAction {
         HaloAction(
-            id: target.action?.id ?? UUID(),
+            id: target.existing?.id ?? UUID(),
             label: label.trimmingCharacters(in: .whitespacesAndNewlines),
             kind: kind,
             payload: payload.trimmingCharacters(in: .whitespacesAndNewlines),

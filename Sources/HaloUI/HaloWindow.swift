@@ -217,10 +217,32 @@ public final class HaloWindow {
             y: (mouse.y - panel.frame.minY) / scale
         )
         let size = HaloUI.Geometry.totalDiameter
+        // Centered: NSEvent.mouseLocation is y-up (Cocoa convention), and
+        // panel.frame.minY is also y-up. After subtracting (size/2, size/2)
+        // we have a math-convention point (y-up, +y is "up the screen").
         let centered = CGPoint(
             x: local.x - size / 2,
             y: local.y - size / 2
         )
+
+        // Arc active: hit-test chips first. Chips sit outside the wheel's
+        // reach radius and would never register on the slot path.
+        if let arc = state.activeArc {
+            let chipIdx = ActionArcGeometry.chipIndex(
+                forCenteredPoint: centered,
+                slotIndex: arc.slotIndex,
+                sectorCount: state.slotCount,
+                chipCount: arc.chips.count
+            )
+            if state.arcHoverChip != chipIdx {
+                state.arcHoverChip = chipIdx
+            }
+            // We still update slot hover so the underlying slot stays lit
+            // (helps the user know which slot the arc belongs to). Skip the
+            // outer fall-through though — when the cursor is on a chip we
+            // don't want the slot ring to claim it as a hover-outside-chip.
+        }
+
         // outerRadius uses `reachDiameter`, not `haloDiameter`: the cursor
         // counts as hovering a sector anywhere within that wider invisible
         // ring around the wheel. Past it the cursor is "off the wheel" and

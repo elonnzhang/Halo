@@ -29,15 +29,8 @@ public struct RadialView: View {
         ZStack {
             haloGlow
             wheelBackground
-            if case .actions(let ctx) = state.layer {
-                ForEach(state.actionSlots) { slot in
-                    actionSectorView(slot: slot, context: ctx)
-                }
-                actionRimIndicator(color: ctx.identityColor.swiftUIColor)
-            } else {
-                ForEach(state.slots) { slot in
-                    sectorView(slot: slot)
-                }
+            ForEach(state.slots) { slot in
+                sectorView(slot: slot)
             }
             centerHub
             // Only the label sits inside a GlassEffectContainer so the chip
@@ -46,6 +39,12 @@ public struct RadialView: View {
             // the sector icons must NOT be inside any container or they get
             // pulled into the glass sampling and frosted.
             labelOverlay
+            // Action Arc (layer 2) overlays the wheel when summoned. Lives
+            // on top of every slot so chips can extend past the visible
+            // disc rim. The wheel itself stays visible underneath.
+            if let arc = state.activeArc {
+                ActionArcView(arc: arc, hoverChip: state.arcHoverChip)
+            }
         }
         .frame(width: HaloUI.Geometry.totalDiameter,
                height: HaloUI.Geometry.totalDiameter)
@@ -59,18 +58,19 @@ public struct RadialView: View {
     }
 
     private var accessibilityRootLabel: String {
-        if case .actions(let ctx) = state.layer {
-            return "Halo action ring for \(ctx.appName)"
+        if let arc = state.activeArc {
+            return "Halo action arc for \(arc.appName)"
         }
         return "Halo radial app launcher"
     }
 
     @ViewBuilder
     private var labelOverlay: some View {
-        if case .actions = state.layer {
-            if let slot = hoveredActionSlot {
-                actionLabelChip(for: slot)
-            }
+        // While the arc is summoned we suppress the slot label chip — the
+        // chip would overlap arc buttons and adds redundant info (the hub
+        // already names the target app).
+        if state.activeArc != nil {
+            EmptyView()
         } else if #available(macOS 26.0, *) {
             GlassEffectContainer {
                 if let slot = hoveredSlot, slot.app != nil {
@@ -84,25 +84,11 @@ public struct RadialView: View {
         }
     }
 
-    // MARK: - Layer-aware helpers
-
-    /// Accent colour driving the halo glow, sector tint, and rim halo
-    /// regardless of which layer we're on. In layer 2 every action slot
-    /// shares the context's identity colour (the app's identity colour),
-    /// so we don't peer at individual action slots for accent.
+    /// Accent colour for the halo glow + wheel tint. Returns nil when no
+    /// slot is hovered (idle wheel). The arc has its own visual treatment
+    /// so we don't blend its accent here.
     private var currentHoverAccent: Color? {
-        switch state.layer {
-        case .actions(let ctx):
-            return hoveredActionSlot == nil ? nil : ctx.identityColor.swiftUIColor
-        case .slots:
-            return hoveredSlot?.identityColor.swiftUIColor
-        }
-    }
-
-    /// Slot the user is currently hovering when layer 2 is active.
-    private var hoveredActionSlot: HaloActionSlot? {
-        guard let id = state.currentHoverSlot else { return nil }
-        return state.actionSlots.first { $0.id == id }
+        hoveredSlot?.identityColor.swiftUIColor
     }
 
     // MARK: - Halo glow
@@ -463,178 +449,6 @@ public struct RadialView: View {
         return table.indices.contains(index) ? table[index] : nil
     }
 
-    // MARK: - Action sector (layer 2)
-
-    /// Paint sectors for layer 2. Same geometry as `sectorView` but every
-    /// sector shares the context's identity colour and the inner content
-    /// is an SF Symbol + 2-line label (or "+ Configure" / "+ Add action"
-    /// for empty/unconfigured slots).
-    private func actionSectorView(slot: HaloActionSlot, context: HaloState.ActionContext) -> some View {
-        let isHovered = isHovered(slot.id)
-        let isCommitting = isCommitting(slot.id)
-        let isActive = isHovered || isPreviewing(slot.id)
-        let accent = context.identityColor.swiftUIColor
-
-        // Idle fill is a touch warmer than layer 1 so the second-layer
-        // sectors read as "different surface". Idle 6% vs layer 1 1.5%
-        // (spec §4 item 3).
-        let idleFill = accent.opacity(0.06)
-        let innerFill: Color
-        let outerFill: Color
-        if isHovered {
-            innerFill = accent.opacity(0.80)
-            outerFill = accent.opacity(0.14)
-        } else {
-            innerFill = idleFill
-            outerFill = idleFill
-        }
-        let strokeColor: Color = isActive ? accent : accent.opacity(0.10)
-        let strokeWidth: CGFloat = isActive ? 1.4 : 0.5
-
-        let sector = SectorShape(
-            index: slot.id,
-            sectorCount: state.slotCount,
-            gapDegrees: HaloUI.Geometry.slotGapDegrees
-        )
-
-        return ZStack {
-            sector
-                .fill(
-                    RadialGradient(
-                        stops: [
-                            .init(color: innerFill, location: 0.0),
-                            .init(color: innerFill, location: 0.15),
-                            .init(color: outerFill, location: 0.55),
-                            .init(color: outerFill, location: 1.0),
-                        ],
-                        center: .center,
-                        startRadius: HaloUI.Geometry.deadzoneDiameter / 2,
-                        endRadius: HaloUI.Geometry.haloDiameter / 2
-                    )
-                )
-                .overlay(sector.stroke(strokeColor, lineWidth: strokeWidth))
-                .overlay {
-                    if isActive {
-                        sector
-                            .stroke(accent.opacity(0.55), lineWidth: 6)
-                            .blur(radius: 4)
-                            .mask(sector)
-                            .allowsHitTesting(false)
-                    }
-                }
-                .frame(
-                    width: HaloUI.Geometry.haloDiameter,
-                    height: HaloUI.Geometry.haloDiameter
-                )
-                .mask(
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                stops: [
-                                    .init(color: .black, location: 0.0),
-                                    .init(color: .black, location: AppPreferences.visibleOuterFactor),
-                                    .init(color: .clear, location: 1.0),
-                                ],
-                                center: .center,
-                                startRadius: 0,
-                                endRadius: HaloUI.Geometry.haloDiameter / 2
-                            )
-                        )
-                )
-
-            actionSectorContent(slot: slot, isActive: isActive, accent: accent)
-                .allowsHitTesting(false)
-        }
-        .scaleEffect(isCommitting ? 1.06 : 1.0)
-        .animation(
-            reduceMotion ? .easeOut(duration: 0.05) : .easeOut(duration: 0.14),
-            value: isActive
-        )
-        .animation(
-            reduceMotion ? .easeOut(duration: 0.05) : .easeOut(duration: 0.12),
-            value: isCommitting
-        )
-    }
-
-    private func actionSectorContent(slot: HaloActionSlot, isActive: Bool, accent: Color) -> some View {
-        let glyphCenter = RadialGeometry.center(
-            of: slot.id,
-            sectorCount: state.slotCount,
-            radius: HaloUI.Geometry.iconRadius
-        )
-        let rimRadius = HaloUI.Geometry.visibleOuterRadius - 10
-        let hintFloor = HaloUI.Geometry.iconRadius
-            + HaloUI.Geometry.iconSize / 2
-            + 10
-        let hintRadius = max(rimRadius, hintFloor)
-        let hintCenter = RadialGeometry.center(
-            of: slot.id,
-            sectorCount: state.slotCount,
-            radius: hintRadius
-        )
-        let showKeyHint = AppPreferences.shared.numberKeyCommit
-        let glyph = Self.keyGlyph(forSlot: slot.id)
-        return ZStack {
-            ActionSlotContent(slot: slot, isActive: isActive, accent: accent)
-                .frame(width: HaloUI.Geometry.iconSize + 6,
-                       height: HaloUI.Geometry.iconSize + 6)
-                .offset(x: glyphCenter.x, y: -glyphCenter.y)
-
-            if showKeyHint, let glyph {
-                KeyHint(glyph: glyph, isActive: isActive, accent: accent)
-                    .offset(x: hintCenter.x, y: -hintCenter.y)
-            }
-        }
-    }
-
-    /// Layer-2 boundary indicator: a thin accent-coloured ring just inside
-    /// the visible disc rim. Layer 1 doesn't draw this, so the user always
-    /// has a non-verbal cue that "you're on the action ring now".
-    private func actionRimIndicator(color: Color) -> some View {
-        Circle()
-            .strokeBorder(color.opacity(0.30), lineWidth: 0.6)
-            .frame(width: HaloUI.Geometry.visibleOuterRadius * 2,
-                   height: HaloUI.Geometry.visibleOuterRadius * 2)
-            .allowsHitTesting(false)
-    }
-
-    /// Glass capsule for the hovered action's label. Mirrors `labelChip`
-    /// but pulls text from the action and bails on the macOS 26
-    /// `glassEffectID` morph because action labels are short-lived strings
-    /// not worth a glass-namespace entry.
-    private func actionLabelChip(for slot: HaloActionSlot) -> some View {
-        let center = RadialGeometry.center(
-            of: slot.id,
-            sectorCount: state.slotCount,
-            radius: HaloUI.Geometry.labelRadius
-        )
-        let text = slot.action?.label ?? "Add action"
-        return Text(text)
-            .font(.system(size: 13, weight: .bold))
-            .foregroundStyle(Color.white)
-            .lineLimit(2)
-            .minimumScaleFactor(0.82)
-            .multilineTextAlignment(.center)
-            .truncationMode(.tail)
-            .shadow(color: .black.opacity(0.55), radius: 1.5, x: 0, y: 0.5)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(Color.black.opacity(0.30))
-                    .overlay {
-                        Capsule(style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.16), lineWidth: 0.6)
-                    }
-            )
-            .shadow(color: .black.opacity(0.38), radius: 10, x: 0, y: 5)
-            .frame(maxWidth: HaloUI.Geometry.labelMaxWidth)
-            .fixedSize(horizontal: false, vertical: true)
-            .offset(x: center.x, y: -center.y)
-            .transition(.opacity.combined(with: .scale(scale: 0.94)))
-            .animation(.easeOut(duration: 0.14), value: slot.id)
-    }
-
     // MARK: - Center hub (recessed lens)
 
     private var centerHub: some View {
@@ -695,24 +509,18 @@ public struct RadialView: View {
     @ViewBuilder
     private var centerHubIcon: some View {
         let iconSide = HaloUI.Geometry.deadzoneDiameter * 0.62
-        if case .actions(let ctx) = state.layer {
-            // Layer 2: hub always shows the target app so the user keeps
-            // their orientation while picking an action.
-            VStack(spacing: 2) {
-                if let icon = AppIconResolver.icon(for: ctx.bundleID) {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .interpolation(.high)
-                        .scaledToFit()
-                        .frame(width: iconSide, height: iconSide)
-                }
-                Text("ACTIONS")
-                    .font(.system(size: 8.5, weight: .bold, design: .rounded))
-                    .tracking(1.4)
-                    .foregroundStyle(ctx.identityColor.swiftUIColor.opacity(0.85))
-                    .shadow(color: .black.opacity(0.6), radius: 1, x: 0, y: 0.5)
+        if let arc = state.activeArc {
+            // Arc up: hub keeps the target app's icon visible so the user
+            // stays oriented while picking a chip. No "ACTIONS" subtitle —
+            // the arc itself signals "you're on layer 2".
+            if let icon = AppIconResolver.icon(for: arc.bundleID) {
+                Image(nsImage: icon)
+                    .resizable()
+                    .interpolation(.high)
+                    .scaledToFit()
+                    .frame(width: iconSide, height: iconSide)
+                    .id("arc-hub-\(arc.bundleID)")
             }
-            .id("layer2-hub-\(ctx.bundleID)")
         } else if let previewed = hoveredSlot?.app,
                   let icon = AppIconResolver.icon(for: previewed.bundleID) {
             Image(nsImage: icon)
@@ -946,50 +754,6 @@ private struct KeyHint: View {
     }
 }
 
-/// Glyph + tiny label rendered into a layer-2 sector. Used by
-/// `RadialView.actionSectorContent`. A nil `action` renders the
-/// "+ Add action" placeholder; the placeholder commit path in
-/// AppDelegate opens Settings → Actions for the context bundle.
-private struct ActionSlotContent: View {
-    let slot: HaloActionSlot
-    let isActive: Bool
-    let accent: Color
-
-    var body: some View {
-        VStack(spacing: 2) {
-            Image(systemName: symbol)
-                .font(.system(size: 19, weight: isActive ? .semibold : .regular))
-                .foregroundStyle(isActive ? .white : Color.white.opacity(0.78))
-                .scaleEffect(isActive ? 1.10 : 1.0)
-            Text(labelText)
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
-                .foregroundStyle(isActive ? .white : Color.white.opacity(0.68))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(maxWidth: HaloUI.Geometry.iconSize + 8)
-        }
-        .shadow(color: isActive ? accent.opacity(0.75) : .clear, radius: 4)
-        .animation(.easeOut(duration: 0.12), value: isActive)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(accessibilityLabel))
-        .accessibilityAddTraits(.isButton)
-    }
-
-    private var symbol: String {
-        slot.action?.effectiveSFSymbol ?? "plus"
-    }
-
-    private var labelText: String {
-        slot.action?.label ?? "Add"
-    }
-
-    private var accessibilityLabel: String {
-        if let action = slot.action {
-            return "Run \(action.label)"
-        }
-        return "Empty action slot — opens Settings"
-    }
-}
 
 private struct StatusDot: View {
     let color: Color

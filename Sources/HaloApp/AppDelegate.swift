@@ -22,18 +22,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let extractor = DominantColorExtractor()
     private let switcher = Switcher.live()
     private let actionExecutor = ActionExecutor.live()
+    private let arcExecutor = ArcExecutor.live()
 
     private var keyMonitor: Any?
     private var flagsMonitor: Any?
+    private var rightMouseMonitor: Any?
     private var clickOutsideMonitor: Any?
     private var scrollMonitor: Any?
     private var scrollAccumDelta: Double = 0
-    /// Tracks the last observed ⇧ flag state so `installFlagsMonitor` only
-    /// reacts on transitions. NSEvent.modifierFlags reads the live HID
-    /// state, but the flagsChanged stream fires on every modifier change
-    /// (including ⌘/⌥ chord additions during a double-tap), so we filter
-    /// for ⇧ deltas explicitly.
+    /// Tracks ⇧ press/release transitions in `installFlagsMonitor` so we
+    /// only react on edges. NSEvent.modifierFlags reads the live HID
+    /// state; flagsChanged fires on every modifier delta (including the
+    /// ⌘ that arrives during the user's double-tap), so we filter for
+    /// ⇧ explicitly.
     private var shiftHeld: Bool = false
+    /// Tracks the right-mouse button (or two-finger trackpad tap, when
+    /// macOS's secondary-click is configured for that gesture) state for
+    /// the arc trigger.
+    private var rightMouseHeld: Bool = false
     private var prefsObserver: AnyCancellable?
     private var nameCache: [String: String] = [:]
     private var identityColorCache: [String: IdentityColor] = [:]
@@ -64,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         installKeyMonitor()
         installFlagsMonitor()
+        installRightMouseMonitor()
         installClickOutsideMonitor()
         installScrollMonitor()
 
@@ -352,12 +359,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Slots are kept current by the activation observer and by prefs
         // changes; we don't need to re-extract dominant colors here — that
         // burns ~100ms/icon and makes Halo feel sluggish.
-        // Always start a summon on layer 1; ⇧ being held from a previous
-        // session shouldn't yank the user straight into the action ring
-        // for an undefined context.
-        state.layer = .slots
-        state.actionSlots = []
+        // Always start a summon on layer 1; ⇧ / right-mouse being held
+        // from a previous session shouldn't yank the user straight into
+        // the arc for an undefined context.
+        state.hideArc()
         shiftHeld = NSEvent.modifierFlags.contains(.shift)
+        rightMouseHeld = NSEvent.pressedMouseButtons & (1 << 1) != 0
         let position = prefs.summonPosition
         switch position {
         case .mouse:
@@ -420,10 +427,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         onboarding.dismiss()
         scrollAccumDelta = 0
         state.scrollAnchor = nil
-        HaloLog.summon.debug("commit phase=\(String(describing: self.state.phase)) hover=\(String(describing: self.state.currentHoverSlot)) layer=\(String(describing: self.state.layer))")
-        // Layer 2: dispatch to ActionExecutor instead of Switcher.
-        if case .actions(let ctx) = state.layer {
-            commitActionSelection(ctx: ctx)
+        HaloLog.summon.debug("commit phase=\(String(describing: self.state.phase)) hover=\(String(describing: self.state.currentHoverSlot)) arc=\(self.state.activeArc != nil)")
+        // Arc up: dispatch to ArcExecutor instead of Switcher.
+        if let arc = state.activeArc {
+            commitArcSelection(arc: arc)
             return
         }
         guard let i = state.currentHoverSlot,
@@ -490,39 +497,69 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.slots[idx] = s
     }
 
-    private func commitActionSelection(ctx: HaloState.ActionContext) {
-        guard let i = state.currentHoverSlot,
-              let slot = state.actionSlots.first(where: { $0.id == i })
+    /// Execute the chip currently under the cursor when the user releases
+    /// the main hotkey while the arc is up. Empty custom chip routes to
+    /// Settings → Actions; AX-gated fullscreen chip (without permission)
+    /// triggers the system trust prompt instead of executing.
+    private func commitArcSelection(arc: ActiveArc) {
+        guard let chipIdx = state.arcHoverChip,
+              arc.chips.indices.contains(chipIdx)
         else {
             cancel()
             return
         }
-        guard let action = slot.action else {
-            // Empty action slot → open Settings → Actions and pre-target
-            // this bundleID so the user can configure on the spot.
+        let chip = arc.chips[chipIdx]
+
+        // AX gate: if the chip needs AX and we don't have it, ask. The
+        // user's trigger release is interpreted as "yes I want to use
+        // this" so jumping into the system prompt is consensual.
+        if case .builtin(let kind) = chip, kind.requiresAX, !AXPermissionGate.isTrusted {
+            window.dismiss(animated: true, restorePreviousFront: true)
+            AXPermissionGate.requestTrust(prompt: true)
+            state.hideArc()
+            return
+        }
+
+        // Empty custom chip → open Settings, pre-target this bundleID.
+        if case .emptyCustom = chip {
             window.dismiss(animated: true)
-            openActionEditor(forBundleID: ctx.bundleID)
+            openActionEditor(forBundleID: arc.bundleID)
+            state.hideArc()
             return
         }
 
         SoundEffectPlayer.shared.play(.commit)
-        state.phase = .committing(i)
+        state.phase = .committing(arc.slotIndex)
 
-        // Layer-2 commit mirrors layer-1's running-app path: kick the fade
-        // first so the ripple is visible, then call openURL/openFile.
-        // `NSWorkspace.open` already returns synchronously and is non-blocking.
-        window.fireRipple(color: slot.identityColor)
+        // Match layer-1's running-app commit order: fire fade first so the
+        // ripple plays, then dispatch the action (synchronous / fire-and-forget).
+        window.fireRipple(color: rippleColor(forChip: chip, arc: arc))
         window.dismiss()
-        let outcome = actionExecutor.execute(action)
+
+        let outcome = arcExecutor.execute(chip: chip, forBundleID: arc.bundleID)
         if outcome == .failed {
-            // No persistent failure UI to "stick to" here (the wheel is
-            // already dismissing), but the shake is queued before dismiss
-            // completes if we still have a chance.
-            HaloLog.switcher.info("action commit failed bundleID=\(ctx.bundleID) action=\(action.label)")
+            HaloLog.switcher.info("arc commit failed bundleID=\(arc.bundleID) chip=\(chipIdx)")
         }
-        // Reset layer for the next summon.
-        state.layer = .slots
-        state.actionSlots = []
+        state.hideArc()
+    }
+
+    /// Chip's accent for the ripple. Built-ins have fixed colours so
+    /// quit always ripples red, fullscreen yellow, hide blue. Custom
+    /// falls back to the slot's identity color.
+    private func rippleColor(forChip chip: ArcChip, arc: ActiveArc) -> IdentityColor {
+        switch chip {
+        case .builtin(.quit):
+            return IdentityColor(lightness: 0.62, chroma: 0.22, hue: 24)   // red
+        case .builtin(.fullscreenToggle):
+            return IdentityColor(lightness: 0.78, chroma: 0.18, hue: 75)   // yellow
+        case .builtin(.hide):
+            return IdentityColor(lightness: 0.62, chroma: 0.20, hue: 240)  // blue
+        case .custom, .emptyCustom:
+            // Use the slot's color; lookup by slotIndex.
+            return state.slots
+                .first(where: { $0.id == arc.slotIndex })?.identityColor
+                ?? IdentityColor(lightness: 0.6, chroma: 0.18, hue: 140)
+        }
     }
 
     private func openActionEditor(forBundleID bundleID: String) {
@@ -535,8 +572,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         onboarding.dismiss()
         scrollAccumDelta = 0
         state.scrollAnchor = nil
-        state.layer = .slots
-        state.actionSlots = []
+        state.hideArc()
         window.dismiss(animated: true, restorePreviousFront: true)
     }
 
@@ -628,12 +664,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.advanceSelection(by: delta)
     }
 
-    // MARK: - Action Ring (⇧ layer toggle)
+    // MARK: - Action Arc (layer 2 — three triggers, single trigger model)
 
-    /// Monitors ⇧ flagsChanged while Halo is up. On ⇧ press we try to
-    /// enter the Action Ring for whatever slot is hovered; on ⇧ release we
-    /// drop back to the slot ring. Other modifier transitions (⌘ release
-    /// during double-tap, ⌥, ⌃) are ignored.
+    /// ⇧ flagsChanged monitor. ⇧ down + hover-on-app-slot → show arc;
+    /// ⇧ up → hide arc (no commit). Other modifier deltas are ignored so
+    /// holding ⌘ during a double-tap doesn't accidentally flip the arc.
     private func installFlagsMonitor() {
         flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
             guard let self = self, self.state.phase != .hidden else { return event }
@@ -641,44 +676,80 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if nowHeld == self.shiftHeld { return event }
             self.shiftHeld = nowHeld
             if nowHeld {
-                self.tryEnterActionRing()
+                self.tryShowArc()
             } else {
-                self.exitActionRingIfActive()
+                self.hideArcIfActive()
             }
             return event
         }
     }
 
-    /// Try to switch into layer 2 (Action Ring). Requires:
-    ///   - currently on `.slots` layer
-    ///   - phase has a non-empty slot under highlight
-    ///   - that slot carries an `app`
-    /// Otherwise no-op. The action list comes from `prefs.actions(forBundleID:)`;
-    /// an empty list still enters layer 2 (renders "+ Configure" placeholders
-    /// per spec §7).
-    private func tryEnterActionRing() {
-        guard case .slots = state.layer else { return }
+    /// Right-mouse / two-finger-tap monitor. Trackpad secondary click is
+    /// dispatched as `.rightMouseDown` by AppKit when the user's Trackpad
+    /// pref is set to "Click or tap with two fingers", so this same
+    /// monitor catches both physical right-click and trackpad gesture.
+    private func installRightMouseMonitor() {
+        rightMouseMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.rightMouseDown, .rightMouseUp]
+        ) { [weak self] event in
+            guard let self = self, self.state.phase != .hidden else { return event }
+            switch event.type {
+            case .rightMouseDown:
+                self.rightMouseHeld = true
+                self.tryShowArc()
+            case .rightMouseUp:
+                self.rightMouseHeld = false
+                self.hideArcIfActive()
+            default: break
+            }
+            // Swallow so the right-click doesn't drop a context menu onto
+            // whatever's behind Halo.
+            return nil
+        }
+    }
+
+    /// Try to show the Action Arc for the hovered slot. Snapshots the
+    /// target app's fullscreen state + AX trust status so the renderer
+    /// can pick the right toggle icon and gated styling without
+    /// re-querying during render.
+    private func tryShowArc() {
+        guard state.activeArc == nil else { return }
         guard let i = state.currentHoverSlot,
               let slot = state.slots.first(where: { $0.id == i }),
               let app = slot.app
         else { return }
-        let actions = prefs.actions(forBundleID: app.bundleID)
-        let context = HaloState.ActionContext(
+        let customAction = prefs.actions(forBundleID: app.bundleID).first
+        let chips: [ArcChip] = [
+            .builtin(.quit),
+            .builtin(.fullscreenToggle),
+            .builtin(.hide),
+            customAction.map { .custom($0) } ?? .emptyCustom,
+        ]
+        let runningApp = NSWorkspace.shared.runningApplications.first {
+            $0.bundleIdentifier == app.bundleID
+        }
+        let isFs: Bool = {
+            guard let runningApp = runningApp else { return false }
+            return FullScreenToggler.isFullscreen(forPID: runningApp.processIdentifier)
+        }()
+        let arc = ActiveArc(
+            slotIndex: i,
             bundleID: app.bundleID,
             appName: app.name,
-            identityColor: slot.identityColor,
-            originSlotIndex: i
+            chips: chips,
+            appIsFullscreen: isFs,
+            axGranted: AXPermissionGate.isTrusted
         )
-        state.enterActionRing(context, actions: actions)
-        HaloLog.summon.debug("enter action ring app=\(app.bundleID) actions=\(actions.count)")
+        state.showArc(arc)
+        HaloLog.summon.debug("show arc app=\(app.bundleID) fs=\(isFs) ax=\(arc.axGranted)")
     }
 
-    /// Drop back to layer 1 if we're in layer 2. Highlight stays on the
-    /// same angular index (HaloState.exitActionRing handles that).
-    private func exitActionRingIfActive() {
-        guard case .actions = state.layer else { return }
-        state.exitActionRing()
-        HaloLog.summon.debug("exit action ring")
+    /// Tear down the arc without committing. Triggered by trigger release
+    /// (⇧ up / right-mouse up). Slot ring stays as it was.
+    private func hideArcIfActive() {
+        guard state.activeArc != nil else { return }
+        state.hideArc()
+        HaloLog.summon.debug("hide arc (trigger released)")
     }
 
     /// Local monitor that translates scrollWheel events into slot-cycle
