@@ -73,6 +73,55 @@
 "GitHub" = "GitHub";
 "License (MIT)" = "License (MIT)";
 
+/* Settings sidebar v1.1 */
+"Whitelist" = "Whitelist";
+
+/* General — v1.1 sections */
+"Summon position & ranking" = "Summon position & ranking";
+"Trigger" = "Trigger";
+"Hold the chord to summon, release to commit. Or double-tap the auxiliary key — the second press must land within the gap window." = "Hold the chord to summon, release to commit. Or double-tap the auxiliary key — the second press must land within the gap window.";
+"Double-tap trigger" = "Double-tap trigger";
+"Double-tap gap" = "Double-tap gap";
+"Reset" = "Reset";
+
+"Navigation" = "Navigation";
+"Scroll wheel cycles slots with the highlighted one as anchor. Digit keys 1–9 0 - = jump directly. Highlight frontmost falls back to 12 o'clock when the frontmost app isn't pinned." = "Scroll wheel cycles slots with the highlighted one as anchor. Digit keys 1–9 0 - = jump directly. Highlight frontmost falls back to 12 o'clock when the frontmost app isn't pinned.";
+"Scroll to switch slots" = "Scroll to switch slots";
+"Digit-key commit" = "Digit-key commit";
+"Highlight frontmost on summon" = "Highlight frontmost on summon";
+
+"Appearance & wheel layout" = "Appearance & wheel layout";
+"Panel size is a renderer-time uniform scale (0.80–1.50x). Summon Halo to see the change take effect." = "Panel size is a renderer-time uniform scale (0.80–1.50x). Summon Halo to see the change take effect.";
+"Panel size" = "Panel size";
+"Reset layout" = "Reset layout";
+
+"Startup & diagnostics" = "Startup & diagnostics";
+"Welcome guide" = "Welcome guide";
+"Replay" = "Replay";
+"Onboarding overlay" = "Onboarding overlay";
+"Diagnostic log" = "Diagnostic log";
+"Export…" = "Export…";
+
+/* DoubleTapTrigger labels */
+"⌥ Option (Left)" = "⌥ Option (Left)";
+"⌥ Option (Right)" = "⌥ Option (Right)";
+"⌘ Command" = "⌘ Command";
+"⌃ Control" = "⌃ Control";
+"Mouse 3 (Middle)" = "Mouse 3 (Middle)";
+
+/* Whitelist tab */
+"Halo won't summon while these apps are frontmost." = "Halo won't summon while these apps are frontmost.";
+"Best for IDEs, games, remote desktop, design tools — anywhere ⌥ chords matter." = "Best for IDEs, games, remote desktop, design tools — anywhere ⌥ chords matter.";
+"Whitelist is empty." = "Whitelist is empty.";
+"Halo will summon in every app. Add one above, or apply the recommended set below." = "Halo will summon in every app. Add one above, or apply the recommended set below.";
+"Apply recommended" = "Apply recommended";
+"Replace whitelist with recommended apps?" = "Replace whitelist with recommended apps?";
+"Your current list will be replaced with installed apps from Halo's recommended set (IDEs, design tools, 3D engines, remote desktop)." = "Your current list will be replaced with installed apps from Halo's recommended set (IDEs, design tools, 3D engines, remote desktop).";
+"Replace" = "Replace";
+"%d apps" = "%d apps";
+"Add app" = "Add app";
+"Remove selected" = "Remove selected";
+
 /* Welcome window */
 "Welcome to Halo" = "Welcome to Halo";
 "Summon" = "Summon";

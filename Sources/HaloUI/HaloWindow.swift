@@ -27,7 +27,7 @@ public final class HaloWindow {
 
     public init(state: HaloState) {
         self.state = state
-        let size = HaloUI.Geometry.totalDiameter
+        let size = HaloUI.Geometry.scaledTotalDiameter
         let rect = NSRect(x: 0, y: 0, width: size, height: size)
         let panel = NSPanel(
             contentRect: rect,
@@ -61,13 +61,15 @@ public final class HaloWindow {
     // MARK: - Summon / dismiss
 
     public func summon(at origin: CGPoint? = nil) {
-        let size = panel.frame.size
+        // Recompute scaled size each summon — `panelScale` can change at
+        // runtime via Settings without an app restart.
+        let scaledSize = HaloUI.Geometry.scaledTotalDiameter
         let cursor = origin ?? NSEvent.mouseLocation
         let screen = screenContaining(cursor) ?? NSScreen.main ?? NSScreen.screens.first!
         let frame = RadialPanelFrame.frame(
             forCursor: cursor,
             in: screen.visibleFrame,
-            wheelSize: size.width
+            wheelSize: scaledSize
         )
         panel.setFrame(frame, display: true)
 
@@ -192,10 +194,14 @@ public final class HaloWindow {
 
     private func updateHoverFromCursor() {
         let mouse = NSEvent.mouseLocation
-        // Panel frame is screen coords, y-up; convert to panel-local y-up.
+        // Panel frame is screen coords, y-up. The SwiftUI root inside the
+        // panel is `scaleEffect(panelScale)`-ed, so the unscaled view
+        // coordinates we feed `RadialGeometry` need the cursor offset
+        // divided by `panelScale` before centering.
+        let scale = HaloUI.Geometry.panelScale
         let local = CGPoint(
-            x: mouse.x - panel.frame.minX,
-            y: mouse.y - panel.frame.minY
+            x: (mouse.x - panel.frame.minX) / scale,
+            y: (mouse.y - panel.frame.minY) / scale
         )
         let size = HaloUI.Geometry.totalDiameter
         let centered = CGPoint(

@@ -24,10 +24,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var keyMonitor: Any?
     private var clickOutsideMonitor: Any?
+    private var scrollMonitor: Any?
+    private var scrollAccumDelta: Double = 0
     private var prefsObserver: AnyCancellable?
     private var nameCache: [String: String] = [:]
     private var identityColorCache: [String: IdentityColor] = [:]
-    private var commandLongPress: CommandLongPressMonitor?
+    private var doubleTapMonitor: DoubleTapMonitor?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         HaloLog.lifecycle.info("Halo \(Halo.version) launching")
@@ -47,6 +49,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         installKeyMonitor()
         installClickOutsideMonitor()
+        installScrollMonitor()
 
         // Re-react whenever the user touches prefs.
         prefsObserver = prefs.objectWillChange.sink { [weak self] _ in
@@ -57,11 +60,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyPreferences()
         refreshSlots()
 
-        let monitor = CommandLongPressMonitor(gap: prefs.cmdDoubleTapGap)
+        let monitor = DoubleTapMonitor(
+            trigger: prefs.doubleTapTrigger,
+            gap: prefs.cmdDoubleTapGap
+        )
         monitor.onTriggered = { [weak self] in self?.summon() }
         monitor.onReleased = { [weak self] in self?.commitSelection() }
+        monitor.suppressionGate = { [weak self] in
+            guard let self = self else { return false }
+            let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            return self.prefs.isHaloSuppressed(forFrontmost: frontmost)
+        }
         monitor.start()
-        commandLongPress = monitor
+        doubleTapMonitor = monitor
 
         // First-launch welcome card. Deferred one runloop tick so the menu
         // bar item finishes mounting and the user sees it referenced from
@@ -76,18 +87,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         welcome.showAgain()
     }
 
-    /// Suspend global hotkey + double-tap-⌘ processing while the welcome
+    /// Suspend global hotkey + double-tap processing while the welcome
     /// card is up. Otherwise pressing the configured chord summons Halo
     /// and steals focus from the welcome window. Called by `WelcomeView`'s
     /// `onAppear` / `onDisappear`.
     func pauseHotkeyForOnboarding() {
         hotkey.unregister()
-        commandLongPress?.stop()
+        doubleTapMonitor?.stop()
     }
 
     func resumeHotkey() {
         registerHotkey()
-        commandLongPress?.start()
+        doubleTapMonitor?.start()
     }
 
     // MARK: - Preferences sync
@@ -98,7 +109,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Re-register hotkey if it changed.
         registerHotkey()
-        commandLongPress?.gap = prefs.cmdDoubleTapGap
+        doubleTapMonitor?.gap = prefs.cmdDoubleTapGap
+        doubleTapMonitor?.trigger = prefs.doubleTapTrigger
         refreshSlots()
     }
 
@@ -111,6 +123,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             case .holdEngaged:   self.summon()
             case .holdReleased:  self.commitSelection()
             }
+        }
+        // Wire the whitelist gate on every (re)registration — Carbon
+        // recreates the hotkey ref each time so the gate has to be
+        // re-installed alongside the new listener.
+        hotkey.suppressionGate = { [weak self] in
+            guard let self = self else { return false }
+            let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+            return self.prefs.isHaloSuppressed(forFrontmost: frontmost)
         }
         let chord = "\(self.prefs.hotkeyModifiers.symbols)key:\(self.prefs.hotkeyKeyCode)"
         if ok {
@@ -300,7 +320,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let frame = NSScreen.main?.frame ?? .zero
             window.summon(at: CGPoint(x: frame.midX, y: frame.midY))
         }
+        applyFrontmostHighlight()
+        scrollAccumDelta = 0
         onboarding.showIfNeeded(over: window.panel)
+    }
+
+    /// When Settings → Navigation → Highlight frontmost on summon is on,
+    /// seed the highlighted slot to the index of the frontmost app's pin
+    /// (if pinned) so a "Halo → scroll once → switch back" gesture is a
+    /// single tick away. Falls back to slot 0 (12 o'clock) otherwise.
+    private func applyFrontmostHighlight() {
+        guard prefs.highlightFrontmostOnSummon else { return }
+        let initial: Int
+        if let bundleID = lastFrontmostBundleID,
+           let idx = prefs.pinnedBundleIDs.firstIndex(where: { $0 == bundleID }) {
+            initial = idx
+        } else {
+            initial = 0
+        }
+        if initial < state.slotCount {
+            state.phase = .hovering(initial)
+        }
     }
 
     private func summonFromMenu() {
@@ -323,6 +363,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Tear down the first-summon onboarding chip as soon as the user
         // commits — the lesson is over, no need to keep the hint floating.
         onboarding.dismiss()
+        scrollAccumDelta = 0
         HaloLog.summon.debug("commit phase=\(String(describing: self.state.phase)) hover=\(String(describing: self.state.currentHoverSlot))")
         guard let i = state.currentHoverSlot,
               let slot = state.slots.first(where: { $0.id == i })
@@ -384,6 +425,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func cancel() {
         HaloLog.summon.debug("cancel")
         onboarding.dismiss()
+        scrollAccumDelta = 0
         window.dismiss(animated: true, restorePreviousFront: true)
     }
 
@@ -431,11 +473,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // ←↑ cycle -1, →↓ cycle +1
             if keyCode == 123 || keyCode == 126 { self.cycleHighlight(by: -1); return nil }
             if keyCode == 124 || keyCode == 125 { self.cycleHighlight(by:  1); return nil }
-            // Digits 1-9 / 0 → direct pick
-            if let chars = event.charactersIgnoringModifiers, let first = chars.first,
-               let digit = first.wholeNumberValue {
-                let target = (digit == 0) ? 9 : (digit - 1)
-                if target < self.state.slotCount {
+            // Digit-key commit gated by Settings → Navigation. KeyCode
+            // table covers `1–9 0 - =` so the layout is stable across
+            // international keyboards (no `characters` lookup).
+            if self.prefs.numberKeyCommit {
+                let target: Int?
+                switch keyCode {
+                case 18: target = 0   // 1
+                case 19: target = 1   // 2
+                case 20: target = 2   // 3
+                case 21: target = 3   // 4
+                case 23: target = 4   // 5
+                case 22: target = 5   // 6
+                case 26: target = 6   // 7
+                case 28: target = 7   // 8
+                case 25: target = 8   // 9
+                case 29: target = 9   // 0
+                case 27: target = 10  // -
+                case 24: target = 11  // =
+                default: target = nil
+                }
+                if let target = target, target < self.state.slotCount {
                     self.state.phase = .previewing(target)
                     self.commitSelection()
                     return nil
@@ -461,6 +519,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             next = delta >= 0 ? 0 : n - 1
         }
         state.phase = .hovering(next)
+    }
+
+    /// Local monitor that translates scrollWheel events into slot-cycle
+    /// steps while Halo is up. Halo `NSApp.activate()`s on summon, so a
+    /// local monitor catches both touchpad and mouse-wheel input.
+    /// Accumulates `scrollingDeltaY` and ticks one slot per ±32 pixel-
+    /// equivalents to ride out touchpad inertia (spec §2.3 deadband).
+    private func installScrollMonitor() {
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
+            guard let self = self,
+                  self.prefs.scrollToSwitch,
+                  self.state.phase != .hidden
+            else { return event }
+
+            let dy: Double
+            if event.hasPreciseScrollingDeltas {
+                dy = event.scrollingDeltaY
+            } else {
+                dy = event.scrollingDeltaY * 8  // lines → ~pixels
+            }
+            self.scrollAccumDelta += dy
+            let step: Double = 32
+            while self.scrollAccumDelta >= step {
+                self.scrollAccumDelta -= step
+                self.state.advanceSelection(by: -1)  // up → counter-clockwise
+            }
+            while self.scrollAccumDelta <= -step {
+                self.scrollAccumDelta += step
+                self.state.advanceSelection(by: 1)   // down → clockwise
+            }
+            return nil   // Halo is overlay-focused; no one else needs this
+        }
     }
 
     private func installClickOutsideMonitor() {

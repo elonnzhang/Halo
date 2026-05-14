@@ -42,6 +42,9 @@ public struct RadialView: View {
         }
         .frame(width: HaloUI.Geometry.totalDiameter,
                height: HaloUI.Geometry.totalDiameter)
+        .scaleEffect(HaloUI.Geometry.panelScale)
+        .frame(width: HaloUI.Geometry.scaledTotalDiameter,
+               height: HaloUI.Geometry.scaledTotalDiameter)
         .contentShape(Circle())
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Halo radial app launcher"))

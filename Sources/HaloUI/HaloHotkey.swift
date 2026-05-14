@@ -23,6 +23,12 @@ public final class HaloHotkey {
     private var assignedID: UInt32 = 0
     private static var handlerInstalled = false
 
+    /// When this returns true, the hotkey's `.holdEngaged` / `.holdReleased`
+    /// events are silently dropped. Used by AppDelegate to honour the
+    /// whitelist: the Carbon registration stays in place so we never give
+    /// the chord back to other apps mid-session.
+    public var suppressionGate: (() -> Bool)?
+
     public init() {}
 
     // Note: callers must explicitly unregister(); deinit cannot touch MainActor state.
@@ -79,8 +85,12 @@ public final class HaloHotkey {
     // MARK: - Internal callbacks
 
     fileprivate func handlePress() {
-        // Instant summon: fire engaged synchronously on press. No threshold, no
-        // short-tap quick-swap branch.
+        // Whitelist gate: drop the trigger if frontmost is in the
+        // suppression set. Carbon registration stays — we never want to
+        // give the chord back to other apps for the rest of the session.
+        if suppressionGate?() == true { return }
+        // Instant summon: fire engaged synchronously on press. No threshold,
+        // no short-tap quick-swap branch.
         holdEngaged = true
         listener?(.holdEngaged)
     }
