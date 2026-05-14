@@ -142,3 +142,17 @@
 "Try it: press %@ now" = "现在试试:按 %@";
 "Point a direction, release to switch" = "指方向后松开即切换";
 "cancels · digit keys jump" = "取消 · 数字键直选";
+
+/* Profile bar — Apps tab (v1.2 多 profile / 场景环) */
+"New profile" = "新建场景";
+"New profile…" = "新建场景…";
+"Start from" = "起点";
+"Blank" = "空白";
+"Clone of %@" = "复制 %@";
+"Switch to %@" = "切换到 %@";
+"Rename…" = "重命名…";
+"Duplicate" = "复制";
+"Delete profile?" = "删除该场景？";
+"This profile's pins and identity colours will be removed. Global settings are unaffected." = "该场景的固定槽位和身份色将被移除。全局设置不受影响。";
+"%d profile" = "%d 个场景";
+"%d profiles" = "%d 个场景";
