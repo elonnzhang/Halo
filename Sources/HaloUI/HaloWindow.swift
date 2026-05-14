@@ -221,11 +221,15 @@ public final class HaloWindow {
             x: local.x - size / 2,
             y: local.y - size / 2
         )
+        // outerRadius uses `reachDiameter`, not `haloDiameter`: the cursor
+        // counts as hovering a sector anywhere within that wider invisible
+        // ring around the wheel. Past it the cursor is "off the wheel" and
+        // releasing the trigger cancels — that's the user's escape hatch.
         let index = RadialGeometry.sectorIndex(
             for: centered,
             sectorCount: state.slotCount,
             innerRadius: HaloUI.Geometry.deadzoneDiameter / 2,
-            outerRadius: HaloUI.Geometry.haloDiameter / 2
+            outerRadius: HaloUI.Geometry.reachDiameter / 2
         )
         state.updateHover(slot: index)
     }

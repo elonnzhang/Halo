@@ -587,13 +587,17 @@ public struct RadialView: View {
     }
 
     private func sectorIndex(at location: CGPoint) -> Int? {
+        // Same `reachDiameter` outer-radius as the global cursor timer in
+        // HaloWindow. Within the panel's 100pt halo/shadow buffer the
+        // cursor still counts as hovering the nearest sector, matching the
+        // out-of-panel global path.
         RadialGeometry.sectorIndex(
             forGestureLocation: location,
             panelScale: HaloUI.Geometry.panelScale,
             totalDiameter: HaloUI.Geometry.totalDiameter,
             sectorCount: state.slotCount,
             innerRadius: HaloUI.Geometry.deadzoneDiameter / 2,
-            outerRadius: HaloUI.Geometry.haloDiameter / 2
+            outerRadius: HaloUI.Geometry.reachDiameter / 2
         )
     }
 }

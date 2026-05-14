@@ -28,6 +28,16 @@ public enum HaloUI {
         /// Centre hub (deadzone) diameter. Hit-tests inside are inert.
         /// Not user-tunable yet — keep the spec-locked value.
         public static let deadzoneDiameter: CGFloat = AppPreferences.layoutDeadzoneDiameter
+        /// Hit-test reach: cursor positions within this diameter of the
+        /// wheel centre count as a sector hover. At 1.5× the wheel
+        /// diameter the cursor can sit roughly a quarter-wheel-radius
+        /// outside the visible rim and still hit the sector at that
+        /// angle — a comfortable cushion without losing the "drag past
+        /// this circle to cancel" affordance (cursor past the reach
+        /// returns nil, so releasing the trigger commits nothing).
+        public static var reachDiameter: CGFloat {
+            haloDiameter * 1.5
+        }
         /// Visible outer rim of the disc, accounting for the soft-edge
         /// alpha mask that starts fading at `visibleOuterFactor` of the
         /// geometric radius.
