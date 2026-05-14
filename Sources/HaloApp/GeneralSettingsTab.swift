@@ -3,72 +3,48 @@ import SwiftUI
 import HaloCore
 import HaloUI
 
-/// General tab in the v1.1 sidebar settings panel. Six grouped sections,
-/// top-to-bottom: 召唤 → 触发 → 导航 → 外观 → 启动 → 语言. Replaces the
-/// pre-v1.1 General + Hotkey tabs.
+/// General tab in the v1.1 sidebar settings panel. On macOS 13+ the
+/// content is a native `Form(.grouped)` so the rows pick up the system
+/// Settings look — translucent grouped cards, accent-tinted controls,
+/// Liquid Glass on macOS 26. macOS 12 falls back to a plain `Form` via
+/// `compatGroupedFormStyle()` from HaloUI.
 struct GeneralTab: View {
     @ObservedObject var prefs: AppPreferences
     @State private var capturing = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                header
-                summonGroup
-                triggerGroup
-                navigationGroup
-                appearanceGroup
-                startupGroup
-                languageGroup
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        if #available(macOS 13.0, *) {
+            nativeForm
+        } else {
+            legacyForm
         }
     }
 
-    // MARK: Header
+    // MARK: - Native (macOS 13+)
 
+    @available(macOS 13.0, *)
     @ViewBuilder
-    private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("General").font(.system(size: 20, weight: .semibold))
-            Spacer()
-            Text("halo.prefs.*")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    // MARK: Summon
-
-    @ViewBuilder
-    private var summonGroup: some View {
-        settingsGroup(title: "Summon position & ranking") {
-            settingsRow("Slot count", isFirst: true) {
-                Picker("", selection: Binding(
+    private var nativeForm: some View {
+        Form {
+            Section("Summon position & ranking") {
+                Picker("Slot count", selection: Binding(
                     get: { prefs.slotCount },
                     set: { prefs.slotCount = $0 }
                 )) {
                     ForEach([4, 6, 8, 10, 12], id: \.self) { Text("\($0)").tag($0) }
                 }
-                .labelsHidden()
                 .pickerStyle(.segmented)
-                .frame(width: 220)
-            }
-            settingsRow("Summon position") {
-                Picker("", selection: Binding(
+
+                Picker("Summon position", selection: Binding(
                     get: { prefs.summonPosition },
                     set: { prefs.summonPosition = $0 }
                 )) {
                     Text("At cursor").tag(SummonPosition.mouse)
                     Text("Screen center").tag(SummonPosition.center)
                 }
-                .labelsHidden()
                 .pickerStyle(.segmented)
-                .frame(width: 220)
-            }
-            settingsRow("Frequency profile") {
-                Picker("", selection: Binding(
+
+                Picker("Frequency profile", selection: Binding(
                     get: { prefs.frequencyProfile },
                     set: { prefs.frequencyProfile = $0 }
                 )) {
@@ -76,45 +52,35 @@ struct GeneralTab: View {
                     Text("Balanced").tag(FrequencyProfile.balanced)
                     Text("MRU").tag(FrequencyProfile.mruOnly)
                 }
-                .labelsHidden()
                 .pickerStyle(.segmented)
-                .frame(width: 220)
             }
-        }
-    }
 
-    // MARK: Trigger
-
-    @ViewBuilder
-    private var triggerGroup: some View {
-        settingsGroup(
-            title: "Trigger",
-            footer: "Hold the chord to summon, release to commit. Or double-tap the auxiliary key — the second press must land within the gap window."
-        ) {
-            settingsRow("Summon hotkey", isFirst: true) {
-                HStack(spacing: 8) {
-                    Text("\(prefs.hotkeyModifiers.symbols)\(KeyName.label(for: prefs.hotkeyKeyCode))")
-                        .font(.system(.body, design: .monospaced))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .modifier(KeyCapChip(active: capturing))
-                    Button(capturing ? "Press chord…" : "Rebind") {
-                        capturing.toggle()
+            Section {
+                LabeledContent {
+                    HStack(spacing: 8) {
+                        Text("\(prefs.hotkeyModifiers.symbols)\(KeyName.label(for: prefs.hotkeyKeyCode))")
+                            .font(.system(.body, design: .monospaced))
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .modifier(KeyCapChip(active: capturing))
+                        Button(capturing ? "Press chord…" : "Rebind") {
+                            capturing.toggle()
+                        }
+                        Button("Reset") {
+                            prefs.hotkeyKeyCode = 49
+                            prefs.hotkeyModifiers = [.command, .option]
+                        }
+                        .buttonStyle(.borderless)
                     }
-                    Button("Reset") {
-                        prefs.hotkeyKeyCode = 49
-                        prefs.hotkeyModifiers = [.command, .option]
-                    }
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(.tint)
+                } label: {
+                    Text("Summon hotkey")
                 }
-            }
-            if capturing {
-                HotkeyCaptureView(prefs: prefs) { capturing = false }
-                    .frame(width: 1, height: 1)
-            }
-            settingsRow("Double-tap trigger") {
-                Picker("", selection: Binding(
+                if capturing {
+                    HotkeyCaptureView(prefs: prefs) { capturing = false }
+                        .frame(width: 1, height: 1)
+                }
+
+                Picker("Double-tap trigger", selection: Binding(
                     get: { prefs.doubleTapTrigger },
                     set: { prefs.doubleTapTrigger = $0 }
                 )) {
@@ -122,166 +88,126 @@ struct GeneralTab: View {
                         Text(trigger.displayLabel).tag(trigger)
                     }
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(width: 200)
-            }
-            settingsRow("Double-tap gap") {
-                HStack(spacing: 8) {
-                    Slider(
-                        value: Binding(
-                            get: { prefs.cmdDoubleTapGap },
-                            set: { prefs.cmdDoubleTapGap = $0 }
-                        ),
-                        in: 0.15...0.50,
-                        step: 0.05
-                    )
-                    .frame(width: 180)
-                    Text(String(format: "%.2f s", prefs.cmdDoubleTapGap))
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 54, alignment: .trailing)
+
+                LabeledContent {
+                    HStack(spacing: 8) {
+                        Slider(
+                            value: Binding(
+                                get: { prefs.cmdDoubleTapGap },
+                                set: { prefs.cmdDoubleTapGap = $0 }
+                            ),
+                            in: 0.15...0.50,
+                            step: 0.05
+                        )
+                        .frame(width: 200)
+                        Text(String(format: "%.2f s", prefs.cmdDoubleTapGap))
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 54, alignment: .trailing)
+                    }
+                } label: {
+                    Text("Double-tap gap")
                 }
+            } header: {
+                Text("Trigger")
+            } footer: {
+                Text("Hold the chord to summon, release to commit. Or double-tap the auxiliary key — the second press must land within the gap window.")
             }
-        }
-    }
 
-    // MARK: Navigation
-
-    @ViewBuilder
-    private var navigationGroup: some View {
-        settingsGroup(
-            title: "Navigation",
-            footer: "Scroll wheel cycles slots with the highlighted one as anchor. Digit keys 1–9 0 - = jump directly. Highlight frontmost falls back to 12 o'clock when the frontmost app isn't pinned."
-        ) {
-            settingsRow("Scroll to switch slots", isFirst: true) {
-                Toggle("", isOn: Binding(
+            Section {
+                Toggle("Scroll to switch slots", isOn: Binding(
                     get: { prefs.scrollToSwitch },
                     set: { prefs.scrollToSwitch = $0 }
                 ))
-                .labelsHidden()
-                .toggleStyle(.switch)
-            }
-            settingsRow("Digit-key commit") {
-                HStack(spacing: 8) {
-                    Text("1 2 3 … 9 0 - =")
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 2)
-                        .background(
-                            RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.primary.opacity(0.06))
-                        )
-                    Toggle("", isOn: Binding(
-                        get: { prefs.numberKeyCommit },
-                        set: { prefs.numberKeyCommit = $0 }
-                    ))
-                    .labelsHidden()
-                    .toggleStyle(.switch)
+                Toggle(isOn: Binding(
+                    get: { prefs.numberKeyCommit },
+                    set: { prefs.numberKeyCommit = $0 }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Digit-key commit")
+                        Text("1 2 3 … 9 0 - = jump directly to the matching slot.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-            }
-            settingsRow("Highlight frontmost on summon") {
-                Toggle("", isOn: Binding(
+                Toggle(isOn: Binding(
                     get: { prefs.highlightFrontmostOnSummon },
                     set: { prefs.highlightFrontmostOnSummon = $0 }
-                ))
-                .labelsHidden()
-                .toggleStyle(.switch)
-            }
-        }
-    }
-
-    // MARK: Appearance
-
-    @ViewBuilder
-    private var appearanceGroup: some View {
-        settingsGroup(
-            title: "Appearance & wheel layout",
-            footer: "Panel size is a renderer-time uniform scale (0.80–1.50x). Summon Halo to see the change take effect."
-        ) {
-            settingsRow("Panel size", isFirst: true) {
-                HStack(spacing: 8) {
-                    Slider(
-                        value: Binding(
-                            get: { Double(prefs.panelScale) },
-                            set: { prefs.panelScale = CGFloat($0) }
-                        ),
-                        in: 0.80...1.50,
-                        step: 0.05
-                    )
-                    .frame(width: 180)
-                    Text(String(format: "%.2f x", prefs.panelScale))
-                        .font(.system(.body, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 54, alignment: .trailing)
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Highlight frontmost on summon")
+                        Text("Falls back to 12 o'clock when the frontmost app isn't pinned.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
+            } header: {
+                Text("Navigation")
+            } footer: {
+                Text("Scroll wheel cycles slots with the highlighted one as anchor.")
             }
-            settingsRow("Halo diameter") {
-                geometrySlider(value: Binding(
-                    get: { Double(prefs.haloDiameter) },
-                    set: { prefs.haloDiameter = CGFloat($0) }
-                ), in: 280...440, step: 10, suffix: "pt")
-            }
-            settingsRow("Icon size") {
-                geometrySlider(value: Binding(
-                    get: { Double(prefs.iconSize) },
-                    set: { prefs.iconSize = CGFloat($0) }
-                ), in: 36...64, step: 2, suffix: "pt")
-            }
-            settingsRow("Icon distance") {
+
+            Section {
+                geometryRow("Panel size",
+                            value: Binding(
+                                get: { Double(prefs.panelScale) },
+                                set: { prefs.panelScale = CGFloat($0) }),
+                            range: 0.80...1.50, step: 0.05,
+                            formatter: { String(format: "%.2f x", $0) })
+                geometryRow("Halo diameter",
+                            value: Binding(
+                                get: { Double(prefs.haloDiameter) },
+                                set: { prefs.haloDiameter = CGFloat($0) }),
+                            range: 280...440, step: 10,
+                            formatter: { "\(Int($0)) pt" })
+                geometryRow("Icon size",
+                            value: Binding(
+                                get: { Double(prefs.iconSize) },
+                                set: { prefs.iconSize = CGFloat($0) }),
+                            range: 36...64, step: 2,
+                            formatter: { "\(Int($0)) pt" })
                 let bounds = prefs.iconRadiusBounds
-                geometrySlider(value: Binding(
-                    get: { Double(prefs.iconRadius) },
-                    set: { prefs.iconRadius = CGFloat($0) }
-                ), in: Double(bounds.min)...Double(bounds.max), step: 2, suffix: "pt")
-            }
-            settingsRow("Reset layout") {
-                Button("Reset wheel layout") { prefs.resetLayout() }
-            }
-        }
-    }
+                geometryRow("Icon distance",
+                            value: Binding(
+                                get: { Double(prefs.iconRadius) },
+                                set: { prefs.iconRadius = CGFloat($0) }),
+                            range: Double(bounds.min)...Double(bounds.max),
+                            step: 2,
+                            formatter: { "\(Int($0)) pt" })
 
-    // MARK: Startup
+                HStack {
+                    Spacer()
+                    Button("Reset wheel layout") { prefs.resetLayout() }
+                }
+            } header: {
+                Text("Appearance & wheel layout")
+            } footer: {
+                Text("Panel size is a renderer-time uniform scale (0.80–1.50x). Summon Halo to see the change take effect.")
+            }
 
-    @ViewBuilder
-    private var startupGroup: some View {
-        settingsGroup(title: "Startup & diagnostics") {
-            settingsRow("Launch Halo at login", isFirst: true) {
-                Toggle("", isOn: Binding(
+            Section("Startup & diagnostics") {
+                Toggle("Launch Halo at login", isOn: Binding(
                     get: { prefs.autostart },
                     set: {
                         prefs.autostart = $0
                         LaunchAgentManager.apply(enabled: $0)
                     }
                 ))
-                .labelsHidden()
-                .toggleStyle(.switch)
-            }
-            settingsRow("Welcome guide") {
-                Button("Replay") {
-                    (NSApp.delegate as? AppDelegate)?.replayWelcome()
+                LabeledContent("Welcome guide") {
+                    Button("Replay") {
+                        (NSApp.delegate as? AppDelegate)?.replayWelcome()
+                    }
+                }
+                LabeledContent("Onboarding overlay") {
+                    Button("Reset") { prefs.resetOnboarding() }
+                }
+                LabeledContent("Diagnostic log") {
+                    Button("Export…") { exportDiagnostics() }
                 }
             }
-            settingsRow("Onboarding overlay") {
-                Button("Reset") { prefs.resetOnboarding() }
-            }
-            settingsRow("Diagnostic log") {
-                Button("Export…") { exportDiagnostics() }
-            }
-        }
-    }
 
-    // MARK: Language
-
-    @ViewBuilder
-    private var languageGroup: some View {
-        settingsGroup(
-            title: "Language",
-            footer: "Restart Halo for the language change to take effect."
-        ) {
-            settingsRow("Display language", isFirst: true) {
-                Picker("", selection: Binding(
+            Section {
+                Picker("Display language", selection: Binding(
                     get: { prefs.appLanguageOverride ?? "system" },
                     set: { prefs.appLanguageOverride = ($0 == "system" ? nil : $0) }
                 )) {
@@ -289,92 +215,191 @@ struct GeneralTab: View {
                     Text("English").tag("en")
                     Text("简体中文").tag("zh-Hans")
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(width: 200)
+            } header: {
+                Text("Language")
+            } footer: {
+                Text("Restart Halo for the language change to take effect.")
             }
         }
+        .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
     }
 
-    // MARK: Row primitives
-
+    @available(macOS 13.0, *)
     @ViewBuilder
-    private func settingsGroup<Content: View>(
-        title: LocalizedStringKey,
-        footer: LocalizedStringKey? = nil,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .padding(.bottom, 4)
-                .padding(.leading, 4)
-            VStack(spacing: 0) { content() }
-                .background(rowBackground)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
-                )
-            if let footer = footer {
-                Text(footer)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 4)
-                    .padding(.top, 6)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func settingsRow<Trailing: View>(
-        _ label: LocalizedStringKey,
-        isFirst: Bool = false,
-        @ViewBuilder trailing: () -> Trailing
-    ) -> some View {
-        HStack {
-            Text(label).font(.system(size: 13))
-            Spacer()
-            trailing()
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .overlay(alignment: .top) {
-            // Top divider for every row except the first — keeps the group
-            // header tight against the rounded card.
-            if !isFirst {
-                Rectangle()
-                    .fill(Color.primary.opacity(0.06))
-                    .frame(height: 0.5)
-            }
-        }
-    }
-
-    private var rowBackground: Color {
-        Color(NSColor.controlBackgroundColor)
-    }
-
-    @ViewBuilder
-    private func geometrySlider(
+    private func geometryRow(
+        _ title: LocalizedStringKey,
         value: Binding<Double>,
-        in range: ClosedRange<Double>,
+        range: ClosedRange<Double>,
         step: Double,
-        suffix: String
+        formatter: (Double) -> String
     ) -> some View {
-        HStack(spacing: 8) {
-            Slider(value: value, in: range, step: step).frame(width: 180)
-            Text("\(Int(value.wrappedValue)) \(suffix)")
-                .font(.system(.body, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(width: 54, alignment: .trailing)
+        LabeledContent {
+            HStack(spacing: 8) {
+                Slider(value: value, in: range, step: step).frame(width: 200)
+                Text(formatter(value.wrappedValue))
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 54, alignment: .trailing)
+            }
+        } label: {
+            Text(title)
         }
     }
 
-    /// Pulls the last hour of unified-log entries under the Halo
-    /// subsystem into `~/Downloads/Halo-diagnostic-<ts>.log` and reveals it
-    /// in Finder. Surfaces failure via NSAlert.
+    // MARK: - Legacy (macOS 12 fallback)
+
+    @ViewBuilder
+    private var legacyForm: some View {
+        Form {
+            Section("Summon position & ranking") {
+                Picker("Slot count", selection: Binding(
+                    get: { prefs.slotCount },
+                    set: { prefs.slotCount = $0 }
+                )) {
+                    ForEach([4, 6, 8, 10, 12], id: \.self) { Text("\($0)").tag($0) }
+                }
+                .pickerStyle(.segmented)
+                Picker("Summon position", selection: Binding(
+                    get: { prefs.summonPosition },
+                    set: { prefs.summonPosition = $0 }
+                )) {
+                    Text("At cursor").tag(SummonPosition.mouse)
+                    Text("Screen center").tag(SummonPosition.center)
+                }
+                .pickerStyle(.segmented)
+                Picker("Frequency profile", selection: Binding(
+                    get: { prefs.frequencyProfile },
+                    set: { prefs.frequencyProfile = $0 }
+                )) {
+                    Text("MFU").tag(FrequencyProfile.mfuOnly)
+                    Text("Balanced").tag(FrequencyProfile.balanced)
+                    Text("MRU").tag(FrequencyProfile.mruOnly)
+                }
+                .pickerStyle(.segmented)
+            }
+            Section("Trigger") {
+                HStack {
+                    Text("Summon hotkey")
+                    Spacer()
+                    Text("\(prefs.hotkeyModifiers.symbols)\(KeyName.label(for: prefs.hotkeyKeyCode))")
+                        .font(.system(.body, design: .monospaced))
+                    Button(capturing ? "Press chord…" : "Rebind") { capturing.toggle() }
+                }
+                if capturing {
+                    HotkeyCaptureView(prefs: prefs) { capturing = false }
+                        .frame(width: 1, height: 1)
+                }
+                Picker("Double-tap trigger", selection: Binding(
+                    get: { prefs.doubleTapTrigger },
+                    set: { prefs.doubleTapTrigger = $0 }
+                )) {
+                    ForEach(DoubleTapTrigger.allCases, id: \.self) { trigger in
+                        Text(trigger.displayLabel).tag(trigger)
+                    }
+                }
+                HStack {
+                    Text("Double-tap gap")
+                    Slider(
+                        value: Binding(
+                            get: { prefs.cmdDoubleTapGap },
+                            set: { prefs.cmdDoubleTapGap = $0 }
+                        ),
+                        in: 0.15...0.50, step: 0.05
+                    )
+                    Text(String(format: "%.2f s", prefs.cmdDoubleTapGap))
+                        .font(.system(.body, design: .monospaced))
+                        .frame(width: 54)
+                }
+            }
+            Section("Navigation") {
+                Toggle("Scroll to switch slots", isOn: Binding(
+                    get: { prefs.scrollToSwitch },
+                    set: { prefs.scrollToSwitch = $0 }
+                ))
+                Toggle("Digit-key commit", isOn: Binding(
+                    get: { prefs.numberKeyCommit },
+                    set: { prefs.numberKeyCommit = $0 }
+                ))
+                Toggle("Highlight frontmost on summon", isOn: Binding(
+                    get: { prefs.highlightFrontmostOnSummon },
+                    set: { prefs.highlightFrontmostOnSummon = $0 }
+                ))
+            }
+            Section("Appearance & wheel layout") {
+                HStack {
+                    Text("Panel size")
+                    Slider(value: Binding(
+                        get: { Double(prefs.panelScale) },
+                        set: { prefs.panelScale = CGFloat($0) }
+                    ), in: 0.80...1.50, step: 0.05)
+                    Text(String(format: "%.2f x", prefs.panelScale))
+                        .font(.system(.body, design: .monospaced))
+                        .frame(width: 54)
+                }
+                HStack {
+                    Text("Halo diameter")
+                    Slider(value: Binding(
+                        get: { Double(prefs.haloDiameter) },
+                        set: { prefs.haloDiameter = CGFloat($0) }
+                    ), in: 280...440, step: 10)
+                    Text("\(Int(prefs.haloDiameter)) pt")
+                        .font(.system(.body, design: .monospaced))
+                        .frame(width: 54)
+                }
+                HStack {
+                    Text("Icon size")
+                    Slider(value: Binding(
+                        get: { Double(prefs.iconSize) },
+                        set: { prefs.iconSize = CGFloat($0) }
+                    ), in: 36...64, step: 2)
+                    Text("\(Int(prefs.iconSize)) pt")
+                        .font(.system(.body, design: .monospaced))
+                        .frame(width: 54)
+                }
+                let bounds = prefs.iconRadiusBounds
+                HStack {
+                    Text("Icon distance")
+                    Slider(value: Binding(
+                        get: { Double(prefs.iconRadius) },
+                        set: { prefs.iconRadius = CGFloat($0) }
+                    ), in: Double(bounds.min)...Double(bounds.max), step: 2)
+                    Text("\(Int(prefs.iconRadius)) pt")
+                        .font(.system(.body, design: .monospaced))
+                        .frame(width: 54)
+                }
+                Button("Reset wheel layout") { prefs.resetLayout() }
+            }
+            Section("Startup & diagnostics") {
+                Toggle("Launch Halo at login", isOn: Binding(
+                    get: { prefs.autostart },
+                    set: {
+                        prefs.autostart = $0
+                        LaunchAgentManager.apply(enabled: $0)
+                    }
+                ))
+                Button("Replay welcome guide") {
+                    (NSApp.delegate as? AppDelegate)?.replayWelcome()
+                }
+                Button("Reset onboarding overlay") { prefs.resetOnboarding() }
+                Button("Export diagnostic log…") { exportDiagnostics() }
+            }
+            Section("Language") {
+                Picker("Display language", selection: Binding(
+                    get: { prefs.appLanguageOverride ?? "system" },
+                    set: { prefs.appLanguageOverride = ($0 == "system" ? nil : $0) }
+                )) {
+                    Text("System").tag("system")
+                    Text("English").tag("en")
+                    Text("简体中文").tag("zh-Hans")
+                }
+            }
+        }
+        .compatGroupedFormStyle()
+    }
+
+    /// Pulls the last hour of unified-log entries under the Halo subsystem
+    /// into `~/Downloads/Halo-diagnostic-<ts>.log` and reveals it in Finder.
     private func exportDiagnostics() {
         do {
             let url = try DiagnosticLog.export()

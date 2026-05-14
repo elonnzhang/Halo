@@ -18,14 +18,19 @@ final class SettingsWindowController {
         self.prefs = prefs
         let host = NSHostingController(rootView: SettingsRootView(prefs: prefs))
         let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 720, height: 620),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(x: 0, y: 0, width: 880, height: 720),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         w.title = "Halo · Settings"
+        w.titleVisibility = .hidden
+        w.titlebarAppearsTransparent = true
         w.contentViewController = host
         w.isReleasedWhenClosed = false
+        // Let SwiftUI's NavigationSplitView own the min size — its
+        // `.frame(minWidth: 760, minHeight: 600)` is the source of truth.
+        w.contentMinSize = NSSize(width: 760, height: 600)
         self.window = w
     }
 
@@ -87,14 +92,46 @@ private final class WindowCloseObserver {
 
 // MARK: - SwiftUI root
 
-/// Sidebar + content split. macOS 12-compatible (no NavigationSplitView).
-/// Mutations on `prefs` propagate via `objectWillChange`; the AppDelegate
-/// sinks that and re-applies the snapshot to the running Halo.
+/// Sidebar + content split. On macOS 13+ uses the native
+/// `NavigationSplitView` so the panel inherits the system Settings look —
+/// translucent sidebar, accent-tinted selection pill, collapsible chrome,
+/// Liquid Glass on macOS 26. macOS 12 falls back to a hand-built `HStack`.
 struct SettingsRootView: View {
     @ObservedObject var prefs: AppPreferences
     @State private var selection: SettingsSection = .general
 
     var body: some View {
+        if #available(macOS 13.0, *) {
+            nativeSplit
+        } else {
+            legacySplit
+        }
+    }
+
+    @available(macOS 13.0, *)
+    @ViewBuilder
+    private var nativeSplit: some View {
+        NavigationSplitView {
+            List(SettingsSection.allCases, selection: $selection) { section in
+                Label {
+                    Text(section.localizedTitle)
+                } icon: {
+                    Image(systemName: section.systemImage)
+                        .foregroundStyle(.tint)
+                }
+                .tag(section)
+            }
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 240)
+        } detail: {
+            content
+                .frame(minWidth: 560)
+        }
+        .navigationSplitViewStyle(.balanced)
+        .frame(minWidth: 760, idealWidth: 880, minHeight: 600, idealHeight: 720)
+    }
+
+    @ViewBuilder
+    private var legacySplit: some View {
         HStack(spacing: 0) {
             SettingsSidebar(selection: $selection)
             Divider()
