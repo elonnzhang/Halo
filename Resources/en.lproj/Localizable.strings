@@ -147,3 +147,17 @@
 "Try it: press %@ now" = "Try it: press %@ now";
 "Point a direction, release to switch" = "Point a direction, release to switch";
 "cancels · digit keys jump" = "cancels · digit keys jump";
+
+/* Profile bar — Apps tab (v1.2 multi-profile) */
+"New profile" = "New profile";
+"New profile…" = "New profile…";
+"Start from" = "Start from";
+"Blank" = "Blank";
+"Clone of %@" = "Clone of %@";
+"Switch to %@" = "Switch to %@";
+"Rename…" = "Rename…";
+"Duplicate" = "Duplicate";
+"Delete profile?" = "Delete profile?";
+"This profile's pins and identity colours will be removed. Global settings are unaffected." = "This profile's pins and identity colours will be removed. Global settings are unaffected.";
+"%d profile" = "%d profile";
+"%d profiles" = "%d profiles";

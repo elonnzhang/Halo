@@ -26,3 +26,5 @@ dist/
 .claude/
 .agents/
 plans/
+# …but track the structured spec/plan handoff location.
+!docs/superpowers/plans/

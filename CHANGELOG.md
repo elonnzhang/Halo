@@ -2,6 +2,16 @@
 
 All notable changes to Halo.
 
+## [1.2.0] — 2026-05-14
+
+### 多 Profile / 场景环 (Apps tab)
+
+- New: **Binding profiles** — named bundles of pinned apps and their identity-colour overrides, switchable from a pill bar at the top of Settings → Apps. Click a pill to switch; click `+` to create (Blank or Clone of active); right-click / long-press for rename / duplicate / delete. Active pill is materialized and accent-bordered.
+- Scope is intentionally minimal: a profile owns *pins + overflow + identity overrides only*. **Slot count, frequency profile, whitelist, hotkey, layout, language, sound** — all stay user-global and apply across every profile. The General / Whitelist / About tabs, the sidebar, and the menu bar are unchanged.
+- Migration is automatic: existing v1.1.x users see their prior pins / overrides under a single `Default` profile on first launch. Legacy `UserDefaults` keys (`pinnedSlots.v1` / `overflowPins.v1` / `identityOverride.v1`) are kept as a rollback safety net through v1.2 and removed in v1.3.
+- The global `slotCount` setter resizes the active profile's pin array in-line so overflow behaviour is identical to v1.1. Inactive profiles keep their previous pin-array length and lazily realign on next mutation.
+- 19 new tests (`BindingProfileTests` + `AppPreferencesProfileTests`). Existing `AppPreferencesTests` (12/12) and `AppPreferencesBoundsTests` pass unchanged. Total suite 115/115.
+
 ## [1.1.2] — 2026-05-14
 
 ### Wheel UX
