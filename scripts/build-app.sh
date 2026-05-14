@@ -63,12 +63,32 @@ done
 # Stamp PkgInfo (some Finder paths still read it)
 printf 'APPL????' > "$CONTENTS/PkgInfo"
 
-echo "==> ad-hoc codesign"
-codesign --force --deep --sign - "$APP_PATH"
+# Codesign: Developer ID Application if the env var points at one,
+# otherwise ad-hoc. Set HALO_SIGNING_IDENTITY="Developer ID Application:
+# Your Name (TEAMID)" to enable. Hardened runtime is on for Developer ID
+# so notarization is possible; ad-hoc skips it because notarization isn't
+# going to happen.
+SIGN_ID="${HALO_SIGNING_IDENTITY:-}"
+if [[ -n "$SIGN_ID" ]]; then
+    echo "==> codesign (Developer ID, hardened runtime): $SIGN_ID"
+    codesign \
+        --force --deep \
+        --options runtime \
+        --timestamp \
+        --sign "$SIGN_ID" \
+        "$APP_PATH"
+else
+    echo "==> ad-hoc codesign (set HALO_SIGNING_IDENTITY for Developer ID + notarization)"
+    codesign --force --deep --sign - "$APP_PATH"
+fi
 
 echo "==> verify"
 codesign --verify --verbose=2 "$APP_PATH" 2>&1 | sed 's/^/    /'
 plutil -lint "$CONTENTS/Info.plist" | sed 's/^/    /'
+
+# Gatekeeper sanity (informational — fails on ad-hoc, that's fine).
+echo "==> spctl assess (informational)"
+spctl --assess --verbose=2 --type execute "$APP_PATH" 2>&1 | sed 's/^/    /' || true
 
 du -sh "$APP_PATH" | awk '{print "==> done: " $0}'
 echo "    install: cp -R ${APP_PATH} /Applications/"
