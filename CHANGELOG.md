@@ -2,6 +2,13 @@
 
 All notable changes to Halo.
 
+## [1.1.2] — 2026-05-14
+
+### Wheel UX
+
+- Hover hit-test reach extended to 1.5× the wheel diameter. The cursor now counts as hovering a sector anywhere within `reachDiameter` (= `haloDiameter × 1.5`) of the wheel centre — about a quarter wheel-radius of invisible cushion outside the visible disc. Pointing at the rim is no longer finicky; pulling the cursor far past the cushion still cancels on trigger release. Lives behind a single `HaloUI.Geometry.reachDiameter` constant so the factor can be retuned (or surfaced to Settings) without touching the geometry layer.
+- 6 new tests (`RadialReachHitTestTests`) cover hits outside the wheel but inside reach, misses past the reach radius, deadzone misses, the cardinal-direction sweep, and the boundary case.
+
 ## [1.1.1] — 2026-05-14
 
 ### Build consistency
