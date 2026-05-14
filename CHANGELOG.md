@@ -2,6 +2,17 @@
 
 All notable changes to Halo.
 
+## [1.1.1] — 2026-05-14
+
+### Build consistency
+
+- Removed the `#if compiler(>=6.3)` guards around every Liquid Glass call site (`RadialView`, `OnboardingOverlay`, `WelcomeWindow`, `GeneralSettingsTab`). The `glassEffect()` API ships with the macOS 26 SDK in any Xcode 26.x, so the compile-time gate was excluding Xcode 26.0–26.3 builds (including the GitHub `macos-26` runner's default Xcode 26.2 / Swift 6.2.3) and shipping a v1.1.0 release binary with **zero** Liquid Glass symbols — the wheel silently fell back to a flat `NSVisualEffectView(.hudWindow)`. Liquid Glass now reaches macOS 26 users regardless of which Xcode 26.x compiled the binary.
+- CI (ci.yml + release.yml) now explicitly `xcode-select`s the newest `Xcode_26.*.app` on the runner before showing the toolchain, so future GitHub runner image changes can't silently downgrade the SDK.
+
+### Visual
+
+- macOS 12–15 hover tint on the wheel boosted from 6 % → 14 % (only on the legacy `NSVisualEffectView` path; macOS 26 stays at 6 % because Liquid Glass already produces content-aware refraction). Compensates for the inert legacy material so the hovered identity colour still reads on the disc.
+
 ## [1.1.0] — 2026-05-14
 
 ### Settings panel

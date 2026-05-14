@@ -17,6 +17,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Select Xcode (latest 26.x)
+        run: |
+          LATEST=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$LATEST" ]; then
+            echo "::error::no Xcode_26.*.app on runner"
+            ls /Applications | grep -i Xcode || true
+            exit 1
+          fi
+          echo "selecting $LATEST"
+          sudo xcode-select -s "$LATEST"
+
       - name: Show toolchain
         run: |
           swift --version

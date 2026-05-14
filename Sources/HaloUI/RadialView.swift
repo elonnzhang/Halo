@@ -53,7 +53,6 @@ public struct RadialView: View {
 
     @ViewBuilder
     private var labelOverlay: some View {
-        #if compiler(>=6.3)
         if #available(macOS 26.0, *) {
             GlassEffectContainer {
                 if let slot = hoveredSlot, slot.app != nil {
@@ -65,11 +64,6 @@ public struct RadialView: View {
                 labelChip(for: slot)
             }
         }
-        #else
-        if let slot = hoveredSlot, slot.app != nil {
-            labelChip(for: slot)
-        }
-        #endif
     }
 
     // MARK: - Halo glow
@@ -107,6 +101,14 @@ public struct RadialView: View {
         let d = HaloUI.Geometry.haloDiameter
         let tint = hoveredSlot?.identityColor.swiftUIColor ?? .clear
         let isHovering = hoveredSlot != nil
+        // Liquid Glass already produces content-aware refraction; keep the
+        // manual tint subtle there. On the legacy NSVisualEffectView path the
+        // material is inert, so the manual tint is the only carrier of the
+        // hovered identity colour and needs to be stronger.
+        let hoverTintAlpha: Double = {
+            if #available(macOS 26.0, *) { return 0.06 }
+            return 0.14
+        }()
         return ZStack {
             // 1a. Base glass. NSVisualEffectView under a convex depth gradient
             // on macOS 14/15; native Liquid Glass on macOS 26+.
@@ -134,7 +136,7 @@ public struct RadialView: View {
             // Masked to the donut: the hub stays neutral so the selected
             // colour reads on the ring only, not on the deadzone lens.
             Circle()
-                .fill(tint.opacity(isHovering ? 0.06 : 0))
+                .fill(tint.opacity(isHovering ? hoverTintAlpha : 0))
                 .blendMode(.plusLighter)
                 .mask(
                     Circle()
@@ -224,7 +226,6 @@ public struct RadialView: View {
     /// is rendered on top in `wheelBackground`, regardless of OS.
     @ViewBuilder
     private func glassDisc(diameter d: CGFloat) -> some View {
-        #if compiler(>=6.3)
         if #available(macOS 26.0, *) {
             Circle()
                 .fill(.clear)
@@ -233,9 +234,6 @@ public struct RadialView: View {
         } else {
             visualEffectDisc(diameter: d)
         }
-        #else
-        visualEffectDisc(diameter: d)
-        #endif
     }
 
     private func visualEffectDisc(diameter d: CGFloat) -> some View {
@@ -766,7 +764,6 @@ private struct GlassChipBackground: ViewModifier {
     let slotID: Int
 
     func body(content: Content) -> some View {
-        #if compiler(>=6.3)
         if #available(macOS 26.0, *) {
             content
                 .glassEffect(.regular, in: Capsule(style: .continuous))
@@ -774,9 +771,6 @@ private struct GlassChipBackground: ViewModifier {
         } else {
             legacyChip(content)
         }
-        #else
-        legacyChip(content)
-        #endif
     }
 
     @ViewBuilder

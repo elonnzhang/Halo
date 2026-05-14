@@ -496,7 +496,6 @@ struct KeyCapChip: ViewModifier {
     let active: Bool
 
     func body(content: Content) -> some View {
-        #if compiler(>=6.3)
         if #available(macOS 26.0, *) {
             content
                 .glassEffect(
@@ -506,9 +505,6 @@ struct KeyCapChip: ViewModifier {
         } else {
             legacyCap(content)
         }
-        #else
-        legacyCap(content)
-        #endif
     }
 
     @ViewBuilder

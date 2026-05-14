@@ -167,7 +167,6 @@ private struct OnboardingChip: View {
     /// user's wallpaper.
     @ViewBuilder
     private var chipGlass: some View {
-        #if compiler(>=6.3)
         if #available(macOS 26.0, *) {
             chipShape
                 .fill(.clear)
@@ -175,9 +174,6 @@ private struct OnboardingChip: View {
         } else {
             EmptyView()
         }
-        #else
-        EmptyView()
-        #endif
     }
 
     private var chipContent: some View {

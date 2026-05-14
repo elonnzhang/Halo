@@ -358,7 +358,6 @@ private struct WelcomeOverlay: View {
 
     @ViewBuilder
     private var cardBackground: some View {
-        #if compiler(>=6.3)
         if #available(macOS 26.0, *) {
             Rectangle()
                 .fill(.clear)
@@ -366,9 +365,6 @@ private struct WelcomeOverlay: View {
         } else {
             legacyCardBackground
         }
-        #else
-        legacyCardBackground
-        #endif
     }
 
     private var legacyCardBackground: some View {
