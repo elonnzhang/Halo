@@ -15,8 +15,8 @@
 "MFU only" = "最常用";
 "Balanced" = "平衡";
 "MRU only" = "最近用";
-"MFU" = "MFU";
-"MRU" = "MRU";
+"MFU" = "最常用";
+"MRU" = "最近用";
 "Startup" = "启动";
 "Launch Halo at login" = "登录时启动 Halo";
 "Replay welcome guide" = "再看一次欢迎引导";
