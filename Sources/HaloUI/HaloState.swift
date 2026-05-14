@@ -83,7 +83,11 @@ public final class HaloState: ObservableObject {
         ) {
             scrollAnchor = nil
         }
+        let previous = currentHoverSlot
         phase = .hovering(next)
+        if previous != next {
+            SoundEffectPlayer.shared.play(.slide)
+        }
     }
 
     public func updateHover(slot: Int?) {

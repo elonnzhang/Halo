@@ -323,6 +323,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyFrontmostHighlight()
         scrollAccumDelta = 0
         onboarding.showIfNeeded(over: window.panel)
+        SoundEffectPlayer.shared.play(.summon)
     }
 
     /// When Settings → Navigation → Highlight frontmost on summon is on,
@@ -384,6 +385,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        SoundEffectPlayer.shared.play(.commit)
         state.phase = .committing(i)
 
         // If the app isn't running, mark the petal as launching, hold Halo a
