@@ -102,6 +102,7 @@ public final class HaloState: ObservableObject {
             if case .hovering(let prev) = phase, prev == i { return }
             if case .previewing(let prev) = phase, prev == i { return }
             phase = .hovering(i)
+            SoundEffectPlayer.shared.play(.slide)
         case (.committing, _):
             return
         }
