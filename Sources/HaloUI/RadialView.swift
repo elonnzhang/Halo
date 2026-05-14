@@ -352,15 +352,79 @@ public struct RadialView: View {
     }
 
     private func sectorContent(slot: HaloSlot, isActive: Bool, accent: Color) -> some View {
-        let center = RadialGeometry.center(
+        let iconCenter = RadialGeometry.center(
             of: slot.id,
             sectorCount: state.slotCount,
             radius: HaloUI.Geometry.iconRadius
         )
-        return SlotContent(slot: slot, isActive: isActive, accent: accent)
-            .frame(width: HaloUI.Geometry.iconSize,
-                   height: HaloUI.Geometry.iconSize)
-            .offset(x: center.x, y: -center.y)
+        // Digit-key hint (1–9 0 − =) sits on the wheel's OUTER rim — a single
+        // uniform ring of labels well past the icons. Anchored to
+        // `visibleOuterRadius` (where the disc's soft-edge alpha starts
+        // feathering) so the labels track the rim if the user resizes the
+        // wheel. Floor at iconRadius + half icon + 10 protects against
+        // pathological tuning (huge icons + small wheel) collapsing the label
+        // ring into the icons.
+        let rimRadius = HaloUI.Geometry.visibleOuterRadius - 10
+        let hintFloor = HaloUI.Geometry.iconRadius
+            + HaloUI.Geometry.iconSize / 2
+            + 10
+        let hintRadius = max(rimRadius, hintFloor)
+        let hintCenter = RadialGeometry.center(
+            of: slot.id,
+            sectorCount: state.slotCount,
+            radius: hintRadius
+        )
+        // Status dot sits on an INNER ring, hub-facing side of each icon.
+        // Free of the icon's top-trailing corner so the digit hint, the
+        // running-status indicator, and the icon itself never share a
+        // visual quadrant. Floor at hub edge + 8 keeps the dot off the
+        // central hub even with aggressive tuning.
+        let innerRadius = HaloUI.Geometry.iconRadius
+            - HaloUI.Geometry.iconSize / 2
+            - 7
+        let dotFloor = HaloUI.Geometry.deadzoneDiameter / 2 + 8
+        let dotRadius = max(innerRadius, dotFloor)
+        let dotCenter = RadialGeometry.center(
+            of: slot.id,
+            sectorCount: state.slotCount,
+            radius: dotRadius
+        )
+        let showKeyHint = AppPreferences.shared.numberKeyCommit
+        let glyph = Self.keyGlyph(forSlot: slot.id)
+        return ZStack {
+            SlotContent(slot: slot, isActive: isActive, accent: accent)
+                .frame(width: HaloUI.Geometry.iconSize,
+                       height: HaloUI.Geometry.iconSize)
+                .offset(x: iconCenter.x, y: -iconCenter.y)
+
+            if let dotColor = Self.statusDotColor(for: slot.runState) {
+                StatusDot(color: dotColor)
+                    .offset(x: dotCenter.x, y: -dotCenter.y)
+            }
+
+            if showKeyHint, let glyph {
+                KeyHint(glyph: glyph, isActive: isActive, accent: accent)
+                    .offset(x: hintCenter.x, y: -hintCenter.y)
+            }
+        }
+    }
+
+    /// Returns the dot tint for a slot's run-state, or `nil` for states that
+    /// shouldn't render a dot (empty / launchable / launching).
+    fileprivate static func statusDotColor(for runState: HaloSlot.RunState) -> Color? {
+        switch runState {
+        case .running: return Color(red: 0.11, green: 0.73, blue: 0.33)
+        case .failed:  return Color(red: 1.00, green: 0.27, blue: 0.23)
+        case .empty, .launchable, .launching: return nil
+        }
+    }
+
+    /// Map slot index → printable key glyph the user can press to commit
+    /// that slot. Mirrors the keyCode table in `AppDelegate.installKeyMonitor`
+    /// (1–9, 0, `-`, `=`). Returns `nil` for slots beyond the 12-key range.
+    fileprivate static func keyGlyph(forSlot index: Int) -> String? {
+        let table = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "−", "="]
+        return table.indices.contains(index) ? table[index] : nil
     }
 
     // MARK: - Center hub (recessed lens)
@@ -544,22 +608,18 @@ private struct SlotContent: View {
     let accent: Color
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            iconCanvas
-                .scaleEffect(isActive ? 1.08 : 1.0)
-                .overlay {
-                    if isActive {
-                        RoundedRectangle(cornerRadius: 11, style: .continuous)
-                            .stroke(accent, lineWidth: 1.4)
-                    }
+        iconCanvas
+            .scaleEffect(isActive ? 1.08 : 1.0)
+            .overlay {
+                if isActive {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .stroke(accent, lineWidth: 1.4)
                 }
-                .animation(.easeOut(duration: 0.12), value: isActive)
-
-            statusBadge
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(accessibilityLabel))
-        .accessibilityAddTraits(.isButton)
+            }
+            .animation(.easeOut(duration: 0.12), value: isActive)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(Text(accessibilityLabel))
+            .accessibilityAddTraits(.isButton)
     }
 
     @ViewBuilder
@@ -606,20 +666,6 @@ private struct SlotContent: View {
         }
     }
 
-    @ViewBuilder
-    private var statusBadge: some View {
-        switch slot.runState {
-        case .running:
-            StatusDot(color: Color(red: 0.11, green: 0.73, blue: 0.33))
-                .offset(x: 4, y: -4)
-        case .failed:
-            StatusDot(color: Color(red: 1.00, green: 0.27, blue: 0.23))
-                .offset(x: 4, y: -4)
-        case .empty, .launchable, .launching:
-            EmptyView()
-        }
-    }
-
     private var iconOpacity: Double {
         switch slot.runState {
         case .launchable, .launching: return 0.62
@@ -631,6 +677,42 @@ private struct SlotContent: View {
     private var accessibilityLabel: String {
         if let app = slot.app { return "Switch to \(app.name)" }
         return "Empty slot — tap to pin an app"
+    }
+}
+
+/// Radial key-press hint sitting on the wheel's outer rim — one uniform
+/// ring of labels orbiting just inside the disc's feathered edge. Pure
+/// typography (no chip, no border) so it blends with Halo's Liquid Glass
+/// language and never competes with the green running-status dot at the
+/// icon's top-trailing corner.
+///
+/// - Idle: quiet white at low opacity, no shadow. The rim glass is already
+///   dark enough for white text to sit cleanly without legibility crutches.
+/// - Active (hovering / previewing the slot): full white with a soft
+///   accent-coloured glow, so the highlighted shortcut announces itself
+///   from peripheral vision while the other eleven stay quiet.
+private struct KeyHint: View {
+    let glyph: String
+    let isActive: Bool
+    let accent: Color
+
+    var body: some View {
+        Text(glyph)
+            .font(.system(size: 10, weight: .semibold, design: .rounded).monospacedDigit())
+            .tracking(0.3)
+            .foregroundStyle(
+                isActive ? Color.white : Color.white.opacity(0.38)
+            )
+            // Subtle accent halo on the active slot only. Idle digits stay
+            // flat — the rim glass behind them is dark enough that any
+            // shadow reads as crud instead of polish.
+            .shadow(
+                color: isActive ? accent.opacity(0.75) : .clear,
+                radius: 5
+            )
+            .scaleEffect(isActive ? 1.18 : 1.0)
+            .animation(.easeOut(duration: 0.14), value: isActive)
+            .allowsHitTesting(false)
     }
 }
 
