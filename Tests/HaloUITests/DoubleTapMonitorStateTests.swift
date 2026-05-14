@@ -6,7 +6,7 @@ import AppKit
 /// Drives `DoubleTapMonitor`'s state machine directly via the internal
 /// `tickKeyboard(matchedKeyDown:otherModifiersPresent:at:)` /
 /// `tickMouse(pressed:at:)` entry points. The real Timer polls
-/// `CGEventSource.keyState` + `NSEvent.modifierFlags` /
+/// `CGEventSource.flagsState` + `NSEvent.modifierFlags` /
 /// `NSEvent.pressedMouseButtons`; these tests substitute the poll result
 /// so transitions can be verified deterministically without hardware
 /// events. Coverage spans every state transition + the suppression gate.
