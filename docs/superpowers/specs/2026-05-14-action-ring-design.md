@@ -1,226 +1,252 @@
-# Action Ring — Design Spec
+# Action Arc v2 — Design Spec
 
-> 状态: draft, 2026-05-14. Source: `docs/BRAINSTORM.md §二段手势 Action Ring`.
-> 配套: 实现完成后写入 `docs/INTERACTION.md §X` / `docs/PRODUCT.md §11`.
+> 状态: v2 redesign, 2026-05-14. Replaces the v1 whole-wheel swap.
+> Source: `docs/BRAINSTORM.md §二段手势 Action Ring` + 视觉迭代收敛到 mockup `mockups/halo-action-arc.html`.
 
 ## 1. 目标
 
-把 Halo 从"按住、指向、松开 = 切 app"扩展成"按住、指向、按 ⇧、再指向、松开 = 跑动作"。
-第一层（slot ring）保留 v1.1 的体验，**不变更任何热路径**。
-第二层（Action Ring）只在用户主动按下 ⇧ 时浮现，给当前指向的 app 提供 4–12 个本地动作。
+按住主 hotkey 把 Halo 召出来 → 指向一个 app slot → 触发"二段手势"（⇧ / 右键 / 触控板双指轻点）→ 在那一瓣**外侧**弹出一段小弧，挂 4 个动作按钮。第一层轮盘原位不变。
 
 非目标:
+- 不做 shell / 任意命令
+- 不做命令面板 / 模糊搜索
+- 不读窗口标题
+- 不联网
 
-- 不做 shell / AppleScript 任意命令（v1）
-- 不替代 Raycast / Alfred 的命令面板
-- 不读窗口标题、不依赖 Accessibility
-- 不联网、不同步、不引入账号
+## 2. 模型对比 (v1 → v2)
 
-## 2. 触发与状态机
+| | v1 (废) | v2 |
+| --- | --- | --- |
+| 视觉 | 整个轮盘换成动作环 | 第一层 8 瓣不动, 单瓣外侧弹小弧 |
+| 触发 | ⇧ 一种 | ⇧ / 右键按住 / 触控板双指轻点 三选一 |
+| 数量 | 1..N 个动作 (用户随便加) | **固定 4 个** chip |
+| 内容 | 全用户自定义 | 3 个内置(关闭/全屏/隐藏) + 1 个用户自定义 |
+| 配置 | 每 app 一整 list | 每 app 一个自定义 |
+
+## 3. 触发器 (3 种, 等价)
+
+| 触发 | NSEvent 类型 | 备注 |
+| --- | --- | --- |
+| 长按 ⇧ 在 slot 上 | `.flagsChanged`, `.shift` flag | 已 hover 时按 ⇧ → 弹弧; ⇧ 释放 → 收弧 (不 commit) |
+| 右键按住 slot | `.rightMouseDown` / `.rightMouseUp` | 同语义 |
+| 触控板双指轻点 slot | 同 `.rightMouseDown` (Trackpad → System Settings → 「辅助点按 = 用两指轻点」时产生 secondary click) | 等价右键 |
+
+进入条件:
+- 主 hotkey 还按着 (Halo 处于召唤态)
+- `currentHoverSlot` 指向 **非空 app slot** (slot 1..n, 不是 "+" 占位)
+- 触发器按下 (任一)
+
+退出条件:
+- 触发器松开 (⇧ up / 右键 up)
+- ESC
+- 主 hotkey 松开 (这会同时 commit 当前 chip 如果有 hover)
+
+## 4. 状态机
 
 ```
-Layer 1 (slot ring)                Layer 2 (action ring)
-┌────────────────────┐             ┌────────────────────┐
-│ hover slot i with  │  press ⇧    │ render actions for │
-│ a non-empty app    │ ─────────► │ slot i's bundleID  │
-│                    │  release ⇧  │                    │
-│                    │ ◄───────── │                    │
-└─────────┬──────────┘             └─────────┬──────────┘
-          │ release hotkey                   │ release hotkey
-          ▼                                  ▼
-    switch to app                      execute action
+hidden
+ │ summon
+ ▼
+idle   ◄────────────────────────────────┐
+ │ cursor on app slot                   │ trigger off (commit-less)
+ ▼                                      │
+slot.hovering(i)                        │
+ │ trigger down (⇧/right/2-finger)      │
+ ▼                                      │
+arc.shown(slotIdx=i, chipHover=nil) ◄──┐│
+ │ cursor over chip k                  ││
+ ▼                                      │
+arc.chipHover(slotIdx=i, chip=k)       │
+ │ release hotkey  /  click chip       │
+ ▼                                      │
+arc.committing(slotIdx=i, chip=k)      │
+ │ execute action ──────────────────────┘ (back to hidden via dismiss)
 ```
 
-详细规则:
+ESC → 任何 arc 状态都回 hidden + cancel.
 
-- **进入条件**: layer == .slots 且 currentHoverSlot 指向一个 `.app != nil` 的 slot 且 ⇧ flag 被按下。监听 `NSEvent.flagsChanged`，每次 ⇧ flag 变化都重新评估 — 用户在 idle 状态按 ⇧、然后再 hover 一个 slot 也应进入 layer 2 (持续监听 hover 变化时的 ⇧ flag 状态)。
-- **退出条件**: ⇧ 被松开 → 回到 layer 1，仍保持原 slot 高亮。
-- **空 slot**: layer 1 的空 slot 按 ⇧ 不进入 layer 2（"+"slot 没有 app context）。
-- **app 没有任何绑定动作**: 进入 layer 2 后 8 个 sector 全为"+ Configure"占位；commit 任一占位 → 打开 Settings → Actions 并定位到该 bundleID。
-- **没有 hover**: layer 1 idle 状态按 ⇧ 不切换。⇧ 不是无条件 layer 切换键。
-- **layer 切换不调用 SoundEffectPlayer.slide**（避免按 ⇧ 时多余声音；按 ⇧ 后第一次方向变化才发声）。
+## 5. 4 个 chip (位置稳定)
 
-为什么选 ⇧:
+| idx | 内置 / 自定义 | 名 | API | 颜色 (chip 自身, 不沿用 slot 身份色) |
+| --- | --- | --- | --- | --- |
+| 0 | builtin | 关闭 | `NSRunningApplication.terminate()` | `#FF453A` red |
+| 1 | builtin | 全屏 (toggle) | `AXUIElementSetAttributeValue(window, AXFullScreen, !current)` | `#F7B500` yellow |
+| 2 | builtin | 隐藏 | `NSRunningApplication.hide()` | `#3B82F6` blue |
+| 3 | user custom | (用户取名) | `HaloAction` (folder/URL/Shortcut) | `#1DB954` green |
 
-- ⇧ 不参与 Halo 任何当前路径（默认 chord `⌘⌥Space`、双击 ⌘ / ⌥ / ⌃ / Mouse 3 都不用 ⇧）。
-- ⇧ 是 macOS 体系里的"次级修饰键"——和 Finder "Show in Enclosing Folder"、tab 切换等等保持一致直觉。
-- 按住 ⇧ 进入 / 松开 ⇧ 退出，是 Halo 原生 "按住即可见、松开即提交" 语言的自然延伸。
-- 备选「dwell 600ms」语义太重（拖慢 commit），「scroll 进入」与现有 slot cycle 冲突。
+设计要点:
+- **chip 颜色固定**, 不染身份色 — 关闭永远红 / 全屏永远黄 / 隐藏永远蓝, 形成跨 app 的双通道肌肉记忆 (位置 + 颜色).
+- **位置固定**: idx 0/1/2/3 永远是 close/fullscreen/hide/custom. 不允许重排.
+- chip 3 未配置 → 渲染 "+" 占位, commit 走 Settings 入口.
 
-## 3. 数据模型
+## 6. 全屏 chip (AX-gated, toggle)
+
+- **入口**: `kAXFullScreenAttribute` (macOS 私有但稳定常量, Magnet/Rectangle/Raycast 在用).
+- **读**: `AXUIElementCopyAttributeValue(focusedWindow, AXFullScreen)` → `Bool`.
+- **写**: 取反 → `AXUIElementSetAttributeValue(...)`.
+- **toggle 图标**: 当前 fullscreen → 渲 `arrow.down.right.and.arrow.up.left` (退出); 否则 `arrow.up.left.and.arrow.down.right` (进入).
+
+权限渐进流程:
+1. `AXIsProcessTrusted()` → false: chip 灰显 (色彩降饱和 + 右上角黄点), label 仍渲染 "全屏".
+2. 用户首次点灰 chip → 弹一次性 sheet 「Halo 需要 Accessibility 权限来读写目标窗口的全屏属性。Halo 不读输入、不模拟键盘。」
+   - 按 [打开系统设置] → `AXIsProcessTrustedWithOptions(prompt:true)` 弹系统对话框, 跳转 Privacy & Security → Accessibility.
+   - 按 [稍后] → 关 sheet, 不再 nag 直到下次点.
+3. 用户授权后 → chip 立即恢复亮态; commit 直接生效.
+4. **核心切换路径 (layer 1) 仍不依赖 AX** — 这条规约不破.
+
+## 7. 几何
+
+```
+SLOT_RADIUS  = 114pt              (iconRadius default, 跟 layer 1 一致)
+ARC_RADIUS   = 240pt              (slot 中心 → chip 中心)
+ARC_SPAN     = 48°                (4 chip 总跨度)
+CHIP_GAP     = ARC_SPAN / 3 = 16°
+CHIP_SIZE    = 42pt 圆形 glass chip
+LABEL_OFFSET = chip 下方 6pt, 标签常驻 (不藏 hover)
+```
+
+边界处理:
+- 弧本身超出屏幕 → 整段弧绕到 slot 内侧 (径向反射). 检测: `(slotX ± ARC_RADIUS, slotY ± ARC_RADIUS)` 是否超 screen visibleFrame.
+- 与相邻 slot 重叠: 不会, ARC_RADIUS(240) > slot 之间距离 (~87pt for N=8).
+
+## 8. Commit 与 Cancel
+
+| 触发 | 行为 |
+| --- | --- |
+| 释放主 hotkey, 当前 chip 已 hover | 执行该 chip 动作 |
+| 释放主 hotkey, 弧上无 hover | cancel (Halo 退出, 不 commit) |
+| 左键点 chip | 同主 hotkey 释放 (执行) |
+| 数字键 1–4 | 直接执行对应 chip |
+| 触发器松开 (⇧ / 右键) | 退出 arc, 回 slot 层; 不 commit, slot 继续 hover |
+| ESC | 整个 Halo cancel |
+
+错误反馈: 执行失败 (例如 AX 写失败 / Shortcut 不存在) → shake-and-dismiss, 与 layer 1 app 启动失败同款.
+
+## 9. 数据模型
 
 ```swift
-public enum HaloActionKind: String, Codable, Sendable {
-    case openFolder       // payload: file path
-    case openURL          // payload: https://... or any scheme
-    case runShortcut      // payload: Shortcut name (uses shortcuts://run-shortcut)
+public enum BuiltInActionKind: String, Codable, Sendable {
+    case quit
+    case fullscreenToggle
+    case hide
 }
 
-public struct HaloAction: Identifiable, Codable, Equatable, Sendable {
-    public let id: UUID
-    public var label: String      // user-supplied, displayed under icon
-    public var kind: HaloActionKind
-    public var payload: String    // path / URL / shortcut name
-    public var sfSymbol: String?  // optional override; default per kind
+public enum ArcChip: Equatable, Sendable {
+    case builtin(BuiltInActionKind)
+    case custom(HaloAction)       // 现有 HaloAction 继续用
+    case emptyCustom              // chip 3 未配置占位
+}
+
+public struct ActiveArc: Equatable, Sendable {
+    public let slotIndex: Int
+    public let bundleID: String
+    public let appName: String
+    public let chips: [ArcChip]   // 固定 4 个: [.builtin(.quit), .builtin(.fullscreenToggle), .builtin(.hide), .custom 或 .emptyCustom]
+    public let appIsFullscreen: Bool  // 进入弧时一次性读取, 渲染时决定 toggle 图标
+    public let axGranted: Bool        // 进入时读, 决定全屏 chip 是否灰显
 }
 ```
 
 存储:
+- 自定义 chip 复用现有 `AppPreferences.actions(forBundleID:)` 数组存储, **arc 渲染只取 `.first`**.
+- 现有 Settings → Actions 改成"每 app 一个自定义" — 不允许多个, 改 / 删 / 加 都只动 `.first`.
 
-- `AppPreferences.actions(for: bundleID) -> [HaloAction]` / `set(actions: [HaloAction], for: bundleID)`
-- UserDefaults key: `halo.prefs.actionBindings.v1` → `[String: [HaloAction]]` JSON
-- 删除最后一个 action → 该 bundleID 的 key 被清除
-- 存储无上限，渲染时只取前 `slotCount` 个（§7）；存储不随 `slotCount` 改变重排
+## 10. 视觉
 
-Default SF symbol:
+复用 `RadialView` 的玻璃材质. Arc 自己一个子 view:
+- 4 个 `Capsule()` / `Circle()` glass chip, `glassEffect(.regular, in: Circle())` (macOS 26) / `NSVisualEffectView` fallback
+- chip 内部: SF Symbol 居中 (19pt), 颜色 = chip accent
+- chip 下方: 常驻 label (10pt, semibold), 黑底白字 readability
+- hover 单 chip: 1.15× scale + chip accent 描边 1.5pt + 18pt 高斯外发光 (chip accent × 0.6)
+- 弧本身: SVG 不画 — chip 之间的"弧"感由空间布局自然形成. 可选加一条**身份色细虚线**从 slot 拉到弧中点 (tether), strong tie 视觉.
 
-- openFolder → `folder.fill`
-- openURL → `link`
-- runShortcut → `wand.and.stars`
+进出动画:
+- 进: chip 从 slot 中心 `translate + scale(0.4)` → 目标位置 + `scale(1.0)`, 错位 30ms 一个 (sequential pop), 总时长 ~240ms
+- 出: 反向, 收回 slot 中心, 总时长 ~160ms (出比进略快)
+- ReduceMotion: 全部退化为单纯 opacity crossfade 80ms
 
-## 4. 视觉
+## 11. AX 权限网关
 
-复用 `RadialView` 的几何 + 玻璃材质，**通过四处差异告诉用户"这是第二层"**:
-
-1. **中心 hub**: 始终显示当前 app icon + 顶部细标题条 `{appName} · Actions`（11pt SF Pro Bold，accent 色低饱和度文本）
-2. **Sector content**: 不再是 app icon，而是 SF Symbol 居中 + 下方两行最多 22 字符的 label
-3. **Sector tint**: 全部用 layer 1 当前 slot 的 identity color（统一感）；hovered sector 加深；非 hovered 用 6% alpha 而非 1.5%
-4. **Specular arc**: 从 12 点弧移到 6 点弧（视觉锚反向），暗示"翻面进入"
-5. **Outer rim**: 在 `visibleOuterRadius` 上方加一圈 0.4pt 的 accent 色细环 (alpha 0.3)，layer 1 没有 — 形成"layer 2 边界"标识
-
-动效:
-
-- ⇧ 按下 → layer 1 sector fade out 100ms (icon → blank)，layer 2 sector fade in 120ms (blank → symbol + label)
-- ⇧ 松开 → 反向，slots 重新可见
-- 期间 hub icon 不重新淡入，避免闪烁——它已经在 layer 1 hover 时显示该 app
-
-ReduceMotion: 两层切换降级为 60ms 简单 opacity crossfade。
-
-## 5. 提交 / 取消
-
-| 触发 | layer 1 | layer 2 |
-| --- | --- | --- |
-| 松开 hotkey | `Switcher.switchTo(bundleID)` | `ActionExecutor.execute(action)` |
-| 点击 sector | 同上 | 同上 |
-| Return / Space | 同上 | 同上 |
-| 数字键 1–9 0 - = | 直选 + commit | 直选 layer 2 sector + commit |
-| ESC | cancel | cancel（不回 layer 1，整个 Halo dismiss） |
-| 松开 ⇧ | n/a | 不 commit，回 layer 1 |
-
-执行失败 (`ActionExecutor` 返回 `.failed`) → `shakeAndDismiss()`，和 app 启动失败同路径。
-
-`ActionExecutor` 实现:
-
-- openFolder: `NSWorkspace.shared.open(URL(fileURLWithPath: payload))`
-- openURL: `URL(string: payload).flatMap { NSWorkspace.shared.open($0) } ?? false`
-- runShortcut: `NSWorkspace.shared.open(URL(string: "shortcuts://run-shortcut?name=\(percentEncoded)")!)`
-
-返回 `.executed` / `.failed`. 不阻塞主线程（NSWorkspace.open 本身是异步的）。
-
-## 6. 设置 UI
-
-新增 sidebar section: **Actions** (盾牌之后、About 之前)，渐变色 = 紫橙偏暖.
-
-布局:
-
-```
-┌──────────────────────────────────────────────────┐
-│ App list (left, 200pt)   │ Action list (right)   │
-│ ┌──────────────────────┐ │ ┌────────────────────┐ │
-│ │ Finder           [3] │ │ │ ☰ Open Downloads   │ │
-│ │ Cursor           [5] │ │ │ ☰ Open ~/Code      │ │
-│ │ Safari           [2] │ │ │ ☰ AirDrop          │ │
-│ │ + Add app          │ │ │ + Add action       │ │
-│ └──────────────────────┘ │ └────────────────────┘ │
-└──────────────────────────────────────────────────┘
+```swift
+public enum AXPermissionGate {
+    public static var isTrusted: Bool {
+        AXIsProcessTrusted()
+    }
+    @discardableResult
+    public static func requestTrust(prompt: Bool = true) -> Bool {
+        let options = [
+            kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: prompt
+        ] as CFDictionary
+        return AXIsProcessTrustedWithOptions(options)
+    }
+}
 ```
 
-- 左侧 app list: 来自所有有绑定动作的 bundleID，按 frequency 排序；底部 "+ Add app" 复用 `PinPickerWindow` 选 bundle。
-- 右侧 action list: drag-handle 可重排；行尾 menu 提供 Edit / Delete；底部 "+ Add action" sheet。
-- Add / Edit sheet: kind picker (segmented 3 选 1) + label TextField + payload field（type 改变时 placeholder + 验证规则切换）+ optional SF symbol 名 input。
-- 验证: openFolder 必须存在且是 directory；openURL 必须 parseable；runShortcut 不验证（用户可能要绑还没安装的）。
-- 一个 bundleID 删完所有动作 → 自动从 app list 移除。
+`requestTrust(prompt:true)` 会让 macOS 自己弹一次性系统对话框. 我们不另外做 sheet — Halo 默认不弹系统 dialog 干扰别人的工作, 但 Action Arc 是用户主动点 chip 才发起, 弹一次是合理的.
 
-## 7. 边界情况
+## 12. 模块划分
+
+```
+HaloCore (新):
+  ├ BuiltInAction.swift       BuiltInActionKind, ArcChip, ActiveArc 数据模型
+  ├ ArcExecutor.swift         protocol ArcRuntime + ArcExecutor 调度
+                              (生产 impl 在 HaloUI/NSWorkspaceArcRuntime.swift)
+
+HaloUI (新 / 改):
+  ├ AXPermissionGate.swift    AX 检测 + 请求
+  ├ FullScreenToggler.swift   AXFullScreen 读/写 (用 ArcRuntime 包装便测试)
+  ├ NSWorkspaceArcRuntime.swift  ArcRuntime live impl (combines NSRunningApplication +
+                                  AXUIElement + ActionExecutor for custom)
+  ├ ActionArcView.swift       SwiftUI arc view (chips + tether + animations)
+  ├ HaloState.swift           +activeArc: ActiveArc? +arcHoverChip: Int?
+                              -Layer / -ActionContext / -actionSlots / -enter/exit (v1 残留全删)
+  └ RadialView.swift          复用; 在 ZStack 顶部根据 state.activeArc 叠加 ActionArcView
+                              -v1 的 actionSectorView/actionRimIndicator/ActionSlotContent 全删
+
+HaloApp (改):
+  ├ AppDelegate.swift         +installArcTriggerMonitor (right-mouse + flagsChanged 统一)
+                              +tryShowArc / hideArc / commitArc
+                              改 commitSelection 分发: activeArc != nil → arc commit
+                              -v1 的 tryEnterActionRing / exitActionRingIfActive
+  └ ActionsSettingsTab.swift  改成"每 app 一个 custom" 单字段表单
+```
+
+## 13. 测试
+
+`HaloCoreTests`:
+- `BuiltInActionTests` — ArcChip / ActiveArc Equatable
+- `ArcExecutorTests` — 用 FakeArcRuntime 覆盖 quit / fs-toggle / hide / custom 四路成功 + 失败
+- `HaloActionStoreTests` (已有, 保留)
+- `ActionExecutorTests` (已有, 保留, 用于 custom chip)
+
+`HaloUITests`:
+- `HaloStateArcTests` — `showArc` / `hideArc` / `setArcHover` 转换
+- `FullScreenTogglerTests` — fake AX runtime, 验证读 + 写 + 失败 codepath
+
+## 14. 边界情况
 
 | 情况 | 行为 |
 | --- | --- |
-| 进入 layer 2 时 app 没绑动作 | 全部 sector 渲染为"+ Configure"占位; 任一 commit → 打开 Settings.Actions 定位 |
-| layer 2 渲染中绑定数 < slotCount | 多余 slot 渲染"+ Add action"占位；commit 任一 → 打开 Settings.Actions |
-| layer 2 渲染中绑定数 > slotCount | 截断至 slotCount，Settings 显示警告 "8 of 12 actions visible; reduce or increase slot count" |
-| 用户在 Settings 改 slotCount | actions 不重排（用户给 action 的 index 是空间记忆，不该跟 slot 数改变） |
-| openFolder payload 指向已删除目录 | `NSWorkspace.open` 返回 false → shake-and-fail |
-| runShortcut 名拼写错 | macOS 弹一个"Shortcut not found"，我们的角度看是 succeeded（URL open 成功）— 接受这个，不试图替系统判断 |
-| 用户在 layer 2 按 ⇧ 第二次（连按） | 不做事; 已在 layer 2 |
-| 用户在 layer 1 commit 之前先按 ⇧（idle 状态） | 不做事; 必须先 hover 一个 app slot |
-| 多显示器 | 不影响; layer 2 渲染在同一面板 |
-| Reduce Motion | crossfade 缩到 60ms |
+| AX 未授权 + 点全屏 chip | 走 `requestTrust(prompt:true)`; 不执行; Halo 不 dismiss, 用户处理完系统弹窗后 chip 仍可用 |
+| 目标 app 没有 focused window | toggle fullscreen 直接返 .failed |
+| 目标 app 不响应 hide() (有些游戏类) | NSRunningApplication.hide() 返 false → shake |
+| 用户在 Settings 删了 custom action, 然后呼 arc | chip 3 渲染 "+ Add"; commit 跳 Settings |
+| 用户拼写错的 SF Symbol | SwiftUI 渲染时显示空 — 加 fallback: `Image(systemName: name)` 失败 (检测不到) → 用 kind 默认 |
+| 同一秒触发两个触发器 (⇧ + 右键) | 第一个胜; 第二个忽略. State 是单 `activeArc?` |
+| Arc 展开期间 slot 被移除 (refreshSlots 异步) | 检测 slot.app == nil → hideArc 不 commit |
+| Halo 召唤期间用户改 N | activeArc 用的是召唤瞬间快照, 不重排 (不在 arc 里时 layer 1 正常重排) |
 
-## 8. 模块划分
+## 15. 实施顺序
 
-```
-HaloCore (无 UI):
-  ├ HaloAction.swift          数据模型 + JSON
-  ├ ActionStore.swift         AppPreferences 的扩展 (新增 actions(for:) / set / remove)
-  └ ActionExecutor.swift      protocol AppRuntime 已存在；这里加一个 ActionRuntime
-                              live impl 在 HaloUI/NSWorkspaceRuntime+Actions.swift
+1. **Revert v1**: 从 HaloState/RadialView/AppDelegate 删 Layer / actionSlots / 相关方法. 删 HaloStateLayerTests.
+2. 加 AXPermissionGate + FullScreenToggler + ArcRuntime + ArcExecutor + 测试.
+3. 改 HaloState: 加 activeArc / arcHoverChip / show/hide/setHover 方法 + 测试.
+4. 加 ActionArcView. 改 RadialView 顶层叠加.
+5. 改 AppDelegate: arc trigger monitor, commit 分发.
+6. 改 ActionsSettingsTab: 单 custom 字段表单.
+7. swift test 全绿. swift build -c release. build-app.sh. 启动 .app 手动 verify.
 
-HaloUI:
-  ├ HaloState.swift           +layer (.slots / .actions(ActionContext))
-                              +actionSlots
-  ├ RadialView.swift          根据 state.layer 二选一渲染
-  ├ ActionSectorContent.swift 新文件; SF symbol + label
-  └ NSWorkspaceRuntime+Actions.swift live ActionRuntime
+## 16. 仍待决 (等用户)
 
-HaloApp:
-  ├ AppDelegate.swift         +flagsChanged 监听 ⇧
-                              +commitSelection 分发到 ActionExecutor
-                              +applyActions 缓存
-  └ ActionsSettingsTab.swift  新设置面板
-  └ ActionEditorSheet.swift   add/edit action sheet
-```
-
-## 9. 测试
-
-`HaloCoreTests`:
-- `HaloActionStoreTests` — encode/decode round-trip, add/remove, edge cases (空 list、删除最后一个)
-- `ActionExecutorTests` — 用 FakeActionRuntime 验证 openFolder/openURL/runShortcut 走对路径，失败传回
-
-`HaloUITests`:
-- `HaloStateLayerTests` — 进入 layer 2 / 退出 layer 2 / 在 layer 2 期间 commit 走 layer 2 dispatch
-- `ActionRingHoverTests` — layer 2 期间 hover phase 流转和 layer 1 一致
-
-不做端到端 UI 测试（项目现有约定）；本地 build + 手动验证 golden path 在 `Build, run, verify` 任务。
-
-## 10. 风险
-
-| # | 项 | 备注 |
-| --- | --- | --- |
-| R1 | ⇧ 与系统 shift-arrow 选区冲突 | Halo 召唤期间面板已成为 key window，不会泄漏 |
-| R2 | 用户按 ⇧ 改方向意外（例如 ⇧+digit 走 layer 1 索引） | digit 路径在 layer 2 也是 commit layer 2 sector，行为对称 |
-| R3 | 多 hop 焦虑 | layer 2 的边界视觉提示 + hub 的 `{app} · Actions` 永远在 — 用户不会迷路 |
-| R4 | 用户存放 shell action 的需求 | 明确 v1 不做；v2 可加，但要弹"准予执行 shell"二级确认 |
-| R5 | Shortcut name 含特殊字符 | URL 用 `addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)`，单测覆盖 |
-
-## 11. 实施顺序
-
-1. HaloCore 数据模型 + tests
-2. HaloState layer 字段 + tests
-3. AppDelegate flagsChanged 监听（先 print，不绘 UI；验证事件流）
-4. RadialView 渲染 layer 2 (复用 sectorView，新 sectorContentVariant)
-5. ActionExecutor live + commitSelection 分发
-6. Settings UI
-7. swift test 全绿；build release；启动 .app 手动验证 golden path
-
-## 12. 非目标 / 暂缓
-
-- ⇧ 之外的 layer 进入方式（dwell、scroll 进入）
-- 跨 app 的全局 action（"open ~/Downloads regardless of context"）
-- macOS Shortcuts 列表自动补全
-- 同步、导入导出（属 brainstorm "可分享主题与配置卡片"，独立 spec）
-- 二级动作链（action → 二级 action ring）
-
-## 13. 后续追踪
-
-- v1 落地后在 `docs/INTERACTION.md` 加 §15 Action Ring
-- BRAINSTORM 中 "Per-App Actions" 与本 spec 等价，落地后把它从 brainstorm 标记为 shipped
+- 触控板"双指轻点"在 macOS 13 之前不一定走 `.rightMouseDown` — 取决于系统设置. 是否要给用户一个开关 "把触控板双指轻点当作 arc 触发器"? v1 先不做, 默认就吃 secondary click.
+- 自定义 chip 显示什么 label? 用户在 Settings 取的名 + SF Symbol. 用户没填 → fallback 到 kind 的默认名 (e.g. "文件夹" / "URL" / "Shortcut").
