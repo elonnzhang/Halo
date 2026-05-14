@@ -6,12 +6,15 @@ import HaloCore
 /// `onTriggered` on the second press, `onReleased` on the second release.
 ///
 /// Implementation: a 25 Hz `Timer` polls the live keyboard / mouse state.
-///   - `CGEventSource.keyState(.combinedSessionState, key: <keyCode>)`
-///     for keyboard triggers — keyCode-discriminated so left vs right
-///     Option / Control are distinguishable.
+///   - `CGEventSource.flagsState(.combinedSessionState)` for L/R Option,
+///     reading the NX_DEVICELALTKEYMASK / NX_DEVICERALTKEYMASK bits that
+///     `NSEvent.modifierFlags` strips off (it only carries the
+///     device-independent high 16 bits).
+///   - `NSEvent.modifierFlags.contains(.command/.control)` for ⌘ and ⌃,
+///     which don't need L/R discrimination.
 ///   - `NSEvent.pressedMouseButtons` bitmask for middle mouse.
-///   - `NSEvent.modifierFlags` for the "other modifier joined" check
-///     that rejects ⌘+key chords as accidental taps.
+///   - `NSEvent.modifierFlags` again for the "other modifier joined"
+///     check that rejects ⌘+key chords as accidental taps.
 ///
 /// All three APIs are passive state queries — no Accessibility permission
 /// needed, no event tap, no entitlement. v1.0's `CommandLongPressMonitor`
@@ -83,22 +86,20 @@ public final class DoubleTapMonitor {
         let now = Date()
         switch trigger {
         case .leftOption:
-            tickKeyboard(matchedKeyDown: Self.isKeyDown(58),
+            tickKeyboard(matchedKeyDown: Self.deviceFlagSet(Self.leftOptionMask),
                          otherModifiersPresent: otherModifiers(excluding: .option),
                          at: now)
         case .rightOption:
-            tickKeyboard(matchedKeyDown: Self.isKeyDown(61),
+            tickKeyboard(matchedKeyDown: Self.deviceFlagSet(Self.rightOptionMask),
                          otherModifiersPresent: otherModifiers(excluding: .option),
                          at: now)
         case .command:
-            // Accept either side of the Command key (54 / 55).
-            let matched = Self.isKeyDown(54) || Self.isKeyDown(55)
-            tickKeyboard(matchedKeyDown: matched,
+            // Accept either side of the Command key.
+            tickKeyboard(matchedKeyDown: NSEvent.modifierFlags.contains(.command),
                          otherModifiersPresent: otherModifiers(excluding: .command),
                          at: now)
         case .control:
-            let matched = Self.isKeyDown(59) || Self.isKeyDown(62)
-            tickKeyboard(matchedKeyDown: matched,
+            tickKeyboard(matchedKeyDown: NSEvent.modifierFlags.contains(.control),
                          otherModifiersPresent: otherModifiers(excluding: .control),
                          at: now)
         case .middleMouse:
@@ -107,11 +108,20 @@ public final class DoubleTapMonitor {
         }
     }
 
-    /// `CGEventSource.keyState` reads HID-level keyboard state without
-    /// needing Accessibility — same trust level as
-    /// `NSEvent.modifierFlags`. Wrap into a typed helper for clarity.
-    private static func isKeyDown(_ keyCode: CGKeyCode) -> Bool {
-        CGEventSource.keyState(.combinedSessionState, key: keyCode)
+    // L/R modifier discrimination via the device-dependent NX bits.
+    // We *must* read these from `CGEventSource.flagsState`, not from
+    // `NSEvent.modifierFlags`: NSEvent's class snapshot is documented
+    // to expose only `deviceIndependentFlagsMask = 0xFFFF0000`, so the
+    // low-byte NX_DEVICELALTKEYMASK / NX_DEVICERALTKEYMASK never appear
+    // there. `CGEventSource.flagsState(.combinedSessionState)` does
+    // carry them and is a passive HID query — same trust level as
+    // `NSEvent.modifierFlags`, no Accessibility required. Constants
+    // come from IOKit's `IOLLEvent.h` and have been stable since 10.x.
+    private static let leftOptionMask:  UInt64 = 0x20  // NX_DEVICELALTKEYMASK
+    private static let rightOptionMask: UInt64 = 0x40  // NX_DEVICERALTKEYMASK
+
+    private static func deviceFlagSet(_ mask: UInt64) -> Bool {
+        (CGEventSource.flagsState(.combinedSessionState).rawValue & mask) != 0
     }
 
     private func otherModifiers(excluding match: NSEvent.ModifierFlags) -> Bool {
