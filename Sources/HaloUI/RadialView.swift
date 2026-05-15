@@ -264,18 +264,20 @@ public struct RadialView: View {
                     )
                 )
         )
-        // drawingGroup forces the disc + mask + shadow chain through a
-        // Metal offscreen buffer with float-precision alpha. The previous
-        // direct-rasterization path was the primary source of the
-        // tire-tread aliasing on the feathered rim. Skip it on Liquid
-        // Glass (macOS 26+) where the system already composites this at
-        // high quality and offscreen rasterization would forfeit the
-        // glass's content-aware refraction.
-        .modifier(LegacyAntialiased())
         // One unified soft drop. The previous double-shadow stack
         // (radius 32 + radius 8) compounded the rim alpha steps into a
         // visibly notched "tire" silhouette; one larger, slightly
         // weaker pass reads cleaner at every backdrop value.
+        //
+        // We deliberately do NOT wrap the disc in `.drawingGroup()` for
+        // anti-aliasing on legacy systems — Apple's docs are explicit
+        // that drawingGroup's offscreen buffer "won't include effects,
+        // like vibrancy, that depend on the surrounding context to
+        // render." On macOS 12/13 that breaks `NSVisualEffectView`'s
+        // behind-window vibrancy and the disc renders as a solid
+        // accent-tinted opaque puck (the user-reported red/yellow blob
+        // bug on macOS 12). The widened soft-edge mask alone gives a
+        // good-enough rim feathering without forfeiting vibrancy.
         .shadow(color: .black.opacity(0.34), radius: 28, x: 0, y: 14)
     }
 
@@ -933,29 +935,6 @@ struct WheelChrome {
 
     // Centre-hub idle fallback glyph (`circle.dotted`).
     var hubFallback: Color { .primary.opacity(isDark ? 0.40 : 0.50) }
-}
-
-// MARK: - Antialiasing helper
-
-/// Forces the wheel disc through an offscreen Metal buffer with float-
-/// precision alpha — kills the rim stair-stepping that direct
-/// rasterization produces on the soft-edge mask.
-///
-/// Skipped on macOS 26+ where Liquid Glass already composites at high
-/// quality and the offscreen pass would forfeit the glass's content-aware
-/// refraction (the `glassEffect()` API samples real-time pixels behind
-/// it, which a `drawingGroup()` rasterization would erase). On the 26+
-/// branch the `.compositingGroup()` already applied upstream in
-/// `wheelBackground` is what flattens blend-mode layering — no behaviour
-/// is lost from this passthrough.
-private struct LegacyAntialiased: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content
-        } else {
-            content.drawingGroup()
-        }
-    }
 }
 
 // MARK: - Glass chip background
