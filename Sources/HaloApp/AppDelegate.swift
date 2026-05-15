@@ -58,9 +58,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         state.slotCount = prefs.slotCount
         state.onCommit = { [weak self] in self?.commitSelection() }
-        state.onArcReanchorNeeded = { [weak self] newSlot in
-            self?.reanchorArc(toSlotIndex: newSlot)
-        }
         window = HaloWindow(state: state)
         menuBar = MenuBarController(
             onSummon: { [weak self] in self?.summonFromMenu() },
@@ -745,20 +742,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HaloLog.summon.debug("show arc app=\(arc.bundleID) fs=\(arc.appIsFullscreen) ax=\(arc.axGranted) slot=\(arc.slotIndex)")
     }
 
-    /// Re-anchor the arc to a new slot when the user sweeps the cursor
-    /// across the wheel with the arc already up. Cheap to rebuild — chip
-    /// list + fullscreen snapshot are the only per-app pieces. No-op if
-    /// the new slot is empty so a stray hover onto a "+" placeholder
-    /// doesn't kill the arc.
-    private func reanchorArc(toSlotIndex newSlot: Int) {
-        guard state.activeArc != nil else { return }
-        guard let slot = state.slots.first(where: { $0.id == newSlot }),
-              slot.app != nil
-        else { return }
-        guard let arc = buildArc(forSlot: newSlot, slot: slot) else { return }
-        state.showArc(arc)
-    }
-
+    /// Builds an `ActiveArc` snapshot — chip list, fullscreen state, AX
+    /// trust — for a given slot. Used only by `tryShowArc`; the arc is a
+    /// one-shot snapshot frozen at trigger time. Sweeping the cursor onto
+    /// a different slot afterwards does NOT re-anchor; the user has to
+    /// tap-toggle off and re-trigger on the new slot.
     private func buildArc(forSlot slotIdx: Int, slot: HaloSlot) -> ActiveArc? {
         guard let app = slot.app else { return nil }
         let customAction = prefs.actions(forBundleID: app.bundleID).first
