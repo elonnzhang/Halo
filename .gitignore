@@ -28,3 +28,9 @@ dist/
 plans/
 # …but track the structured spec/plan handoff location.
 !docs/superpowers/plans/
+
+# Clickable HTML mockups — kept locally as a private design scratchpad,
+# no longer shipped via git. Existing references in README / docs /
+# specs intentionally remain so contributors know mockups exist; they
+# can be requested or rebuilt locally if a design discussion needs them.
+mockups/
