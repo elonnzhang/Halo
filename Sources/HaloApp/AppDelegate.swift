@@ -36,10 +36,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// ⌘ that arrives during the user's double-tap), so we filter for
     /// ⇧ explicitly.
     private var shiftHeld: Bool = false
-    /// Tracks the right-mouse button (or two-finger trackpad tap, when
-    /// macOS's secondary-click is configured for that gesture) state for
-    /// the arc trigger.
-    private var rightMouseHeld: Bool = false
     private var prefsObserver: AnyCancellable?
     private var nameCache: [String: String] = [:]
     private var identityColorCache: [String: IdentityColor] = [:]
@@ -359,12 +355,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Slots are kept current by the activation observer and by prefs
         // changes; we don't need to re-extract dominant colors here — that
         // burns ~100ms/icon and makes Halo feel sluggish.
-        // Always start a summon on layer 1. Seed the trigger-state
-        // mirrors so the first ⇧/right-click after summon is treated as
-        // a fresh tap, not a "still held from last time" no-op.
+        // Always start a summon on layer 1. Seed `shiftHeld` from the live
+        // HID state so the first ⇧ flagsChanged after summon is correctly
+        // classified as a press (not a stale off→on transition).
         state.hideArc()
         shiftHeld = NSEvent.modifierFlags.contains(.shift)
-        rightMouseHeld = NSEvent.pressedMouseButtons & (1 << 1) != 0
         let position = prefs.summonPosition
         switch position {
         case .mouse:
@@ -513,13 +508,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func commitArcChip(_ chipIdx: Int, arc: ActiveArc) {
         let chip = arc.chips[chipIdx]
 
-        // AX gate: if the chip needs AX and we don't have it, ask. The
-        // user's trigger release is interpreted as "yes I want to use
-        // this" so jumping into the system prompt is consensual.
+        // AX gate: if the chip needs AX and we don't have it, ask. Fire
+        // the trust prompt FIRST, then dismiss Halo — otherwise we
+        // re-activate the previous frontmost app, and the system's
+        // Accessibility prompt sometimes mis-attributes to that app
+        // rather than to Halo.
         if case .builtin(let kind) = chip, kind.requiresAX, !AXPermissionGate.isTrusted {
-            window.dismiss(animated: true, restorePreviousFront: true)
             AXPermissionGate.requestTrust(prompt: true)
             state.hideArc()
+            window.dismiss(animated: true, restorePreviousFront: true)
             return
         }
 
@@ -804,13 +801,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return (slot.id, slot)
         }
         return nil
-    }
-
-    /// (Kept for API symmetry with cancel() — the tap-toggle model no
-    /// longer drives this from trigger releases.)
-    private func hideArcIfActive() {
-        guard state.activeArc != nil else { return }
-        state.hideArc()
     }
 
     /// Local monitor that translates scrollWheel events into slot-cycle

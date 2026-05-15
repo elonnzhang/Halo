@@ -31,6 +31,11 @@ public struct ActionArcView: View {
                 chipView(at: idx)
             }
         }
+        // Remount the whole arc when re-anchoring to a different slot so
+        // the chip pop-in animation replays — gives the user a visible
+        // "now we're on a different app's arc" cue rather than a
+        // silent swap that looks like nothing happened.
+        .id("arc-\(arc.slotIndex)-\(arc.bundleID)")
         .frame(width: HaloUI.Geometry.totalDiameter,
                height: HaloUI.Geometry.totalDiameter)
         .allowsHitTesting(false)

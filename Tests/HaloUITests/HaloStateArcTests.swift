@@ -47,6 +47,7 @@ final class HaloStateArcTests: XCTestCase {
     }
 }
 
+@MainActor
 final class ActionArcGeometryTests: XCTestCase {
     func test_chipCenters_landOnExpectedRadius() {
         // 4 chips, slot 0 (12 o'clock), N=8.

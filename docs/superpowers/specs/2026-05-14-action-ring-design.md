@@ -27,19 +27,24 @@
 
 | 触发 | NSEvent 类型 | 备注 |
 | --- | --- | --- |
-| 长按 ⇧ 在 slot 上 | `.flagsChanged`, `.shift` flag | 已 hover 时按 ⇧ → 弹弧; ⇧ 释放 → 收弧 (不 commit) |
-| 右键按住 slot | `.rightMouseDown` / `.rightMouseUp` | 同语义 |
-| 触控板双指轻点 slot | 同 `.rightMouseDown` (Trackpad → System Settings → 「辅助点按 = 用两指轻点」时产生 secondary click) | 等价右键 |
+| 单按 ⇧ | `.flagsChanged`, `.shift` off→on 边沿 | 一次 toggle 出/收; ⇧ 释放无作用 |
+| 单按右键 | `.rightMouseDown` | 一次 toggle 出/收; 右键释放无作用 |
+| 触控板双指轻点 | 同 `.rightMouseDown` (System Settings → Trackpad → 「辅助点按 = 用两指轻点」) | 等价右键 |
 
-进入条件:
-- 主 hotkey 还按着 (Halo 处于召唤态)
-- `currentHoverSlot` 指向 **非空 app slot** (slot 1..n, 不是 "+" 占位)
-- 触发器按下 (任一)
+Tap-toggle 语义 (实现已收敛到这版, 实际比早期 spec 的"按住即可见"更顺手):
+- 没 arc 时: 触发器按下 → 弹弧, 锚定到 `currentHoverSlot` (空位 / deadzone 时 fallback 到 `summonOriginBundleID`)
+- 有 arc 且 cursor 在同一 slot: 触发器按下 → 收弧
+- 有 arc 且 cursor 在不同 app slot: 触发器按下 → **直接重新弹弧到新 slot** (一次按下完成换锚)
+- 有 arc 且 cursor 在空槽 / deadzone: 触发器按下 → 收弧
 
-退出条件:
-- 触发器松开 (⇧ up / 右键 up)
+退出 (不 commit):
+- 触发器再按一次 (按上面规则的"同 slot"或"空槽"路径)
 - ESC
-- 主 hotkey 松开 (这会同时 commit 当前 chip 如果有 hover)
+
+退出并 commit (主 hotkey 释放):
+- chip 在 hover → 跑 chip
+- chip 没 hover, cursor 在 slot 上 → dismiss arc + 走 layer-1 切那个 slot 的 app
+- 都没 → cancel
 
 ## 4. 状态机
 

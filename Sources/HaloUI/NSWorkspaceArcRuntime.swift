@@ -23,13 +23,7 @@ public struct NSWorkspaceArcRuntime: ArcRuntime {
 
     public func toggleFullscreen(bundleID: String) -> Bool {
         guard let app = runningApp(bundleID: bundleID) else { return false }
-        // FullScreenToggler is MainActor-isolated (the CFString attribute
-        // constant is non-Sendable). All arc commits happen on the main
-        // actor already, so assume that here rather than spreading
-        // MainActor up the protocol chain.
-        return MainActor.assumeIsolated {
-            FullScreenToggler.toggle(forPID: app.processIdentifier)
-        }
+        return FullScreenToggler.toggle(forPID: app.processIdentifier)
     }
 
     public func executeCustom(_ action: HaloAction, forBundleID bundleID: String) -> ActionOutcome {

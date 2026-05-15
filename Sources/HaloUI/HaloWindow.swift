@@ -244,10 +244,11 @@ public final class HaloWindow {
             if state.arcHoverChip != chipIdx {
                 state.arcHoverChip = chipIdx
             }
-            // We still update slot hover so the underlying slot stays lit
-            // (helps the user know which slot the arc belongs to). Skip the
-            // outer fall-through though — when the cursor is on a chip we
-            // don't want the slot ring to claim it as a hover-outside-chip.
+            // The slot fall-through below still runs intentionally: we want
+            // the underlying slot to stay lit so the user knows which slot
+            // the arc belongs to. Chip hover and slot hover coexist; commit
+            // dispatch in AppDelegate gives the chip priority when both
+            // are set.
         }
 
         // outerRadius uses `reachDiameter` (1.5× wheel) by default so the

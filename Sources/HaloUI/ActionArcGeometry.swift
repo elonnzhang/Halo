@@ -5,10 +5,14 @@ import Foundation
 /// convention), to match `RadialGeometry`. Kept side-effect-free so we
 /// can unit-test chip hit-testing without spinning up SwiftUI.
 public enum ActionArcGeometry {
-    /// Distance from wheel centre to a chip centre. Matches the constant
-    /// in `ActionArcView`. Past the visible wheel rim by ~110pt so the
-    /// chip sits well outside the disc and the cursor has elbow room.
-    public static let arcRadius: CGFloat = 270
+    /// Distance from wheel centre to a chip centre. Scales with the
+    /// user-tunable wheel: chip sits ~110pt past the disc's visible
+    /// outer rim regardless of `haloDiameter` / `iconRadius` settings.
+    /// All sites (render + hit-test) read this so the two stay in lock-step.
+    @MainActor
+    public static var arcRadius: CGFloat {
+        HaloUI.Geometry.visibleOuterRadius + 110
+    }
     /// Total angular span of the 4 chips, in degrees.
     public static let arcSpanDegrees: Double = 48
     /// Diameter (≈ hit radius * 2) for each chip.
@@ -25,6 +29,7 @@ public enum ActionArcGeometry {
 
     /// Centre of chip `idx` (math-convention coords, y-up). Mirrors
     /// `ActionArcView.chipPosition(at:)`.
+    @MainActor
     public static func chipCenter(
         chipIndex: Int,
         slotIndex: Int,
@@ -51,6 +56,7 @@ public enum ActionArcGeometry {
     ///
     /// We compare squared distances against `(chipDiameter/2 + hitPadding)^2`
     /// so the user can "approach" a chip without pixel-perfect aiming.
+    @MainActor
     public static func chipIndex(
         forCenteredPoint point: CGPoint,
         slotIndex: Int,

@@ -12,11 +12,12 @@ import HaloCore
 /// exist in the public headers) but has been stable since macOS 10.7 and
 /// is the same API Magnet / Rectangle / Raycast use.
 ///
-/// `@MainActor` because the CFString attribute name isn't `Sendable` and
-/// all Halo callers are main-actor already.
-@MainActor
+/// Callable from any actor — the underlying AX APIs are documented
+/// thread-safe. `nonisolated(unsafe)` on the CFString constant tells the
+/// Swift 6 strict-concurrency checker that the immutable constant is
+/// safe to share across actors.
 public enum FullScreenToggler {
-    private static let fullScreenAttr = "AXFullScreen" as CFString
+    nonisolated(unsafe) private static let fullScreenAttr = "AXFullScreen" as CFString
 
     /// Best-effort read. Returns false on any failure (AX not granted,
     /// app has no focused window, attribute missing). Cheap enough to

@@ -50,15 +50,21 @@ public struct NSWorkspaceActionRuntime: ActionRuntime {
 
     /// NSAppleScript executes synchronously and pops its own permission
     /// prompts (Apple Events) the first time the script touches another
-    /// app. Compile errors and runtime errors both return non-nil in the
-    /// out-error dictionary; either way we treat as failure.
+    /// app. Long scripts (`delay 5`, slow `tell application "X"` round
+    /// trips, etc.) would freeze Halo's main thread, so we dispatch to a
+    /// background queue and return optimistically. The trade-off: failure
+    /// no longer surfaces as a shake-and-fail; the AppleScript runtime's
+    /// own error dialogs (or the lack of effect) are the user feedback.
     public func runAppleScript(_ source: String) -> Bool {
+        // Compile on the calling thread so we can reject obviously
+        // malformed scripts synchronously. Execute on the background.
         guard let script = NSAppleScript(source: source) else { return false }
-        var error: NSDictionary?
-        _ = script.executeAndReturnError(&error)
-        if let error = error {
-            HaloLog.switcher.info("AppleScript error: \(error)")
-            return false
+        DispatchQueue.global(qos: .userInitiated).async {
+            var error: NSDictionary?
+            _ = script.executeAndReturnError(&error)
+            if let error = error {
+                HaloLog.switcher.info("AppleScript error: \(error)")
+            }
         }
         return true
     }
