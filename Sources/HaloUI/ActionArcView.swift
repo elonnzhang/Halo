@@ -13,12 +13,12 @@ public struct ActionArcView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Distance from wheel centre to chip centre. ~63% past the slot icon
-    /// radius so the chip clears the wheel rim with a visual margin.
-    private let arcRadius: CGFloat = 240
-    /// Total angular span of the 4 chips, in degrees.
-    private let arcSpanDegrees: Double = 48
-    private let chipDiameter: CGFloat = 42
+    /// Geometry mirrors `ActionArcGeometry` so render and hit-test stay
+    /// in lockstep — touching one constant in `ActionArcGeometry`
+    /// updates both.
+    private var arcRadius: CGFloat { ActionArcGeometry.arcRadius }
+    private var arcSpanDegrees: Double { ActionArcGeometry.arcSpanDegrees }
+    private var chipDiameter: CGFloat { ActionArcGeometry.chipDiameter }
 
     public init(arc: ActiveArc, hoverChip: Int?) {
         self.arc = arc

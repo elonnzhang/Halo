@@ -66,13 +66,11 @@ final class ActionArcGeometryTests: XCTestCase {
         let center = ActionArcGeometry.chipCenter(
             chipIndex: 1, slotIndex: 0, sectorCount: 8, chipCount: 4
         )
-        // The cursor timer feeds points in SwiftUI y-down coordinates (the
-        // helper inverts internally), so to land on chip 1 we pass the
-        // flipped y.
-        let cursorOnChip = CGPoint(x: center.x, y: -center.y)
+        // Cursor timer feeds points in math y-up coords; chipCenter is
+        // also y-up; no flip needed.
         XCTAssertEqual(
             ActionArcGeometry.chipIndex(
-                forCenteredPoint: cursorOnChip,
+                forCenteredPoint: center,
                 slotIndex: 0, sectorCount: 8, chipCount: 4
             ),
             1

@@ -61,12 +61,13 @@ public enum HaloUI {
             haloDiameter / 2 + 56
         }
         public static let labelMaxWidth: CGFloat = 220
-        /// Breathing room so the halo glow + label + shadow all fit in the
-        /// panel without clipping. Sized to contain a max-width label at the
-        /// diagonal slot positions (45°, 135°, …) where the chip extends
-        /// farthest from centre.
+        /// Breathing room so the halo glow + label + shadow + Action Arc
+        /// chips all fit in the panel without clipping. Sized to hold the
+        /// arc's `arcRadius + chip half + label height` at the diagonal
+        /// slot positions where the chip extends farthest from centre.
+        /// Bumped from +200 → +280 when the arc landed.
         public static var totalDiameter: CGFloat {
-            haloDiameter + 200
+            haloDiameter + 280
         }
         /// User-tunable renderer-time scale (Settings → Appearance →
         /// Panel size). Multiplies every layout dimension at draw time so

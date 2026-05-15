@@ -6,15 +6,16 @@ import Foundation
 /// can unit-test chip hit-testing without spinning up SwiftUI.
 public enum ActionArcGeometry {
     /// Distance from wheel centre to a chip centre. Matches the constant
-    /// in `ActionArcView`.
-    public static let arcRadius: CGFloat = 240
+    /// in `ActionArcView`. Past the visible wheel rim by ~110pt so the
+    /// chip sits well outside the disc and the cursor has elbow room.
+    public static let arcRadius: CGFloat = 270
     /// Total angular span of the 4 chips, in degrees.
     public static let arcSpanDegrees: Double = 48
     /// Diameter (≈ hit radius * 2) for each chip.
     public static let chipDiameter: CGFloat = 42
     /// Cursor cushion past the visual chip rim so a cursor "near" the chip
     /// still counts as hover.
-    public static let hitPadding: CGFloat = 8
+    public static let hitPadding: CGFloat = 10
 
     /// Slot bearing in math convention (12 o'clock = π/2, clockwise).
     public static func slotAngle(slotIndex: Int, sectorCount: Int) -> Double {
@@ -43,8 +44,10 @@ public enum ActionArcGeometry {
 
     /// Closest chip to `point`, or nil if no chip is within hit radius.
     /// Input `point` is in math-convention coordinates relative to the
-    /// wheel centre. (HaloWindow's cursor timer feeds y in math
-    /// convention by mapping the SwiftUI-flipped y back; see HaloWindow.)
+    /// wheel centre (y-up). HaloWindow's cursor timer already produces
+    /// y-up coords (Cocoa's mouse.y is y-up), so no flipping needed —
+    /// the previous version flipped y a second time, which made the
+    /// comparison miss for every slot except those where chip y ≈ 0.
     ///
     /// We compare squared distances against `(chipDiameter/2 + hitPadding)^2`
     /// so the user can "approach" a chip without pixel-perfect aiming.
@@ -54,9 +57,6 @@ public enum ActionArcGeometry {
         sectorCount: Int,
         chipCount: Int
     ) -> Int? {
-        // The cursor timer hands us y in SwiftUI convention (y-down). We
-        // convert here once so callers don't have to think about it.
-        let p = CGPoint(x: point.x, y: -point.y)
         let hitR = chipDiameter / 2 + hitPadding
         let hitR2 = hitR * hitR
         var best: (idx: Int, d2: CGFloat)?
@@ -67,8 +67,8 @@ public enum ActionArcGeometry {
                 sectorCount: sectorCount,
                 chipCount: chipCount
             )
-            let dx = c.x - p.x
-            let dy = c.y - p.y
+            let dx = c.x - point.x
+            let dy = c.y - point.y
             let d2 = dx * dx + dy * dy
             guard d2 <= hitR2 else { continue }
             if best == nil || d2 < best!.d2 { best = (i, d2) }
