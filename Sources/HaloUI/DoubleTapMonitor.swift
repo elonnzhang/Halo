@@ -167,10 +167,12 @@ public final class DoubleTapMonitor {
                 onTriggered?()
             }
         case .secondDown:
-            if matchedKeyDown && otherModifiersPresent {
-                state = .idle
-                return
-            }
+            // NOTE: we deliberately do NOT bail on `otherModifiersPresent`
+            // here. Summon has already fired; the user is allowed (in fact
+            // expected) to layer ⇧ on top of the held trigger key to open
+            // the Action Arc. Bailing on chord here used to drop the state
+            // back to .idle, swallowing the subsequent `onReleased` and
+            // forcing the user to click instead of release-to-commit.
             if !matchedKeyDown {
                 onReleased?()
                 state = .idle

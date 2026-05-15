@@ -70,18 +70,24 @@ final class DoubleTapMonitorStateTests: XCTestCase {
         XCTAssertEqual(log.value.triggers, 0)
     }
 
-    func test_otherModifierJoined_duringSecondDown_resetsWithoutRelease() {
+    /// Once the second tap has fired (`.secondDown`), the user is
+    /// expected to layer on ⇧ to open the Action Arc. Adding the
+    /// modifier must NOT drop the state machine back to idle — that
+    /// would swallow the `onReleased` and force the user to click to
+    /// commit instead of release-to-commit.
+    func test_otherModifierJoined_duringSecondDown_stillFiresRelease() {
         let (monitor, log) = makeMonitor(trigger: .command, gap: 0.30)
 
         monitor.tickKeyboard(matchedKeyDown: true,  otherModifiersPresent: false, at: t(0.00))
         monitor.tickKeyboard(matchedKeyDown: false, otherModifiersPresent: false, at: t(0.10))
         monitor.tickKeyboard(matchedKeyDown: true,  otherModifiersPresent: false, at: t(0.15))
         XCTAssertEqual(log.value.triggers, 1)
-        // Second ⌘ still held; user adds ⇧.
+        // Second ⌘ still held; user adds ⇧ (opens Action Arc).
         monitor.tickKeyboard(matchedKeyDown: true,  otherModifiersPresent: true,  at: t(0.20))
+        // ⇧ still held when the user releases ⌘ — release must fire.
         monitor.tickKeyboard(matchedKeyDown: false, otherModifiersPresent: true,  at: t(0.30))
 
-        XCTAssertEqual(log.value.releases, 0)
+        XCTAssertEqual(log.value.releases, 1)
     }
 
     func test_suppressionGate_blocksTrigger_andResetsState() {
