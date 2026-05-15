@@ -727,16 +727,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Try to show the Action Arc for the hovered slot. Snapshots the
-    /// target app's fullscreen state + AX trust status so the renderer
-    /// can pick the right toggle icon and gated styling without
-    /// re-querying during render.
+    /// Try to show the Action Arc. Picks the anchor slot in this order:
+    ///   1. The slot the cursor is currently hovering (if it has an app)
+    ///   2. The slot whose app matches the pre-summon frontmost app
+    ///      (so triggering ⇧/right-click from the deadzone surfaces the
+    ///      current app's actions)
+    /// Snapshots the target's fullscreen + AX state so render doesn't
+    /// re-query during a redraw.
     private func tryShowArc() {
         guard state.activeArc == nil else { return }
-        guard let i = state.currentHoverSlot,
-              let slot = state.slots.first(where: { $0.id == i }),
-              let app = slot.app
-        else { return }
+        guard let target = arcAnchorSlot() else { return }
+        let (slotIdx, slot) = target
+        guard let app = slot.app else { return }
+
         let customAction = prefs.actions(forBundleID: app.bundleID).first
         let chips: [ArcChip] = [
             .builtin(.quit),
@@ -752,7 +755,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return FullScreenToggler.isFullscreen(forPID: runningApp.processIdentifier)
         }()
         let arc = ActiveArc(
-            slotIndex: i,
+            slotIndex: slotIdx,
             bundleID: app.bundleID,
             appName: app.name,
             chips: chips,
@@ -760,7 +763,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             axGranted: AXPermissionGate.isTrusted
         )
         state.showArc(arc)
-        HaloLog.summon.debug("show arc app=\(app.bundleID) fs=\(isFs) ax=\(arc.axGranted)")
+        HaloLog.summon.debug("show arc app=\(app.bundleID) fs=\(isFs) ax=\(arc.axGranted) slot=\(slotIdx)")
+    }
+
+    /// Resolves which slot the arc should anchor to. The hover takes
+    /// priority; when the cursor is in the deadzone we look up the
+    /// summon-origin app so a "summon + ⇧" sequence surfaces the actions
+    /// for the app the user came from without having to move the mouse.
+    private func arcAnchorSlot() -> (Int, HaloSlot)? {
+        // 1. Cursor on an app slot → that's the anchor.
+        if let i = state.currentHoverSlot,
+           let slot = state.slots.first(where: { $0.id == i }),
+           slot.app != nil {
+            return (i, slot)
+        }
+        // 2. Cursor in deadzone → use the pre-summon frontmost app.
+        guard let originID = state.summonOriginBundleID else { return nil }
+        if let slot = state.slots.first(where: { $0.app?.bundleID == originID }) {
+            return (slot.id, slot)
+        }
+        return nil
     }
 
     /// (Kept for API symmetry with cancel() — the tap-toggle model no

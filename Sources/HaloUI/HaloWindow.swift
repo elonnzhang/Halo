@@ -78,6 +78,13 @@ public final class HaloWindow {
         )
         panel.setFrame(frame, display: true)
 
+        // Always warp the cursor to the panel centre on summon. When the
+        // summon was already cursor-anchored AND no edge clamp happened
+        // this is a no-op; on edge clamps or menu-bar summons it pulls
+        // the cursor into the deadzone so the user can immediately point
+        // out toward a slot. User directive: 鼠标始终在 Halo 圆心.
+        warpCursorToPanelCentre(frame: frame)
+
         previousFrontApp = NSWorkspace.shared.frontmostApplication.flatMap { app in
             app.bundleIdentifier == Bundle.main.bundleIdentifier ? nil : app
         }
@@ -265,6 +272,22 @@ public final class HaloWindow {
 
     private func screenContaining(_ point: CGPoint) -> NSScreen? {
         NSScreen.screens.first { $0.frame.contains(point) }
+    }
+
+    /// Move the system cursor to the panel's geometric centre.
+    /// `CGWarpMouseCursorPosition` takes global display coordinates
+    /// (origin at the top-left of NSScreen[0], y-down), so we flip the
+    /// Cocoa y-up frame.midY against the primary screen's height.
+    private func warpCursorToPanelCentre(frame: NSRect) {
+        guard let primary = NSScreen.screens.first else { return }
+        let centreCocoa = CGPoint(x: frame.midX, y: frame.midY)
+        let globalY = primary.frame.height - centreCocoa.y
+        CGWarpMouseCursorPosition(CGPoint(x: centreCocoa.x, y: globalY))
+        // Re-associate after warp so subsequent movement deltas are
+        // applied — `CGWarpMouseCursorPosition` documents that the mouse
+        // and cursor stay associated by default, but a defensive call
+        // here also resets any prior dissociate state.
+        CGAssociateMouseAndMouseCursorPosition(1)
     }
 }
 
