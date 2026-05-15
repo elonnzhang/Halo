@@ -10,6 +10,19 @@ public enum SummonPosition: String, Codable, Sendable, CaseIterable {
     case center
 }
 
+/// Light / dark / system-follow appearance preference. `system` mirrors the
+/// macOS system setting (no override); `light` and `dark` force aqua /
+/// darkAqua respectively. Applied at the `NSApp.appearance` level so every
+/// window that doesn't override picks it up — Settings, Pin picker, alerts.
+/// The Halo wheel and Welcome overlay remain pinned to `.darkAqua` (branded
+/// HUD surfaces that don't follow this knob; see `HaloWindow.init` /
+/// `WelcomeWindowController.present`).
+public enum AppearanceMode: String, Codable, Sendable, CaseIterable {
+    case system
+    case light
+    case dark
+}
+
 /// Bitmask of supported hotkey modifiers, mirroring NSEvent.ModifierFlags / Carbon.
 public struct HotkeyModifiers: OptionSet, Codable, Sendable, Hashable {
     public let rawValue: UInt32
@@ -76,7 +89,13 @@ public final class AppPreferences: ObservableObject {
         static let whitelist       = "halo.prefs.whitelist.v1"
         static let soundEffects    = "halo.prefs.soundEffectsEnabled"
         static let actionBindings  = "halo.prefs.actionBindings.v1"
+        static let appearanceMode  = "halo.prefs.appearanceMode"
         static let onboardingShown = "halo.onboarding.shown"
+        // v1.2 multi-profile — owns pins / overflow / identity overrides.
+        // The legacy keys above stay read-only as a rollback safety net
+        // through v1.2 and are dropped in v1.3.
+        static let profilesV1      = "halo.prefs.profiles.v1"
+        static let activeProfile   = "halo.prefs.activeProfileID"
     }
 
     // MARK: - Layout defaults
@@ -93,9 +112,204 @@ public final class AppPreferences: ObservableObject {
 
     private let defaults: UserDefaults
 
+    // MARK: - Multi-profile backing storage
+
+    private var _profiles: [BindingProfile] = []
+    private var _activeProfileID: UUID = UUID()
+    private var _profilesLoaded = false
+
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         registerDefaults()
+        if defaults.data(forKey: Keys.profilesV1) == nil {
+            migrateLegacyKeysIntoDefaultProfile()
+        }
+    }
+
+    private func migrateLegacyKeysIntoDefaultProfile() {
+        // Read legacy keys raw; the projection getters below aren't
+        // safe to call before profiles.v1 is initialised. SlotCount
+        // determines the pin array length.
+        let slot: Int = {
+            let raw = defaults.integer(forKey: Keys.slotCount)
+            return max(4, min(12, raw == 0 ? 8 : raw))
+        }()
+
+        let pins: [String?] = {
+            if let data = defaults.data(forKey: Keys.pinnedSlots),
+               let decoded = try? JSONDecoder().decode([String?].self, from: data),
+               decoded.count == slot {
+                return decoded
+            }
+            return Array(repeating: nil, count: slot)
+        }()
+
+        let overflow: [String] = {
+            guard let data = defaults.data(forKey: Keys.overflowPins),
+                  let arr = try? JSONDecoder().decode([String].self, from: data)
+            else { return [] }
+            return arr
+        }()
+
+        let overrides: [String: IdentityColor] = {
+            struct M: Codable { var entries: [String: IdentityColor] }
+            guard let data = defaults.data(forKey: Keys.identityOver),
+                  let map = try? JSONDecoder().decode(M.self, from: data)
+            else { return [:] }
+            return map.entries
+        }()
+
+        let migrated = BindingProfile(
+            name: "Default",
+            pinnedBundleIDs: pins,
+            overflowPinnedBundleIDs: overflow,
+            identityOverrides: overrides
+        )
+        writeProfiles([migrated], activeID: migrated.id)
+        HaloLog.settings.info("Migrated legacy prefs into Default profile (slots: \(slot), pins: \(pins.compactMap { $0 }.count), overrides: \(overrides.count))")
+    }
+
+    public var profiles: [BindingProfile] {
+        loadProfilesIfNeeded()
+        return _profiles
+    }
+
+    public var activeProfileID: UUID {
+        loadProfilesIfNeeded()
+        return _activeProfileID
+    }
+
+    public var activeProfile: BindingProfile {
+        loadProfilesIfNeeded()
+        if let p = _profiles.first(where: { $0.id == _activeProfileID }) { return p }
+        // Self-heal: stale active id points at a missing profile.
+        if let first = _profiles.first {
+            HaloLog.settings.info("activeProfileID \(_activeProfileID) missing; falling back to \(first.id)")
+            _activeProfileID = first.id
+            persistActiveID()
+            return first
+        }
+        // Last-resort: empty array (only happens if the plist was hand-edited).
+        let fresh = BindingProfile.freshDefault()
+        _profiles = [fresh]
+        _activeProfileID = fresh.id
+        writeProfiles(_profiles, activeID: _activeProfileID)
+        return fresh
+    }
+
+    private func loadProfilesIfNeeded() {
+        guard !_profilesLoaded else { return }
+        _profilesLoaded = true
+        if let data = defaults.data(forKey: Keys.profilesV1),
+           let decoded = try? JSONDecoder().decode([BindingProfile].self, from: data),
+           !decoded.isEmpty {
+            _profiles = decoded
+            if let raw = defaults.string(forKey: Keys.activeProfile),
+               let uuid = UUID(uuidString: raw) {
+                _activeProfileID = uuid
+            } else {
+                _activeProfileID = decoded[0].id
+            }
+        } else {
+            let fresh = BindingProfile.freshDefault()
+            _profiles = [fresh]
+            _activeProfileID = fresh.id
+            writeProfiles(_profiles, activeID: _activeProfileID)
+        }
+    }
+
+    private func writeProfiles(_ profiles: [BindingProfile], activeID: UUID) {
+        _profiles = profiles
+        _activeProfileID = activeID
+        _profilesLoaded = true
+        if let data = try? JSONEncoder().encode(profiles) {
+            defaults.set(data, forKey: Keys.profilesV1)
+        }
+        defaults.set(activeID.uuidString, forKey: Keys.activeProfile)
+    }
+
+    private func persistActiveID() {
+        defaults.set(_activeProfileID.uuidString, forKey: Keys.activeProfile)
+    }
+
+    /// Mutate the active profile in place and persist. Caller is
+    /// responsible for `objectWillChange.send()`.
+    private func updateActiveProfile(_ mutate: (inout BindingProfile) -> Void) {
+        loadProfilesIfNeeded()
+        guard let idx = _profiles.firstIndex(where: { $0.id == _activeProfileID }) else {
+            _ = activeProfile   // self-heal
+            return updateActiveProfile(mutate)
+        }
+        var profile = _profiles[idx]
+        mutate(&profile)
+        _profiles[idx] = profile
+        writeProfiles(_profiles, activeID: _activeProfileID)
+    }
+
+    // MARK: - Profile management
+
+    @discardableResult
+    public func addProfile(name: String, cloning sourceID: UUID?) -> BindingProfile {
+        loadProfilesIfNeeded()
+        let n = slotCount
+        let new: BindingProfile
+        if let sourceID = sourceID,
+           let source = _profiles.first(where: { $0.id == sourceID })
+        {
+            new = BindingProfile(
+                id: UUID(),
+                name: name,
+                pinnedBundleIDs: source.pinnedBundleIDs,
+                overflowPinnedBundleIDs: source.overflowPinnedBundleIDs,
+                identityOverrides: source.identityOverrides
+            )
+        } else {
+            new = BindingProfile(
+                name: name,
+                pinnedBundleIDs: Array(repeating: nil, count: n)
+            )
+        }
+        objectWillChange.send()
+        _profiles.append(new)
+        writeProfiles(_profiles, activeID: _activeProfileID)
+        HaloLog.settings.info("Added profile '\(name)' (clone of: \(sourceID?.uuidString ?? "blank"))")
+        return new
+    }
+
+    public func renameProfile(_ id: UUID, to newName: String) {
+        loadProfilesIfNeeded()
+        guard let idx = _profiles.firstIndex(where: { $0.id == id }) else { return }
+        objectWillChange.send()
+        _profiles[idx].name = newName
+        writeProfiles(_profiles, activeID: _activeProfileID)
+    }
+
+    public func deleteProfile(_ id: UUID) {
+        loadProfilesIfNeeded()
+        guard _profiles.count > 1 else {
+            HaloLog.settings.error("Refusing to delete the last profile (id: \(id))")
+            return
+        }
+        guard let idx = _profiles.firstIndex(where: { $0.id == id }) else { return }
+        objectWillChange.send()
+        _profiles.remove(at: idx)
+        if _activeProfileID == id {
+            _activeProfileID = _profiles[0].id
+        }
+        writeProfiles(_profiles, activeID: _activeProfileID)
+    }
+
+    public func switchToProfile(_ id: UUID) {
+        loadProfilesIfNeeded()
+        guard _profiles.contains(where: { $0.id == id }) else {
+            HaloLog.settings.error("switchToProfile(\(id)) — id not found")
+            return
+        }
+        guard id != _activeProfileID else { return }
+        objectWillChange.send()
+        _activeProfileID = id
+        persistActiveID()
+        HaloLog.settings.info("Switched to profile '\(activeProfile.name)'")
     }
 
     private func registerDefaults() {
@@ -114,6 +328,7 @@ public final class AppPreferences: ObservableObject {
             Keys.highlightFront: true,
             Keys.doubleTapTrigger: DoubleTapTrigger.command.rawValue,
             Keys.soundEffects: true,
+            Keys.appearanceMode: AppearanceMode.system.rawValue,
         ])
     }
 
@@ -122,11 +337,17 @@ public final class AppPreferences: ObservableObject {
     public var slotCount: Int {
         get { max(4, min(12, defaults.integer(forKey: Keys.slotCount))) }
         set {
-            objectWillChange.send()
             let clamped = max(4, min(12, newValue))
-            let old = slotCount
+            guard clamped != slotCount else { return }
+            objectWillChange.send()
             defaults.set(clamped, forKey: Keys.slotCount)
-            resizePinned(from: old, to: clamped)
+            // The pin array on the *active* profile follows the global
+            // slotCount. Inactive profiles stay at their previous
+            // length; when switched to, pinnedBundleIDs is clamped on
+            // read and lazily resized on next mutation.
+            updateActiveProfile { profile in
+                profile = profile.resizing(slotCount: clamped)
+            }
         }
     }
 
@@ -290,97 +511,70 @@ public final class AppPreferences: ObservableObject {
         }
     }
 
-    // MARK: - Pinned slots
+    /// User-facing appearance choice: follow the system, force light, or
+    /// force dark. AppDelegate.applyPreferences() reads this and sets
+    /// `NSApp.appearance` so Settings + Pin picker + alerts react live.
+    public var appearanceMode: AppearanceMode {
+        get {
+            let raw = defaults.string(forKey: Keys.appearanceMode) ?? AppearanceMode.system.rawValue
+            return AppearanceMode(rawValue: raw) ?? .system
+        }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue.rawValue, forKey: Keys.appearanceMode)
+        }
+    }
+
+    // MARK: - Pinned slots (projected from active profile)
 
     /// `nil` at index i means "let the engine fill this slot from Top-N".
     public var pinnedBundleIDs: [String?] {
-        if let data = defaults.data(forKey: Keys.pinnedSlots),
-           let decoded = try? JSONDecoder().decode([String?].self, from: data),
-           decoded.count == slotCount {
-            return decoded
+        let n = slotCount
+        let pins = activeProfile.pinnedBundleIDs
+        if pins.count == n { return pins }
+        // The active profile's pin array was sized for a different
+        // global slotCount — clamp on read; the next setter call
+        // through `updateActiveProfile` re-aligns the stored value.
+        if pins.count > n {
+            return Array(pins.prefix(n))
         }
-        return Array(repeating: nil, count: slotCount)
+        return pins + Array(repeating: nil, count: n - pins.count)
     }
 
     /// Bundle IDs that were pinned at a higher slot index than the current
     /// `slotCount` allows; preserved per VISUAL §11 ("Pin 超出部分保留但暂不显示").
     public var overflowPinnedBundleIDs: [String] {
-        guard let data = defaults.data(forKey: Keys.overflowPins),
-              let arr = try? JSONDecoder().decode([String].self, from: data)
-        else { return [] }
-        return arr
+        activeProfile.overflowPinnedBundleIDs
     }
 
     public func setPinnedBundleID(_ id: String?, at slot: Int) {
-        var current = pinnedBundleIDs
-        guard (0..<current.count).contains(slot) else { return }
+        let n = slotCount
+        guard (0..<n).contains(slot) else { return }
         objectWillChange.send()
-        current[slot] = id
-        savePinned(current, overflow: overflowPinnedBundleIDs)
-    }
-
-    private func resizePinned(from oldN: Int, to newN: Int) {
-        guard oldN != newN else { return }
-        var existing = (try? JSONDecoder().decode([String?].self,
-                                                  from: defaults.data(forKey: Keys.pinnedSlots) ?? Data()))
-            ?? Array(repeating: nil, count: oldN)
-        var overflow = overflowPinnedBundleIDs
-
-        if newN < existing.count {
-            // Shrinking: spill trailing pins into overflow.
-            let spilled = existing[newN...].compactMap { $0 }
-            overflow.append(contentsOf: spilled)
-            existing = Array(existing.prefix(newN))
-        } else {
-            // Growing: append nils, then re-place overflow entries into the first nil slots.
-            existing.append(contentsOf: Array(repeating: nil, count: newN - existing.count))
-            var remaining: [String] = []
-            for id in overflow {
-                if let firstEmpty = existing.firstIndex(where: { $0 == nil }) {
-                    existing[firstEmpty] = id
-                } else {
-                    remaining.append(id)
-                }
+        updateActiveProfile { profile in
+            // Realign before the mutation in case the array drifted
+            // from `slotCount`.
+            if profile.pinnedBundleIDs.count != n {
+                profile = profile.resizing(slotCount: n)
             }
-            overflow = remaining
-        }
-        savePinned(existing, overflow: overflow)
-    }
-
-    private func savePinned(_ slots: [String?], overflow: [String]) {
-        if let data = try? JSONEncoder().encode(slots) {
-            defaults.set(data, forKey: Keys.pinnedSlots)
-        }
-        if let data = try? JSONEncoder().encode(overflow) {
-            defaults.set(data, forKey: Keys.overflowPins)
+            profile.pinnedBundleIDs[slot] = id
         }
     }
 
-    // MARK: - Identity color override
-
-    private struct OverrideMap: Codable {
-        var entries: [String: IdentityColor]
-    }
+    // MARK: - Identity color override (projected from active profile)
 
     public func identityOverride(for bundleID: String) -> IdentityColor? {
-        guard let data = defaults.data(forKey: Keys.identityOver),
-              let map = try? JSONDecoder().decode(OverrideMap.self, from: data)
-        else { return nil }
-        return map.entries[bundleID]
+        activeProfile.identityOverrides[bundleID]
     }
 
     public func setIdentityOverride(_ color: IdentityColor?, for bundleID: String) {
-        var map: OverrideMap = (try? JSONDecoder().decode(OverrideMap.self,
-                                                         from: defaults.data(forKey: Keys.identityOver) ?? Data()))
-            ?? OverrideMap(entries: [:])
         objectWillChange.send()
-        if let color = color {
-            map.entries[bundleID] = color
-        } else {
-            map.entries.removeValue(forKey: bundleID)
-        }
-        if let data = try? JSONEncoder().encode(map) {
-            defaults.set(data, forKey: Keys.identityOver)
+        updateActiveProfile { profile in
+            if let color = color {
+                profile.identityOverrides[bundleID] = color
+            } else {
+                profile.identityOverrides.removeValue(forKey: bundleID)
+            }
         }
     }
 
@@ -581,17 +775,15 @@ public final class AppPreferences: ObservableObject {
 
     // MARK: - Bindings
 
-    // TODO: Apps 布局支持多 profile —— 把 pinnedSlots / overflowPins /
-    // identityOverride 都按 profile name 分桶（"default" / "work" /
-    // "gaming" ...），Settings 上加 profile 切换器。当前所有键都隐含在
-    // "default" 这一个 profile 下；未来重构时只需把 storage key 改成
-    // `halo.prefs.bindings.<profile>.<key>` 并把 currentProfile 持久化。
     public func clearAllBindings() {
         objectWillChange.send()
         let n = slotCount
-        savePinned(Array(repeating: nil, count: n), overflow: [])
-        defaults.removeObject(forKey: Keys.identityOver)
-        HaloLog.settings.info("Cleared all pins + identity overrides (slot count \(n))")
+        updateActiveProfile { profile in
+            profile.pinnedBundleIDs = Array(repeating: nil, count: n)
+            profile.overflowPinnedBundleIDs = []
+            profile.identityOverrides = [:]
+        }
+        HaloLog.settings.info("Cleared bindings in profile '\(activeProfile.name)' (slots: \(n))")
     }
 
     // MARK: - Onboarding

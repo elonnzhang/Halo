@@ -203,10 +203,6 @@ final class SettingsFocusCoordinator: ObservableObject {
 
 // MARK: - Apps tab
 
-// TODO: Apps 布局支持多 profile —— 现在只渲染单个 "Default" 绑定，
-// 未来需要一个 profile 列表 + 切换器（"Default" / "Work" / "Gaming"...），
-// 每个 profile 独立维护 pinnedBundleIDs / identityOverride。AppPreferences
-// 已留了 `clearAllBindings()` 入口，以后按 profile 维度切桶即可。
 struct AppsTab: View {
     @ObservedObject var prefs: AppPreferences
 
@@ -214,6 +210,10 @@ struct AppsTab: View {
 
     var body: some View {
         Form {
+            Section {
+                ProfileBar(prefs: prefs)
+            }
+
             bindingHeader
 
             Section {
@@ -268,7 +268,7 @@ struct AppsTab: View {
                 .frame(width: 36, height: 36)
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Default binding")
+                    Text(prefs.activeProfile.name)
                         .font(.headline)
                     Text(bindingSummary)
                         .font(.callout)

@@ -98,6 +98,10 @@
 
 "Appearance & wheel layout" = "外观与轮盘布局";
 "Panel size is a renderer-time uniform scale (0.80–1.50x). Summon Halo to see the change take effect." = "面板大小是渲染期统一缩放 (0.80–1.50x),召唤一次 Halo 即可看到效果。";
+"Theme applies app-wide — Settings, Halo wheel, welcome card, and alerts all follow." = "主题作用于整个应用——设置面板、Halo 轮盘、欢迎卡和提示框都会跟随。";
+"Theme" = "主题";
+"Light" = "明亮";
+"Dark" = "暗色";
 "Panel size" = "面板大小";
 "Reset layout" = "重置布局";
 
@@ -142,3 +146,17 @@
 "Try it: press %@ now" = "现在试试:按 %@";
 "Point a direction, release to switch" = "指方向后松开即切换";
 "cancels · digit keys jump" = "取消 · 数字键直选";
+
+/* Profile bar — Apps tab (v1.2 多 profile / 场景环) */
+"New profile" = "新建场景";
+"New profile…" = "新建场景…";
+"Start from" = "起点";
+"Blank" = "空白";
+"Clone of %@" = "复制 %@";
+"Switch to %@" = "切换到 %@";
+"Rename…" = "重命名…";
+"Duplicate" = "复制";
+"Delete profile?" = "删除该场景？";
+"This profile's pins and identity colours will be removed. Global settings are unaffected." = "该场景的固定槽位和身份色将被移除。全局设置不受影响。";
+"%d profile" = "%d 个场景";
+"%d profiles" = "%d 个场景";

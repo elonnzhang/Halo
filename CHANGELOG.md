@@ -4,14 +4,30 @@ All notable changes to Halo.
 
 ## Unreleased
 
-### Action Ring (二段手势, layer 2)
+### Action Arc (二段手势, layer 2)
 
-- Hold ⇧ while hovering an app slot to surface the **Action Ring** — a second layer of the same wheel that exposes per-app local actions. Release ⇧ to drop back to the slot ring (same angular position preserved); release the trigger to commit. Layer 1 hot path is unchanged.
-- Three action kinds in v1, all shell-free and local: **Open folder** (NSWorkspace.open on a path; `~` expanded at run time), **Open URL** (any scheme NSWorkspace accepts), **Run Shortcut** (routes through `shortcuts://run-shortcut?name=<url-encoded>` via URLComponents so reserved chars like `&` round-trip cleanly).
-- Settings → **Actions** (new sidebar tab): left column lists configured apps, right column shows that app's action list with reorder / edit / delete. Add-action sheet picks kind + label + payload + optional SF Symbol override. Committing an empty layer-2 sector opens this tab pre-targeted to the right bundleID via `SettingsFocusCoordinator`.
-- Visual differentiation from layer 1: hub shows the target app icon + an "ACTIONS" subtitle in the identity colour, idle sectors carry a warmer 6 % accent fill (vs layer 1's 1.5 % white), and a thin accent rim ring sits inside the visible disc edge.
-- Storage: `halo.prefs.actionBindings.v1` UserDefaults key holds `[bundleID: [HaloAction]]`. Render takes the first `slotCount` per app; storage is cap-free and doesn't shuffle when the user changes slot count.
-- 19 new unit tests across `HaloActionStoreTests` / `ActionExecutorTests` / `HaloStateLayerTests`.
+- Tap **⇧** or right-click (also two-finger tap on trackpad when "Secondary click" is enabled) to open an **Action Arc** — a small fan of 4 chips that pops out from a single app's slot. Layer 1 (the wheel) stays visible underneath. Tap the same trigger again to dismiss; tap on a different slot to re-anchor in one press.
+- Fixed chip layout: **Quit · Fullscreen-toggle · Hide · Custom**. Position and colour are stable across every app (red / yellow / blue / green) so the muscle memory carries between contexts.
+- Fullscreen reads / writes the focused window's `AXFullScreen` attribute (same path Magnet / Rectangle / Raycast use). Requires Accessibility; the chip dims with a yellow indicator until permission is granted, and the first commit triggers the system trust prompt. The rest of Halo's core path stays AX-free.
+- Custom chip is one user-defined action per app. Three kinds:
+  - **Keyboard shortcut** — Halo activates the bound app then posts a `CGEvent` for the parsed combo (`cmd+shift+n` / `⌃⌥F` / `F12` etc.). Needs Accessibility.
+  - **Run Shortcut** — `shortcuts://run-shortcut?name=…`, no extra permission.
+  - **AppleScript** — `NSAppleScript` dispatched off the main thread, so long scripts don't freeze Halo.
+- Commit semantics: chip hovered → run chip; otherwise the cursor's slot wins (layer-1 commit dismisses the arc and switches to that app). Empty custom chip → opens Settings → Actions pre-targeted to the bundleID.
+- Cursor always lands at Halo's geometric centre on summon, even when the panel is clamped by a screen edge (cursor warp via `CGWarpMouseCursorPosition`).
+- New Settings → **Actions** tab: left column lists configured apps, right column shows the chip preview + single-action editor.
+- Arc geometry scales with the user's wheel layout (`arcRadius = visibleOuterRadius + 110`). Chip pop-in animation replays on re-anchor.
+- Spec: `docs/superpowers/specs/2026-05-14-action-ring-design.md`. Mockup: `mockups/halo-action-arc.html`.
+
+## [1.2.0] — 2026-05-14
+
+### 多 Profile / 场景环 (Apps tab)
+
+- New: **Binding profiles** — named bundles of pinned apps and their identity-colour overrides, switchable from a pill bar at the top of Settings → Apps. Click a pill to switch; click `+` to create (Blank or Clone of active); right-click / long-press for rename / duplicate / delete. Active pill is materialized and accent-bordered.
+- Scope is intentionally minimal: a profile owns *pins + overflow + identity overrides only*. **Slot count, frequency profile, whitelist, hotkey, layout, language, sound** — all stay user-global and apply across every profile. The General / Whitelist / About tabs, the sidebar, and the menu bar are unchanged.
+- Migration is automatic: existing v1.1.x users see their prior pins / overrides under a single `Default` profile on first launch. Legacy `UserDefaults` keys (`pinnedSlots.v1` / `overflowPins.v1` / `identityOverride.v1`) are kept as a rollback safety net through v1.2 and removed in v1.3.
+- The global `slotCount` setter resizes the active profile's pin array in-line so overflow behaviour is identical to v1.1. Inactive profiles keep their previous pin-array length and lazily realign on next mutation.
+- 19 new tests (`BindingProfileTests` + `AppPreferencesProfileTests`). Existing `AppPreferencesTests` (12/12) and `AppPreferencesBoundsTests` pass unchanged. Total suite 115/115.
 
 ## [1.1.2] — 2026-05-14
 

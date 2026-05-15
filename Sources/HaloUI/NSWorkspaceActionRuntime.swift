@@ -56,12 +56,14 @@ public struct NSWorkspaceActionRuntime: ActionRuntime {
     /// no longer surfaces as a shake-and-fail; the AppleScript runtime's
     /// own error dialogs (or the lack of effect) are the user feedback.
     public func runAppleScript(_ source: String) -> Bool {
-        // Compile on the calling thread so we can reject obviously
-        // malformed scripts synchronously. Execute on the background.
-        guard let script = NSAppleScript(source: source) else { return false }
+        // Sanity-validate the source parses on the calling thread so the
+        // caller gets a fast "false" for obviously malformed scripts.
+        // `NSAppleScript` isn't `Sendable`; construct a fresh instance
+        // inside the background closure so we don't capture across actors.
+        guard NSAppleScript(source: source) != nil else { return false }
         DispatchQueue.global(qos: .userInitiated).async {
             var error: NSDictionary?
-            _ = script.executeAndReturnError(&error)
+            _ = NSAppleScript(source: source)?.executeAndReturnError(&error)
             if let error = error {
                 HaloLog.switcher.info("AppleScript error: \(error)")
             }
