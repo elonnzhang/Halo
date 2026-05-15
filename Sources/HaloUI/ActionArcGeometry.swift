@@ -5,13 +5,13 @@ import Foundation
 /// convention), to match `RadialGeometry`. Kept side-effect-free so we
 /// can unit-test chip hit-testing without spinning up SwiftUI.
 public enum ActionArcGeometry {
-    /// Distance from wheel centre to a chip centre. Scales with the
-    /// user-tunable wheel: chip sits ~110pt past the disc's visible
-    /// outer rim regardless of `haloDiameter` / `iconRadius` settings.
-    /// All sites (render + hit-test) read this so the two stay in lock-step.
+    /// Distance from wheel centre to a chip centre. +60pt felt too
+    /// close to the disc once Halo's drop shadow blended in; +90pt is
+    /// the sweet spot — chip clears the wheel cleanly while still
+    /// sitting between disc and the profile tab strip above.
     @MainActor
     public static var arcRadius: CGFloat {
-        HaloUI.Geometry.visibleOuterRadius + 110
+        HaloUI.Geometry.visibleOuterRadius + 80
     }
     /// Total angular span of the 4 chips, in degrees.
     public static let arcSpanDegrees: Double = 48

@@ -86,28 +86,83 @@ final class AppPreferencesProfileTests: XCTestCase {
         XCTAssertTrue(prefs.activeProfile.identityOverrides.isEmpty)
     }
 
-    // MARK: - slotCount stays global, resizes active profile
+    // MARK: - slotCount is per-profile (v1.3 handoff alignment)
 
-    func test_slotCountSet_resizesActiveProfilePins_andStaysGlobal() {
+    func test_slotCountSet_writesToActiveProfile_andResizesPins() {
         let prefs = AppPreferences(defaults: freshDefaults())
         prefs.slotCount = 12
         XCTAssertEqual(prefs.slotCount, 12)
+        XCTAssertEqual(prefs.activeProfile.slotCount, 12)
         XCTAssertEqual(prefs.activeProfile.pinnedBundleIDs.count, 12)
 
         // Setting again to a different value resizes again.
         prefs.slotCount = 6
+        XCTAssertEqual(prefs.activeProfile.slotCount, 6)
         XCTAssertEqual(prefs.activeProfile.pinnedBundleIDs.count, 6)
     }
 
-    func test_slotCountIsGlobalNotPerProfile() {
+    func test_slotCountFollowsActiveProfile_acrossSwitches() {
         let prefs = AppPreferences(defaults: freshDefaults())
+        let defaultID = prefs.activeProfileID
         prefs.slotCount = 10
+        // Fresh profile inherits the current slot count so users don't
+        // get yanked to a different wheel width on first creation.
         let work = prefs.addProfile(name: "Work", cloning: nil)
+        XCTAssertEqual(work.slotCount, 10)
+        // Edit Work to a different count.
         prefs.switchToProfile(work.id)
-        // Global slotCount is unchanged; the new profile's pin array
-        // matches it.
+        prefs.slotCount = 6
+        XCTAssertEqual(prefs.slotCount, 6)
+        XCTAssertEqual(prefs.activeProfile.slotCount, 6)
+        // Switching back to Default restores Default's slotCount, NOT
+        // Work's — that's the new per-profile contract.
+        prefs.switchToProfile(defaultID)
         XCTAssertEqual(prefs.slotCount, 10)
-        XCTAssertEqual(prefs.activeProfile.pinnedBundleIDs.count, 10)
+        XCTAssertEqual(prefs.activeProfile.slotCount, 10)
+    }
+
+    func test_cycleActiveProfile_wrapsAround() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        let defaultID = prefs.activeProfileID
+        let a = prefs.addProfile(name: "A", cloning: nil)
+        let b = prefs.addProfile(name: "B", cloning: nil)
+        prefs.switchToProfile(defaultID)
+        prefs.cycleActiveProfile(by: 1)
+        XCTAssertEqual(prefs.activeProfileID, a.id)
+        prefs.cycleActiveProfile(by: 1)
+        XCTAssertEqual(prefs.activeProfileID, b.id)
+        // Wrap forward.
+        prefs.cycleActiveProfile(by: 1)
+        XCTAssertEqual(prefs.activeProfileID, defaultID)
+        // Wrap backward.
+        prefs.cycleActiveProfile(by: -1)
+        XCTAssertEqual(prefs.activeProfileID, b.id)
+    }
+
+    func test_setSlotCount_forNonActiveProfile_doesNotMutateActiveSlotCount() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        let defaultID = prefs.activeProfileID
+        prefs.slotCount = 8
+        let work = prefs.addProfile(name: "Work", cloning: nil)
+        prefs.setSlotCount(12, for: work.id)
+        // Default (still active) is unchanged.
+        XCTAssertEqual(prefs.slotCount, 8)
+        XCTAssertEqual(prefs.activeProfile.slotCount, 8)
+        XCTAssertEqual(prefs.activeProfileID, defaultID)
+        // Switching to Work shows the new size.
+        prefs.switchToProfile(work.id)
+        XCTAssertEqual(prefs.slotCount, 12)
+        XCTAssertEqual(prefs.activeProfile.pinnedBundleIDs.count, 12)
+    }
+
+    func test_setTint_updatesProfileTint_andNilClears() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        let id = prefs.activeProfileID
+        let blue = IdentityColor(lightness: 0.6, chroma: 0.2, hue: 240)
+        prefs.setTint(blue, for: id)
+        XCTAssertEqual(prefs.activeProfile.tint, blue)
+        prefs.setTint(nil, for: id)
+        XCTAssertNil(prefs.activeProfile.tint)
     }
 
     // MARK: - whitelist / ranking stay global

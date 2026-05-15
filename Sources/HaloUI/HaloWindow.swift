@@ -73,12 +73,31 @@ public final class HaloWindow {
         let scaledSize = HaloUI.Geometry.scaledTotalDiameter
         let cursor = origin ?? NSEvent.mouseLocation
         let screen = screenContaining(cursor) ?? NSScreen.main ?? NSScreen.screens.first!
+        let visible = screen.visibleFrame
         let frame = RadialPanelFrame.frame(
             forCursor: cursor,
-            in: screen.visibleFrame,
+            in: visible,
             wheelSize: scaledSize
         )
         panel.setFrame(frame, display: true)
+
+        // Edge anchor — drives the profile tab strip's placement so
+        // it doesn't slam against the menu bar when Halo summons near
+        // the top of the screen (or the Dock at the bottom). 4pt of
+        // tolerance: rasterized panel frames can land a half-pixel off
+        // the visible-frame edge after clamp, and a hard equality
+        // check would mis-classify those as "centred". Cocoa y-up:
+        // visible.maxY is the screen top, visible.minY is the bottom.
+        let edgeTolerance: CGFloat = 4
+        let anchor: SummonEdgeAnchor
+        if frame.maxY >= visible.maxY - edgeTolerance {
+            anchor = .top
+        } else if frame.minY <= visible.minY + edgeTolerance {
+            anchor = .bottom
+        } else {
+            anchor = .none
+        }
+        state.edgeAnchor = anchor
 
         // Always warp the cursor to the panel centre on summon. When the
         // summon was already cursor-anchored AND no edge clamp happened
@@ -94,6 +113,13 @@ public final class HaloWindow {
         // pre-summon app's icon. Captured BEFORE NSApp.activate flips
         // frontmost to Halo itself.
         state.summonOriginBundleID = previousFrontApp?.bundleIdentifier
+
+        // Reset the SwiftUI-side progress to "collapsed at centre" BEFORE
+        // the panel is visible so the explosion animation always starts
+        // from 0 — a stale 1.0 from a previous dismiss would otherwise
+        // race the panel fade-in and the wheel would appear pre-settled.
+        state.summonProgress = 0
+        state.dismissProgress = 0
 
         panel.alphaValue = 0
         panel.orderFrontRegardless()
@@ -129,6 +155,16 @@ public final class HaloWindow {
         state.center = CGPoint(x: frame.midX, y: frame.midY)
         if state.phase == .hidden { state.phase = .idle }
         installCursorTimer()
+
+        // Kick the "explode from centre" animation. Done after the
+        // panel order-front so the first frame of the curve is the
+        // collapsed wheel sitting at the hub; running it earlier would
+        // mean SwiftUI evaluates the animation on a host that isn't on
+        // screen yet, and the curve plays during the panel's 0.12s
+        // alpha fade instead of being seen by the user.
+        withAnimation(.Halo.summon()) {
+            state.summonProgress = 1
+        }
     }
 
     public func dismiss(animated: Bool = true, restorePreviousFront: Bool = false) {
@@ -148,8 +184,17 @@ public final class HaloWindow {
 
         if animated {
             let panel = self.panel
+            // Motion ⑤: SwiftUI-side scale-up + fade-out runs in parallel
+            // with the panel's alpha animation. The state-driven curve
+            // is the visible part (wheel flies outward 1.00→1.55, opacity
+            // 1→0 over 180ms); the panel's NSAnimationContext alpha is
+            // a defensive backstop so any stuck SwiftUI compositing path
+            // still ends in an invisible window before orderOut.
+            withAnimation(.Halo.dismiss()) {
+                state.dismissProgress = 1
+            }
             NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = 0.12
+                ctx.duration = 0.18
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
                 panel.animator().alphaValue = 0
             }, completionHandler: {
@@ -158,10 +203,16 @@ public final class HaloWindow {
                 Task { @MainActor in
                     panel.orderOut(nil)
                     panel.alphaValue = 1
+                    // Reset both progress knobs so the next summon
+                    // starts from a clean "collapsed at centre" pose.
+                    self.state.summonProgress = 0
+                    self.state.dismissProgress = 0
                 }
             })
         } else {
             panel.orderOut(nil)
+            state.summonProgress = 0
+            state.dismissProgress = 0
         }
 
         if let app = restore, !app.isTerminated {
@@ -262,12 +313,38 @@ public final class HaloWindow {
         let outerRadius: CGFloat = state.activeArc == nil
             ? HaloUI.Geometry.reachDiameter / 2
             : HaloUI.Geometry.visibleOuterRadius
-        let index = RadialGeometry.sectorIndex(
-            for: centered,
-            sectorCount: state.slotCount,
-            innerRadius: HaloUI.Geometry.deadzoneDiameter / 2,
-            outerRadius: outerRadius
-        )
+
+        // Profile tab strip dead-zone. The strip lives just outside
+        // the wheel — above the wheel when the panel is centred or
+        // anchored to the screen's bottom edge, below the wheel when
+        // anchored to the top edge. Cursor positions that have passed
+        // the visible disc rim *in that direction* would otherwise
+        // stay inside the 1.5× reach cushion and keep the closest
+        // slot (12 o'clock or 6 o'clock) lit even though the user is
+        // clearly heading for the strip. Treat that corridor as "no
+        // sector hover" so the wedge releases before the cursor
+        // reaches the pill row. Only kicks in when the strip is
+        // actually rendered (≥2 profiles).
+        let inStripCorridor: Bool = {
+            guard state.profilePills.count > 1 else { return false }
+            let visibleR = HaloUI.Geometry.visibleOuterRadius
+            switch state.edgeAnchor {
+            case .top:    return centered.y <= -visibleR   // strip below
+            case .none, .bottom: return centered.y >= visibleR  // strip above
+            }
+        }()
+
+        let index: Int?
+        if inStripCorridor {
+            index = nil
+        } else {
+            index = RadialGeometry.sectorIndex(
+                for: centered,
+                sectorCount: state.slotCount,
+                innerRadius: HaloUI.Geometry.deadzoneDiameter / 2,
+                outerRadius: outerRadius
+            )
+        }
         state.updateHover(slot: index)
     }
 

@@ -26,15 +26,10 @@ struct GeneralTab: View {
     @ViewBuilder
     private var nativeForm: some View {
         Form {
+            // Slot count moved per-profile; see Apps tab → "Slots
+            // for this profile". This section now only carries
+            // settings that stay user-global.
             Section("Summon position & ranking") {
-                Picker("Slot count", selection: Binding(
-                    get: { prefs.slotCount },
-                    set: { prefs.slotCount = $0 }
-                )) {
-                    ForEach([4, 6, 8, 10, 12], id: \.self) { Text("\($0)").tag($0) }
-                }
-                .pickerStyle(.segmented)
-
                 Picker("Summon position", selection: Binding(
                     get: { prefs.summonPosition },
                     set: { prefs.summonPosition = $0 }
@@ -278,14 +273,10 @@ struct GeneralTab: View {
     @ViewBuilder
     private var legacyForm: some View {
         Form {
+            // Slot count moved per-profile (see Apps tab); keep the
+            // section but drop the slot-count picker on the macOS 12
+            // fallback form too.
             Section("Summon position & ranking") {
-                Picker("Slot count", selection: Binding(
-                    get: { prefs.slotCount },
-                    set: { prefs.slotCount = $0 }
-                )) {
-                    ForEach([4, 6, 8, 10, 12], id: \.self) { Text("\($0)").tag($0) }
-                }
-                .pickerStyle(.segmented)
                 Picker("Summon position", selection: Binding(
                     get: { prefs.summonPosition },
                     set: { prefs.summonPosition = $0 }

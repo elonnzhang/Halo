@@ -54,6 +54,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         state.slotCount = prefs.slotCount
         state.onCommit = { [weak self] in self?.commitSelection() }
+        // Tap handler for the wheel's top-strip profile pills. Routes
+        // through the same path Tab / ⇧Tab uses so transient state
+        // (scroll anchor, arc) gets reset.
+        state.onSwitchProfile = { [weak self] id in
+            guard let self = self else { return }
+            guard id != self.prefs.activeProfileID else { return }
+            self.state.scrollAnchor = nil
+            self.state.hideArc()
+            self.state.phase = .idle
+            self.prefs.switchToProfile(id)
+            SoundEffectPlayer.shared.play(.slide)
+        }
         window = HaloWindow(state: state)
         menuBar = MenuBarController(
             onSummon: { [weak self] in self?.summonFromMenu() },
@@ -130,6 +142,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func applyPreferences() {
         if state.slotCount != prefs.slotCount {
             state.slotCount = prefs.slotCount
+        }
+        // Push the active profile's ambient tint through to the wheel so
+        // a profile switch or tint-picker edit lights the idle halo
+        // immediately.
+        let nextTint = prefs.activeProfile.tint
+        if state.profileTint != nextTint {
+            state.profileTint = nextTint
+        }
+        // Sync the top-strip pill model. Always rewrite when shape /
+        // names / tints change; we compare via Equatable so a no-op
+        // mutation doesn't churn the SwiftUI animation.
+        let pills = prefs.profiles.map {
+            ProfilePill(id: $0.id, name: $0.name, tint: $0.tint)
+        }
+        if state.profilePills != pills {
+            state.profilePills = pills
+        }
+        if state.activeProfileID != prefs.activeProfileID {
+            state.activeProfileID = prefs.activeProfileID
         }
         // Re-register the Carbon hotkey ONLY when the chord changed.
         // Pre-fix this fired on every prefs mutation (slider drag → 10
@@ -644,6 +675,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // ←↑ cycle -1, →↓ cycle +1
             if keyCode == 123 || keyCode == 126 { self.cycleHighlight(by: -1); return nil }
             if keyCode == 124 || keyCode == 125 { self.cycleHighlight(by:  1); return nil }
+            // Tab / ⇧Tab → next / previous Profile. Routes through
+            // `prefs.cycleActiveProfile`, which fires objectWillChange so
+            // `applyPreferences` refreshes the wheel slots on the next
+            // runloop tick. No-op when there's only one profile (matches
+            // the menu-bar submenu's hidden state).
+            if keyCode == 48 { // Tab
+                let delta = event.modifierFlags.contains(.shift) ? -1 : 1
+                self.cycleProfileWhileSummoned(by: delta)
+                return nil
+            }
             // Digit-key commit gated by Settings → Navigation. KeyCode
             // table covers `1–9 0 - =` so the layout is stable across
             // international keyboards (no `characters` lookup).
@@ -698,6 +739,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// from slot 0/n-1 even when frontmost-highlight was on.
     private func cycleHighlight(by delta: Int) {
         state.advanceSelection(by: delta)
+    }
+
+    /// Cycle the active profile while Halo is summoned. Resets per-summon
+    /// transient state (highlight phase, scroll anchor, arc) so the new
+    /// profile's first slot lights up cleanly when the wheel re-renders
+    /// at the new slot count.
+    private func cycleProfileWhileSummoned(by delta: Int) {
+        guard prefs.profiles.count > 1 else { return }
+        // Drop transient state before the profile flip so the old slot
+        // index doesn't leak through to the new (possibly shorter) wheel.
+        state.scrollAnchor = nil
+        state.hideArc()
+        state.phase = .idle
+        prefs.cycleActiveProfile(by: delta)
+        SoundEffectPlayer.shared.play(.slide)
     }
 
     // MARK: - Action Arc (layer 2 — tap-toggle, not hold)

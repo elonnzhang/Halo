@@ -54,11 +54,14 @@ public enum HaloUI {
         public static var iconSize: CGFloat {
             AppPreferences.shared.iconSize
         }
-        /// Where the curved tooltip label floats outside the wheel. Pushed
-        /// far enough out that the chip never lands on the wheel's halo glow
-        /// (which extends ~20pt past the disc rim) or shadow.
+        /// Where the curved tooltip label floats outside the wheel.
+        /// +36pt (down from +56pt) brings the chip closer so it reads
+        /// as part of the slot rather than detached. Still clears the
+        /// halo glow (~20pt past rim) and the wheel's drop shadow.
+        /// Labels are entirely hidden while the Action Arc is up, so
+        /// chip↔label collision in that mode isn't a concern.
         public static var labelRadius: CGFloat {
-            haloDiameter / 2 + 56
+            haloDiameter / 2 + 36
         }
         public static let labelMaxWidth: CGFloat = 220
         /// Breathing room so the halo glow + label + shadow + Action Arc
