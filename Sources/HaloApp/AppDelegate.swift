@@ -718,16 +718,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// One-shot: show the arc if it isn't up, hide it if it is. Used by
-    /// every tap-trigger (⇧, right-click, two-finger tap) so the model
-    /// is uniform.
+    /// One-shot tap-trigger handler. Three branches:
+    ///   - Arc not up → show for the hovered/origin slot.
+    ///   - Arc up, cursor on a DIFFERENT app slot → re-anchor in one tap
+    ///     (user pointed at another app, they want its arc).
+    ///   - Arc up, cursor on same slot / empty slot / deadzone → toggle off.
     private func toggleArc() {
-        if state.activeArc != nil {
-            state.hideArc()
-            HaloLog.summon.debug("toggle arc → hidden")
-        } else {
+        guard let currentArc = state.activeArc else {
             tryShowArc()
+            return
         }
+        if let newSlotIdx = state.currentHoverSlot,
+           newSlotIdx != currentArc.slotIndex,
+           let slot = state.slots.first(where: { $0.id == newSlotIdx }),
+           slot.app != nil,
+           let newArc = buildArc(forSlot: newSlotIdx, slot: slot) {
+            state.showArc(newArc)
+            HaloLog.summon.debug("toggle arc → re-anchor slot=\(newSlotIdx) app=\(newArc.bundleID)")
+            return
+        }
+        state.hideArc()
+        HaloLog.summon.debug("toggle arc → hidden")
     }
 
     /// Try to show the Action Arc. Picks the anchor slot in this order:
