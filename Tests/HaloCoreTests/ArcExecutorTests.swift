@@ -7,6 +7,7 @@ final class ArcExecutorTests: XCTestCase {
         var hideBundleID: String?
         var fullscreenBundleID: String?
         var customExecuted: HaloAction?
+        var customBundleID: String?
         var quitOK = true
         var hideOK = true
         var fullscreenOK = true
@@ -21,8 +22,10 @@ final class ArcExecutorTests: XCTestCase {
         func toggleFullscreen(bundleID: String) -> Bool {
             fullscreenBundleID = bundleID; return fullscreenOK
         }
-        func executeCustom(_ action: HaloAction) -> ActionOutcome {
-            customExecuted = action; return customOutcome
+        func executeCustom(_ action: HaloAction, forBundleID bundleID: String) -> ActionOutcome {
+            customExecuted = action
+            customBundleID = bundleID
+            return customOutcome
         }
     }
 
@@ -50,12 +53,13 @@ final class ArcExecutorTests: XCTestCase {
         XCTAssertEqual(fake.fullscreenBundleID, "com.x")
     }
 
-    func test_customChip_dispatchesAction() {
+    func test_customChip_dispatchesAction_andForwardsBundleID() {
         let fake = FakeArcRuntime()
         let exec = ArcExecutor(runtime: fake)
-        let a = HaloAction(label: "Open", kind: .openURL, payload: "https://x.io")
+        let a = HaloAction(label: "New Window", kind: .keyboardShortcut, payload: "cmd+n")
         XCTAssertEqual(exec.execute(chip: .custom(a), forBundleID: "com.x"), .executed)
-        XCTAssertEqual(fake.customExecuted?.label, "Open")
+        XCTAssertEqual(fake.customExecuted?.label, "New Window")
+        XCTAssertEqual(fake.customBundleID, "com.x")
     }
 
     func test_emptyCustomChip_returnsExecutedNoOp() {

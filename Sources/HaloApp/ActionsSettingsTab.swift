@@ -295,9 +295,13 @@ struct ActionsTab: View {
 
     private func payloadPreview(_ action: HaloAction) -> String {
         switch action.kind {
-        case .openFolder:  return action.payload
-        case .openURL:     return action.payload
-        case .runShortcut: return "⌥ Shortcut · \(action.payload)"
+        case .keyboardShortcut:
+            if let parsed = KeyboardShortcut.parse(action.payload) {
+                return parsed.displaySymbols
+            }
+            return action.payload
+        case .runShortcut: return "Shortcut · \(action.payload)"
+        case .appleScript: return action.payload.split(separator: "\n").first.map(String.init) ?? "(empty)"
         }
     }
 }
@@ -325,7 +329,7 @@ struct ActionEditorSheet: View {
         self.onFinish = onFinish
         let existing = target.existing
         _label = State(initialValue: existing?.label ?? "")
-        _kind = State(initialValue: existing?.kind ?? .openFolder)
+        _kind = State(initialValue: existing?.kind ?? .keyboardShortcut)
         _payload = State(initialValue: existing?.payload ?? "")
         _symbol = State(initialValue: existing?.sfSymbol ?? "")
     }
@@ -338,20 +342,13 @@ struct ActionEditorSheet: View {
             Form {
                 TextField("Label", text: $label)
                 Picker("Kind", selection: $kind) {
-                    Text("Open folder").tag(HaloActionKind.openFolder)
-                    Text("Open URL").tag(HaloActionKind.openURL)
+                    Text("Keyboard shortcut").tag(HaloActionKind.keyboardShortcut)
                     Text("Run Shortcut").tag(HaloActionKind.runShortcut)
+                    Text("AppleScript").tag(HaloActionKind.appleScript)
                 }
                 .pickerStyle(.segmented)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    TextField(payloadPlaceholder, text: $payload)
-                    if !payloadHint.isEmpty {
-                        Text(payloadHint)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                payloadEditor
 
                 VStack(alignment: .leading, spacing: 4) {
                     TextField("SF Symbol (optional)", text: $symbol)
@@ -374,28 +371,62 @@ struct ActionEditorSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 460)
+        .frame(width: 520)
+    }
+
+    /// Payload editor branches on kind: single TextField for the
+    /// shortcut name + keyboard combo, multi-line TextEditor for
+    /// AppleScript source.
+    @ViewBuilder
+    private var payloadEditor: some View {
+        switch kind {
+        case .keyboardShortcut:
+            VStack(alignment: .leading, spacing: 4) {
+                TextField("e.g. cmd+n  or  ⌃⌥F", text: $payload)
+                if let parsed = KeyboardShortcut.parse(payload), !payload.isEmpty {
+                    Text("Sends \(parsed.displaySymbols) to the target app. Needs Accessibility permission.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if !payload.isEmpty {
+                    Text("Couldn't parse. Use `cmd+n` style; modifiers: cmd / opt / ctrl / shift.")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                } else {
+                    Text("Combo sent to the bound app on commit. Needs Accessibility permission.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        case .runShortcut:
+            VStack(alignment: .leading, spacing: 4) {
+                TextField("Shortcut name (e.g. Daily Plan)", text: $payload)
+                Text("Matches by exact name in the Shortcuts app.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        case .appleScript:
+            VStack(alignment: .leading, spacing: 4) {
+                Text("AppleScript source")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextEditor(text: $payload)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(height: 140)
+                    .padding(6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.secondary.opacity(0.10))
+                    )
+                Text("Halo executes the script as-is. Each app it touches will prompt for Apple Events permission on first run.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var isValid: Bool {
         !label.trimmingCharacters(in: .whitespaces).isEmpty &&
         !payload.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    private var payloadPlaceholder: String {
-        switch kind {
-        case .openFolder:  return "~/Downloads or /Users/.../Code"
-        case .openURL:     return "https://github.com/halo or any URL"
-        case .runShortcut: return "Shortcut name (e.g. Daily Plan)"
-        }
-    }
-
-    private var payloadHint: String {
-        switch kind {
-        case .openFolder:  return "`~` is expanded at run time. Folder must exist."
-        case .openURL:     return "Any scheme NSWorkspace accepts: https://, mailto:, raycast://, etc."
-        case .runShortcut: return "Matches by exact name in the Shortcuts app."
-        }
     }
 
     private func buildAction() -> HaloAction {

@@ -3,64 +3,72 @@ import XCTest
 
 final class ActionExecutorTests: XCTestCase {
     final class FakeRuntime: ActionRuntime, @unchecked Sendable {
-        var openedFile: URL?
         var openedURL: URL?
-        var shouldSucceed = true
-        func openFile(at url: URL) -> Bool {
-            openedFile = url
-            return shouldSucceed
-        }
+        var postedShortcut: KeyboardShortcut?
+        var postedToBundleID: String?
+        var executedScript: String?
+        var openShouldSucceed = true
+        var postShouldSucceed = true
+        var scriptShouldSucceed = true
+
         func openURL(_ url: URL) -> Bool {
             openedURL = url
-            return shouldSucceed
+            return openShouldSucceed
+        }
+        func postKeystroke(_ shortcut: KeyboardShortcut, toBundleID bundleID: String) -> Bool {
+            postedShortcut = shortcut
+            postedToBundleID = bundleID
+            return postShouldSucceed
+        }
+        func runAppleScript(_ source: String) -> Bool {
+            executedScript = source
+            return scriptShouldSucceed
         }
     }
 
-    func test_openFolder_expandsTilde_andCallsOpenFile() {
+    // MARK: - Keyboard shortcut
+
+    func test_keyboardShortcut_parsesAndPostsToBundle() {
         let fake = FakeRuntime()
         let exec = ActionExecutor(runtime: fake)
-        let result = exec.execute(HaloAction(label: "x", kind: .openFolder, payload: "~/Downloads"))
-        XCTAssertEqual(result, .executed)
-        let expected = (NSString(string: "~/Downloads").expandingTildeInPath) as String
-        XCTAssertEqual(fake.openedFile?.path, expected)
-        XCTAssertNil(fake.openedURL)
+        let action = HaloAction(label: "New Window", kind: .keyboardShortcut, payload: "cmd+n")
+        XCTAssertEqual(exec.execute(action, forBundleID: "com.x"), .executed)
+        XCTAssertEqual(fake.postedToBundleID, "com.x")
+        XCTAssertEqual(fake.postedShortcut?.keyCode, 45)         // n
+        XCTAssertEqual(fake.postedShortcut?.modifierMask, 0x100000) // command
     }
 
-    func test_openFolder_failureBubblesUp() {
+    func test_keyboardShortcut_failsWhenPayloadUnparseable() {
         let fake = FakeRuntime()
-        fake.shouldSucceed = false
+        let exec = ActionExecutor(runtime: fake)
+        let action = HaloAction(label: "x", kind: .keyboardShortcut, payload: "cmd+yodelay")
+        XCTAssertEqual(exec.execute(action, forBundleID: "com.x"), .failed)
+        XCTAssertNil(fake.postedShortcut)
+    }
+
+    func test_keyboardShortcut_runtimeFailureBubblesUp() {
+        let fake = FakeRuntime()
+        fake.postShouldSucceed = false
         let exec = ActionExecutor(runtime: fake)
         XCTAssertEqual(
-            exec.execute(HaloAction(label: "x", kind: .openFolder, payload: "/no/such/dir")),
+            exec.execute(
+                HaloAction(label: "x", kind: .keyboardShortcut, payload: "cmd+n"),
+                forBundleID: "com.x"
+            ),
             .failed
         )
     }
 
-    func test_openURL_parsesString_andRoutesToOpenURL() {
-        let fake = FakeRuntime()
-        let exec = ActionExecutor(runtime: fake)
-        let result = exec.execute(HaloAction(label: "x", kind: .openURL, payload: "https://example.com/page"))
-        XCTAssertEqual(result, .executed)
-        XCTAssertEqual(fake.openedURL?.absoluteString, "https://example.com/page")
-    }
+    // MARK: - Run Shortcut (URL scheme)
 
-    func test_openURL_returnsFailedOnUnparseable() {
+    func test_runShortcut_buildsShortcutsURL_andRoutesToOpenURL() throws {
         let fake = FakeRuntime()
         let exec = ActionExecutor(runtime: fake)
-        // Note: most strings parse as URLs; force-fail via empty string.
-        let result = exec.execute(HaloAction(label: "x", kind: .openURL, payload: ""))
-        XCTAssertEqual(result, .failed)
-        XCTAssertNil(fake.openedURL)
-    }
-
-    func test_runShortcut_buildsShortcutsURL_withPercentEncodedName() throws {
-        let fake = FakeRuntime()
-        let exec = ActionExecutor(runtime: fake)
-        let result = exec.execute(HaloAction(label: "x", kind: .runShortcut, payload: "Daily Build & Ship"))
+        let result = exec.execute(
+            HaloAction(label: "x", kind: .runShortcut, payload: "Daily Build & Ship"),
+            forBundleID: "com.x"
+        )
         XCTAssertEqual(result, .executed)
-        // URLComponents encodes the query value safely. We pull it back out
-        // through URLComponents so the assertion is robust to harmless
-        // encoding choices ("+" vs "%20" for spaces, etc.).
         let url = try XCTUnwrap(fake.openedURL)
         let comps = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
         XCTAssertEqual(comps.scheme, "shortcuts")
@@ -74,8 +82,88 @@ final class ActionExecutorTests: XCTestCase {
     func test_runShortcut_emptyName_failsBeforeOpen() {
         let fake = FakeRuntime()
         let exec = ActionExecutor(runtime: fake)
-        let result = exec.execute(HaloAction(label: "x", kind: .runShortcut, payload: "   "))
-        XCTAssertEqual(result, .failed)
+        XCTAssertEqual(
+            exec.execute(
+                HaloAction(label: "x", kind: .runShortcut, payload: "   "),
+                forBundleID: "com.x"
+            ),
+            .failed
+        )
         XCTAssertNil(fake.openedURL)
+    }
+
+    // MARK: - AppleScript
+
+    func test_appleScript_forwardsTrimmedSource() {
+        let fake = FakeRuntime()
+        let exec = ActionExecutor(runtime: fake)
+        let action = HaloAction(
+            label: "Activate Finder",
+            kind: .appleScript,
+            payload: "  tell application \"Finder\" to activate  \n"
+        )
+        XCTAssertEqual(exec.execute(action, forBundleID: "com.apple.finder"), .executed)
+        XCTAssertEqual(fake.executedScript, "tell application \"Finder\" to activate")
+    }
+
+    func test_appleScript_emptySource_fails() {
+        let fake = FakeRuntime()
+        let exec = ActionExecutor(runtime: fake)
+        XCTAssertEqual(
+            exec.execute(
+                HaloAction(label: "x", kind: .appleScript, payload: ""),
+                forBundleID: "x"
+            ),
+            .failed
+        )
+        XCTAssertNil(fake.executedScript)
+    }
+
+    func test_appleScript_runtimeFailure_bubblesUp() {
+        let fake = FakeRuntime()
+        fake.scriptShouldSucceed = false
+        let exec = ActionExecutor(runtime: fake)
+        XCTAssertEqual(
+            exec.execute(
+                HaloAction(label: "x", kind: .appleScript, payload: "say \"hi\""),
+                forBundleID: "x"
+            ),
+            .failed
+        )
+    }
+}
+
+final class KeyboardShortcutTests: XCTestCase {
+    func test_parse_acceptsEnglishModifiers() throws {
+        let parsed = try XCTUnwrap(KeyboardShortcut.parse("cmd+shift+n"))
+        XCTAssertEqual(parsed.keyCode, 45)
+        XCTAssertEqual(parsed.modifierMask, 0x100000 | 0x020000)
+    }
+
+    func test_parse_acceptsSymbols() throws {
+        let parsed = try XCTUnwrap(KeyboardShortcut.parse("⌃⌥F"))
+        XCTAssertEqual(parsed.keyCode, 3)
+        XCTAssertEqual(parsed.modifierMask, 0x040000 | 0x080000)
+    }
+
+    func test_parse_acceptsNamedKeys() throws {
+        let parsed = try XCTUnwrap(KeyboardShortcut.parse("cmd+space"))
+        XCTAssertEqual(parsed.keyCode, 49)
+        let f5 = try XCTUnwrap(KeyboardShortcut.parse("F5"))
+        XCTAssertEqual(f5.keyCode, 96)
+    }
+
+    func test_parse_rejectsTwoNonModifierTokens() {
+        XCTAssertNil(KeyboardShortcut.parse("cmd+a+b"))
+    }
+
+    func test_parse_rejectsEmpty() {
+        XCTAssertNil(KeyboardShortcut.parse(""))
+        XCTAssertNil(KeyboardShortcut.parse("   "))
+    }
+
+    func test_displaySymbols_writeBackIsLegible() {
+        let parsed = KeyboardShortcut.parse("ctrl+shift+f12")!
+        XCTAssertEqual(parsed.displaySymbols, "⌃⇧F12")
     }
 }

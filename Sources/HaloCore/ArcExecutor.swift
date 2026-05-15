@@ -15,9 +15,9 @@ public protocol ArcRuntime: Sendable {
     /// permission-prompt path before getting here.
     func toggleFullscreen(bundleID: String) -> Bool
     /// Execute the user's custom action through `ActionExecutor`. The
-    /// dispatch keeps the existing folder/URL/Shortcut surface area —
-    /// the arc just adds one stable position for the per-app custom.
-    func executeCustom(_ action: HaloAction) -> ActionOutcome
+    /// bundleID is forwarded so keystroke actions can activate + target
+    /// the bound app.
+    func executeCustom(_ action: HaloAction, forBundleID bundleID: String) -> ActionOutcome
 }
 
 public struct ArcExecutor: Sendable {
@@ -46,7 +46,7 @@ public struct ArcExecutor: Sendable {
             return ok ? .executed : .failed
 
         case .custom(let action):
-            return runtime.executeCustom(action)
+            return runtime.executeCustom(action, forBundleID: bundleID)
 
         case .emptyCustom:
             // The AppDelegate routes empty-custom to Settings before

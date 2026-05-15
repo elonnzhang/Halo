@@ -32,8 +32,8 @@ public struct NSWorkspaceArcRuntime: ArcRuntime {
         }
     }
 
-    public func executeCustom(_ action: HaloAction) -> ActionOutcome {
-        actionExecutor.execute(action)
+    public func executeCustom(_ action: HaloAction, forBundleID bundleID: String) -> ActionOutcome {
+        actionExecutor.execute(action, forBundleID: bundleID)
     }
 
     private func runningApp(bundleID: String) -> NSRunningApplication? {
