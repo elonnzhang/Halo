@@ -2,7 +2,7 @@
 
 All notable changes to Halo.
 
-## Unreleased
+## [1.1.2] — 2026-05-15
 
 ### Action Arc (二段手势, layer 2)
 
@@ -36,8 +36,6 @@ All notable changes to Halo.
 - Migration is automatic: existing v1.1.x users see their prior pins / overrides under a single `Default` profile on first launch. Legacy `UserDefaults` keys (`pinnedSlots.v1` / `overflowPins.v1` / `identityOverride.v1`) are kept as a rollback safety net through the next minor and removed afterwards.
 - The global `slotCount` setter resizes the active profile's pin array in-line so overflow behaviour is identical to v1.1. Inactive profiles keep their previous pin-array length and lazily realign on next mutation.
 - 19 new tests (`BindingProfileTests` + `AppPreferencesProfileTests`). Existing `AppPreferencesTests` (12/12) and `AppPreferencesBoundsTests` pass unchanged. Total suite 115/115.
-
-## [1.1.2] — 2026-05-14
 
 ### Wheel UX
 
