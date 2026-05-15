@@ -427,11 +427,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         onboarding.dismiss()
         scrollAccumDelta = 0
         state.scrollAnchor = nil
-        HaloLog.summon.debug("commit phase=\(String(describing: self.state.phase)) hover=\(String(describing: self.state.currentHoverSlot)) arc=\(self.state.activeArc != nil)")
-        // Arc up: dispatch to ArcExecutor instead of Switcher.
+        HaloLog.summon.debug("commit phase=\(String(describing: self.state.phase)) hover=\(String(describing: self.state.currentHoverSlot)) arc=\(self.state.activeArc != nil) chip=\(String(describing: self.state.arcHoverChip))")
+
+        // Arc up. Priority:
+        //   1. cursor on a chip → run the chip (arc commit)
+        //   2. cursor on a slot → user changed their mind; dismiss the arc
+        //      and fall through to the regular layer-1 slot commit
+        //   3. nothing → cancel (handled by the existing layer-1 fallthrough)
         if let arc = state.activeArc {
-            commitArcSelection(arc: arc)
-            return
+            if let chipIdx = state.arcHoverChip, arc.chips.indices.contains(chipIdx) {
+                commitArcChip(chipIdx, arc: arc)
+                return
+            }
+            // Drop the arc and let the layer-1 path below handle the slot.
+            state.hideArc()
         }
         guard let i = state.currentHoverSlot,
               let slot = state.slots.first(where: { $0.id == i })
@@ -497,17 +506,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.slots[idx] = s
     }
 
-    /// Execute the chip currently under the cursor when the user releases
-    /// the main hotkey while the arc is up. Empty custom chip routes to
-    /// Settings → Actions; AX-gated fullscreen chip (without permission)
-    /// triggers the system trust prompt instead of executing.
-    private func commitArcSelection(arc: ActiveArc) {
-        guard let chipIdx = state.arcHoverChip,
-              arc.chips.indices.contains(chipIdx)
-        else {
-            cancel()
-            return
-        }
+    /// Execute the chip at `chipIdx`. Callers must have verified the index
+    /// is in-bounds. Empty custom chip routes to Settings → Actions;
+    /// AX-gated fullscreen chip (without permission) triggers the system
+    /// trust prompt instead of executing.
+    private func commitArcChip(_ chipIdx: Int, arc: ActiveArc) {
         let chip = arc.chips[chipIdx]
 
         // AX gate: if the chip needs AX and we don't have it, ask. The
