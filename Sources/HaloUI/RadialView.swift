@@ -411,7 +411,11 @@ public struct RadialView: View {
             sectorCount: state.slotCount,
             radius: dotRadius
         )
-        let showKeyHint = AppPreferences.shared.numberKeyCommit
+        // Layer-1 digit hints disappear when the Action Arc is up. The
+        // digit keys are remapped to commit arc chips while the arc is
+        // active, so showing slot digits would be misleading; the hints
+        // also visually clashed with the arc's anchor line in early builds.
+        let showKeyHint = AppPreferences.shared.numberKeyCommit && state.activeArc == nil
         let glyph = Self.keyGlyph(forSlot: slot.id)
         return ZStack {
             SlotContent(slot: slot, isActive: isActive, accent: accent)

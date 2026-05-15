@@ -623,6 +623,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // Digit-key commit gated by Settings → Navigation. KeyCode
             // table covers `1–9 0 - =` so the layout is stable across
             // international keyboards (no `characters` lookup).
+            //
+            // While the Action Arc is up, digits 1–4 commit the arc chip
+            // at that index instead of a slot. The 5–12 keys are silently
+            // ignored in arc mode (no chip at that index).
             if self.prefs.numberKeyCommit {
                 let target: Int?
                 switch keyCode {
@@ -640,10 +644,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 case 24: target = 11  // =
                 default: target = nil
                 }
-                if let target = target, target < self.state.slotCount {
-                    self.state.phase = .previewing(target)
-                    self.commitSelection()
-                    return nil
+                if let target = target {
+                    if let arc = self.state.activeArc {
+                        // Arc mode: route 0..3 to chip commit, swallow the rest.
+                        guard arc.chips.indices.contains(target) else { return nil }
+                        self.state.arcHoverChip = target
+                        self.commitSelection()
+                        return nil
+                    } else if target < self.state.slotCount {
+                        self.state.phase = .previewing(target)
+                        self.commitSelection()
+                        return nil
+                    }
                 }
             }
             // Return / Space → commit whatever is highlighted

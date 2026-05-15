@@ -27,7 +27,6 @@ public struct ActionArcView: View {
 
     public var body: some View {
         ZStack {
-            tether
             ForEach(0..<arc.chips.count, id: \.self) { idx in
                 chipView(at: idx)
             }
@@ -35,30 +34,6 @@ public struct ActionArcView: View {
         .frame(width: HaloUI.Geometry.totalDiameter,
                height: HaloUI.Geometry.totalDiameter)
         .allowsHitTesting(false)
-    }
-
-    // MARK: - Tether
-
-    /// Short virtual line of light from slot centre to mid-arc — anchors
-    /// "this arc belongs to this slot". Done as a dashed stroke at chip
-    /// accent so it reads as one element with the chips.
-    @ViewBuilder
-    private var tether: some View {
-        let slotAngle = slotAngleRadians
-        // We draw the tether as a single short Capsule rotated to the
-        // slot's bearing — way cheaper than a Path stroke and looks
-        // identical at this length.
-        let length: CGFloat = arcRadius - HaloUI.Geometry.iconRadius - 30
-        let mid: CGFloat = (arcRadius + HaloUI.Geometry.iconRadius) / 2
-        let mx = cos(slotAngle) * mid
-        let my = -sin(slotAngle) * mid  // SwiftUI y-down convention
-
-        Capsule()
-            .fill(Color.white.opacity(0.18))
-            .frame(width: length, height: 1)
-            .rotationEffect(.radians(-slotAngle))
-            .offset(x: mx, y: my)
-            .blur(radius: 0.4)
     }
 
     // MARK: - Chip
