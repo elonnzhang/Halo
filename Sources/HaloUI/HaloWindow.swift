@@ -243,15 +243,20 @@ public final class HaloWindow {
             // don't want the slot ring to claim it as a hover-outside-chip.
         }
 
-        // outerRadius uses `reachDiameter`, not `haloDiameter`: the cursor
-        // counts as hovering a sector anywhere within that wider invisible
-        // ring around the wheel. Past it the cursor is "off the wheel" and
-        // releasing the trigger cancels — that's the user's escape hatch.
+        // outerRadius uses `reachDiameter` (1.5× wheel) by default so the
+        // cursor counts as hovering a sector anywhere within that wider
+        // invisible cushion. While the arc is up we shrink to 1× (just the
+        // visible disc) so the cursor moving outward to a chip doesn't
+        // also drag the underlying slot hover around — the arc stays
+        // anchored to its slot, and chip hover takes priority.
+        let outerRadius: CGFloat = state.activeArc == nil
+            ? HaloUI.Geometry.reachDiameter / 2
+            : HaloUI.Geometry.visibleOuterRadius
         let index = RadialGeometry.sectorIndex(
             for: centered,
             sectorCount: state.slotCount,
             innerRadius: HaloUI.Geometry.deadzoneDiameter / 2,
-            outerRadius: HaloUI.Geometry.reachDiameter / 2
+            outerRadius: outerRadius
         )
         state.updateHover(slot: index)
     }

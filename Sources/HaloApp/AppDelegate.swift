@@ -359,9 +359,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Slots are kept current by the activation observer and by prefs
         // changes; we don't need to re-extract dominant colors here — that
         // burns ~100ms/icon and makes Halo feel sluggish.
-        // Always start a summon on layer 1; ⇧ / right-mouse being held
-        // from a previous session shouldn't yank the user straight into
-        // the arc for an undefined context.
+        // Always start a summon on layer 1. Seed the trigger-state
+        // mirrors so the first ⇧/right-click after summon is treated as
+        // a fresh tap, not a "still held from last time" no-op.
         state.hideArc()
         shiftHeld = NSEvent.modifierFlags.contains(.shift)
         rightMouseHeld = NSEvent.pressedMouseButtons & (1 << 1) != 0
@@ -664,47 +664,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.advanceSelection(by: delta)
     }
 
-    // MARK: - Action Arc (layer 2 — three triggers, single trigger model)
+    // MARK: - Action Arc (layer 2 — tap-toggle, not hold)
 
-    /// ⇧ flagsChanged monitor. ⇧ down + hover-on-app-slot → show arc;
-    /// ⇧ up → hide arc (no commit). Other modifier deltas are ignored so
-    /// holding ⌘ during a double-tap doesn't accidentally flip the arc.
+    /// ⇧ flagsChanged monitor. A ⇧ press (off→on edge) toggles the arc:
+    /// show if it's hidden, hide if it's already up. Releasing ⇧ does
+    /// nothing — the arc stays put until the user toggles it again, hits
+    /// ESC, or commits via main-hotkey release.
     private func installFlagsMonitor() {
         flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
             guard let self = self, self.state.phase != .hidden else { return event }
             let nowHeld = event.modifierFlags.contains(.shift)
-            if nowHeld == self.shiftHeld { return event }
-            self.shiftHeld = nowHeld
-            if nowHeld {
-                self.tryShowArc()
-            } else {
-                self.hideArcIfActive()
+            // Only react on the off→on edge; ignore the release edge and
+            // ignore other modifier deltas (⌘ during double-tap, ⌥, ⌃).
+            guard nowHeld, !self.shiftHeld else {
+                self.shiftHeld = nowHeld
+                return event
             }
+            self.shiftHeld = nowHeld
+            self.toggleArc()
             return event
         }
     }
 
-    /// Right-mouse / two-finger-tap monitor. Trackpad secondary click is
-    /// dispatched as `.rightMouseDown` by AppKit when the user's Trackpad
-    /// pref is set to "Click or tap with two fingers", so this same
-    /// monitor catches both physical right-click and trackpad gesture.
+    /// Right-mouse / two-finger-tap monitor. A press toggles the arc;
+    /// release is ignored. Trackpad secondary click (System Settings →
+    /// Trackpad → Secondary click = two-finger tap/click) is dispatched
+    /// as `.rightMouseDown` by AppKit, so this single monitor catches
+    /// both physical right-click and the trackpad gesture.
     private func installRightMouseMonitor() {
         rightMouseMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: [.rightMouseDown, .rightMouseUp]
+            matching: [.rightMouseDown]
         ) { [weak self] event in
             guard let self = self, self.state.phase != .hidden else { return event }
-            switch event.type {
-            case .rightMouseDown:
-                self.rightMouseHeld = true
-                self.tryShowArc()
-            case .rightMouseUp:
-                self.rightMouseHeld = false
-                self.hideArcIfActive()
-            default: break
-            }
-            // Swallow so the right-click doesn't drop a context menu onto
+            self.toggleArc()
+            // Swallow so the right-click can't drop a context menu onto
             // whatever's behind Halo.
             return nil
+        }
+    }
+
+    /// One-shot: show the arc if it isn't up, hide it if it is. Used by
+    /// every tap-trigger (⇧, right-click, two-finger tap) so the model
+    /// is uniform.
+    private func toggleArc() {
+        if state.activeArc != nil {
+            state.hideArc()
+            HaloLog.summon.debug("toggle arc → hidden")
+        } else {
+            tryShowArc()
         }
     }
 
@@ -744,12 +751,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HaloLog.summon.debug("show arc app=\(app.bundleID) fs=\(isFs) ax=\(arc.axGranted)")
     }
 
-    /// Tear down the arc without committing. Triggered by trigger release
-    /// (⇧ up / right-mouse up). Slot ring stays as it was.
+    /// (Kept for API symmetry with cancel() — the tap-toggle model no
+    /// longer drives this from trigger releases.)
     private func hideArcIfActive() {
         guard state.activeArc != nil else { return }
         state.hideArc()
-        HaloLog.summon.debug("hide arc (trigger released)")
     }
 
     /// Local monitor that translates scrollWheel events into slot-cycle
