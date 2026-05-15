@@ -477,13 +477,16 @@ public struct RadialView: View {
         // read at the 180ms dismiss duration without clipping the
         // chip label that was sitting next to it.
         .scaleEffect(isCommitting ? 1.18 : 1.0)
-        // Hover transitions use `echo` (140ms easeOut) instead of
-        // the snappier 100ms — sector fill + inner glow have a wide
-        // color delta (idle near-black → bright accent) so the longer
-        // curve lets the eye follow the warm-up rather than perceiving
-        // a hard pop when the cursor crosses the slot boundary.
-        .animation(Animation.Halo.echo(reduceMotion: reduceMotion), value: isActive)
-        .animation(Animation.Halo.chipPop(), value: isCommitting)
+        // Hover transitions standardised at `snap` (100ms easeOut). The
+        // earlier 140ms `echo` here ran longer than the 100ms used by
+        // halo glow + key hint + the chipPop spring on isCommitting, so
+        // the hovered slot read as "jumping" while the surrounding wash
+        // had already finished. Aligning every hover-driven curve to a
+        // single 100ms duration kills the cross-curve mismatch the user
+        // perceived as a jolt when the cursor crossed into a slot from
+        // the deadzone (post-summon) or from outside the wheel.
+        .animation(Animation.Halo.snap(reduceMotion: reduceMotion), value: isActive)
+        .animation(Animation.Halo.snap(reduceMotion: reduceMotion), value: isCommitting)
     }
 
     private func sectorContent(slot: HaloSlot, isActive: Bool, accent: Color) -> some View {
@@ -826,19 +829,21 @@ private struct SlotContent: View {
         iconCanvas
             .scaleEffect(isActive ? 1.08 : 1.0)
             .overlay {
-                if isActive {
-                    RoundedRectangle(cornerRadius: 11, style: .continuous)
-                        .stroke(accent, lineWidth: 1.4)
-                }
+                // Always laid out; opacity-driven so the stroke fades
+                // in/out under the surrounding `.animation(value:isActive)`
+                // instead of popping with the conditional view's identity.
+                // The previous `if isActive { Stroke }` rendered as a
+                // structural change SwiftUI couldn't smooth out, which
+                // contributed to the "jolt" the user reported when the
+                // cursor crossed into a slot.
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .stroke(accent, lineWidth: 1.4)
+                    .opacity(isActive ? 1 : 0)
             }
-            // Hover scale uses `echo` (140ms easeOut). A spring here
-            // overshoots when the cursor crosses the slot boundary,
-            // which reads as "jittery" rather than "tactile"; a
-            // shorter 100ms snap, on the other hand, is too abrupt
-            // for the eye to follow when paired with the sector
-            // fill warming up underneath. 140ms is the in-between
-            // that paces with the sector fill animation.
-            .animation(Animation.Halo.echo(reduceMotion: reduceMotion), value: isActive)
+            // Snap (100ms easeOut) — paces with the sector fill,
+            // halo glow, and key-hint scale so all hover-driven
+            // visuals settle in lockstep.
+            .animation(Animation.Halo.snap(reduceMotion: reduceMotion), value: isActive)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(accessibilityLabel))
             .accessibilityAddTraits(.isButton)

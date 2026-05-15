@@ -166,13 +166,22 @@ public final class HaloState: ObservableObject {
         case (.committing, _):
             return
         case (_, nil):
-            if phase != .idle { phase = .idle }
+            if phase != .idle {
+                // Wrap in withAnimation so the `.transition()` modifiers
+                // on haloGlow / labelChip / centerHubIcon (which are
+                // structural conditional views) animate when they
+                // disappear. Without this, the structural change pops
+                // and clashes with the sector fill's own implicit
+                // animation — that mismatch was the "jolt" the user
+                // saw when the cursor crossed in/out of a slot.
+                withAnimation(.Halo.snap()) { phase = .idle }
+            }
         case (.idle, .some(let i)),
              (.hovering, .some(let i)),
              (.previewing, .some(let i)):
             if case .hovering(let prev) = phase, prev == i { return }
             if case .previewing(let prev) = phase, prev == i { return }
-            phase = .hovering(i)
+            withAnimation(.Halo.snap()) { phase = .hovering(i) }
             SoundEffectPlayer.shared.play(.slide)
         }
     }
