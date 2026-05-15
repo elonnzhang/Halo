@@ -93,7 +93,7 @@
 
 ### 4.1 一级反馈（hover ≥ 120ms）
 
-- 瓣本体亮起：身份色 inner radial 渐变填充、内侧 6pt 光晕（accent @ 55% + `blur(8)`）。v1.2.x 起不再画 1.4pt accent 描边，让"亮起"读为"lit from within"而不是"框选"
+- 瓣本体亮起：身份色 inner radial 渐变填充、内侧 6pt 光晕（accent @ 55% + `blur(8)`）。Unreleased 起不再画 1.4pt accent 描边，让"亮起"读为"lit from within"而不是"框选"
 - 中心 dead-zone 图标淡出，**替换为该瓣 app 的图标**（让用户预览即将到达的目的地）
 - Halo 玻璃材质底色微弱注入身份色（5% 混合）
 - Halo 外圈薄薄一圈光晕沿屏幕径向外溢（10pt 高斯模糊 + 身份色 ×20% 透明度），让选择感"漏出"Halo 边界
@@ -196,8 +196,8 @@
 | 动效 | 时长 | 曲线 |
 | --- | --- | --- |
 | 召唤淡入 | 120ms | ease-out |
-| 瓣 hover 亮起 | 100ms | ease-out（v1.2.x: 140 → 100，更"贴手"） |
-| 中心图标交换 | 140ms | ease-out + 0.96 → 1.0 scale（v1.2.x: 200ms ease-in-out / 0.94→1.0 改为更脆的 echo timing） |
+| 瓣 hover 亮起 | 100ms | ease-out（Unreleased: 140 → 100，更"贴手"） |
+| 中心图标交换 | 140ms | ease-out + 0.96 → 1.0 scale（Unreleased: 200ms ease-in-out / 0.94→1.0 改为更脆的 echo timing） |
 | 外圈 halo 光晕 | 100ms | ease-out（与 hover 同步） |
 | 提交时瓣放大 | 100ms | ease-out + 1.0 → 1.06 scale |
 | 提交时 vignette ripple | ~320ms | 半径扩散 + 透明度 0→峰值→0 |

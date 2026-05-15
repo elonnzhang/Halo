@@ -29,13 +29,11 @@ All notable changes to Halo.
 - **Action Arc chip light-mode**: new `ArcChipChrome` mirrors `WheelChrome`'s split. Light mode goes translucent-white glass + neutral grey idle glyphs (so the yellow Fullscreen icon stays legible on a near-white wheel); dark mode keeps the original black glass + accent-tinted glyph reading. Hovered chip still tints the glyph to its accent in both modes.
 - **Anchored slot label suppression** (correctness fix): the `labelOverlay` guard was three branches under `@ViewBuilder` + `GlassEffectContainer`'s `glassEffectID` morph, which leaked the anchored slot's label on top of arc chips on macOS 26+ even after its content was gone. Flattened to a single boolean expression. Suppression is now scoped to *only* the anchored slot — hovering a different sector while the arc is up still shows that sector's app name (the user is now reading "what's this neighbour?", and the arc's chips are far enough off-axis to not collide).
 
-## [1.2.0] — 2026-05-14
-
 ### 多 Profile / 场景环 (Apps tab)
 
 - New: **Binding profiles** — named bundles of pinned apps and their identity-colour overrides, switchable from a pill bar at the top of Settings → Apps. Click a pill to switch; click `+` to create (Blank or Clone of active); right-click / long-press for rename / duplicate / delete. Active pill is materialized and accent-bordered.
 - Scope is intentionally minimal: a profile owns *pins + overflow + identity overrides only*. **Slot count, frequency profile, whitelist, hotkey, layout, language, sound** — all stay user-global and apply across every profile. The General / Whitelist / About tabs, the sidebar, and the menu bar are unchanged.
-- Migration is automatic: existing v1.1.x users see their prior pins / overrides under a single `Default` profile on first launch. Legacy `UserDefaults` keys (`pinnedSlots.v1` / `overflowPins.v1` / `identityOverride.v1`) are kept as a rollback safety net through v1.2 and removed in v1.3.
+- Migration is automatic: existing v1.1.x users see their prior pins / overrides under a single `Default` profile on first launch. Legacy `UserDefaults` keys (`pinnedSlots.v1` / `overflowPins.v1` / `identityOverride.v1`) are kept as a rollback safety net through the next minor and removed afterwards.
 - The global `slotCount` setter resizes the active profile's pin array in-line so overflow behaviour is identical to v1.1. Inactive profiles keep their previous pin-array length and lazily realign on next mutation.
 - 19 new tests (`BindingProfileTests` + `AppPreferencesProfileTests`). Existing `AppPreferencesTests` (12/12) and `AppPreferencesBoundsTests` pass unchanged. Total suite 115/115.
 

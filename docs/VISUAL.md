@@ -235,9 +235,9 @@
 | `halo-rim-top` | `white @ 34%` | rim stroke 顶端（受光） |
 | `halo-rim-mid` | `white @ 10%` | rim stroke 中段 |
 | `halo-rim-bot` | `white @ 2%` | rim stroke 底端（阴影） |
-| `halo-specular-peak` | `white @ 88%` | 12 点 specular 弧中段亮度（v1.2.x: 78 → 88，让高光在 OLED weight-shadow 上仍读得到） |
-| `hub-fill` | `black @ 32%` | 中心 lens 基底（v1.2.x: 48 → 32，hub 不再像"黑洞"，凹陷感由 rim + inner shadow 承担） |
-| `hub-inner-shadow` | `black @ 40%` | 上缘内阴影 gradient 头端（v1.2.x: 55 → 40，配合 hub-fill 弱化） |
+| `halo-specular-peak` | `white @ 88%` | 12 点 specular 弧中段亮度（Unreleased: 78 → 88，让高光在 OLED weight-shadow 上仍读得到） |
+| `hub-fill` | `black @ 32%` | 中心 lens 基底（Unreleased: 48 → 32，hub 不再像"黑洞"，凹陷感由 rim + inner shadow 承担） |
+| `hub-inner-shadow` | `black @ 40%` | 上缘内阴影 gradient 头端（Unreleased: 55 → 40，配合 hub-fill 弱化） |
 | `hub-rim-top` | `white @ 24%` | lens rim 顶端 |
 | `hub-rim-bot` | `white @ 6%` | lens rim 底端 |
 | `hub-specular` | `white @ 48%` | lens 顶部 specular |
@@ -251,12 +251,12 @@
 身份色接入点（见 §4.2 / §4.3）：
 - 瓣 hover fill：`accent @ 10%`
 - 瓣 preview fill：`accent @ 16%`
-- 瓣 active 内发光：`accent @ 55%` 6pt stroke + `blur(8)` masked by sector（v1.2.x: blur 4 → 8，让"光晕"散开成"lit from within"，不再像贴片）
+- 瓣 active 内发光：`accent @ 55%` 6pt stroke + `blur(8)` masked by sector（Unreleased: blur 4 → 8，让"光晕"散开成"lit from within"，不再像贴片）
 - 整盘 content tint：`accent @ 5%` `plusLighter`
 - 外圈 halo：`accent @ 32% → 0%` radial，`blur(18)`
 - commit vignette ripple：`accent`（见 §6）
 
-> v1.2.x 起，瓣 idle stroke 与 active 1.4pt 硬 accent stroke 都已移除。idle 状态完全靠 `SectorShape` 的 1° 角度间隙做"分槽"提示；active 状态靠上面的 inner glow + sector hover fill + slot icon 1.08× 缩放共同表达，避免在玻璃盘上生硬地画 8 条径向线。
+> Unreleased 起，瓣 idle stroke 与 active 1.4pt 硬 accent stroke 都已移除。idle 状态完全靠 `SectorShape` 的 1° 角度间隙做"分槽"提示；active 状态靠上面的 inner glow + sector hover fill + slot icon 1.08× 缩放共同表达，避免在玻璃盘上生硬地画 8 条径向线。
 
 ### 4.2 取色策略（v1.1：移除 Hue-8 与饱和度兜底）
 
