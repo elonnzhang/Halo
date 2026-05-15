@@ -88,7 +88,11 @@ private final class WindowCloseObserver {
             object: window,
             queue: .main
         ) { _ in
-            MainActor.assumeIsolated {
+            // `MainActor.assumeIsolated` is macOS 14+ only; hop via
+            // `Task { @MainActor in ... }` so the close handler stays safe
+            // on macOS 12 / 13 while preserving strict-concurrency
+            // isolation (mirrors AppDelegate's global event monitor).
+            Task { @MainActor in
                 let observer = Self.observers[id]
                 observer?.handler()
                 Self.observers.removeValue(forKey: id)
