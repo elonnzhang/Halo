@@ -84,5 +84,17 @@ public enum HaloUI {
         /// Gap between adjacent sectors (degrees).
         public static let slotGapDegrees: Double = 1.0
         public static let originAngleDegrees: Double = -90
+        /// Where the disc + sector-overlay alpha mask switches from fully
+        /// opaque to a linear falloff. Independent from `visibleOuterFactor`
+        /// (which anchors slot icons / digit-key hints / Arc geometry, all
+        /// of which must stay where the user is used to seeing them) so we
+        /// can widen the rim feathering for anti-aliasing without nudging
+        /// the wheel's content layout.
+        ///
+        /// 0.80 (vs. the old 0.84): an 18 %-radius falloff band instead of
+        /// 16 % gives the alpha gradient ~12 % gentler slope, which combined
+        /// with `LegacyAntialiased` removes the visible "tire tread" rim
+        /// stair-stepping in both light and dark mode.
+        public static let softEdgeStart: CGFloat = 0.80
     }
 }

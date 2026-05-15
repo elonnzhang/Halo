@@ -71,19 +71,31 @@ public struct RadialView: View {
 
     @ViewBuilder
     private var labelOverlay: some View {
-        // While the arc is summoned we suppress the slot label chip — the
-        // chip would overlap arc buttons and adds redundant info (the hub
-        // already names the target app).
-        if state.activeArc != nil {
-            EmptyView()
-        } else if #available(macOS 26.0, *) {
-            GlassEffectContainer {
-                if let slot = hoveredSlot, slot.app != nil {
+        // Suppress the slot label chip ONLY when the cursor is sitting on
+        // the slot the arc is anchored to — that's where the chip and the
+        // arc's own buttons collide, and it's also where the hub already
+        // shows the anchored app's icon (so the chip is redundant).
+        //
+        // If the cursor moves off the anchored slot to a neighbouring app
+        // while the arc is still up, that neighbour's label SHOULD show:
+        // the user is now reading "what's this other app?" and the arc's
+        // chips are far enough off-axis to not overlap.
+        //
+        // The guard is one short-circuit expression rather than a 3-branch
+        // `if / else if / else` ladder. SwiftUI's `@ViewBuilder` can keep
+        // a middle branch's view identity alive across an `EmptyView()`
+        // swap inside a 3-branch ladder (notably under macOS 26+'s
+        // `GlassEffectContainer`, where the contained `glassEffectID`
+        // morph holds the capsule shape on screen even after its content
+        // is gone). A single boolean guard sidesteps both issues.
+        let isHoveringAnchoredSlot = state.activeArc != nil
+            && state.activeArc?.slotIndex == hoveredSlot?.id
+        if !isHoveringAnchoredSlot, let slot = hoveredSlot, slot.app != nil {
+            if #available(macOS 26.0, *) {
+                GlassEffectContainer {
                     labelChip(for: slot)
                 }
-            }
-        } else {
-            if let slot = hoveredSlot, slot.app != nil {
+            } else {
                 labelChip(for: slot)
             }
         }
@@ -118,7 +130,7 @@ public struct RadialView: View {
                 .allowsHitTesting(false)
                 .transition(.opacity)
                 .animation(
-                    reduceMotion ? .easeOut(duration: 0.05) : .easeOut(duration: 0.12),
+                    Animation.Halo.snap(reduceMotion: reduceMotion),
                     value: state.currentHoverSlot
                 )
         }
@@ -185,7 +197,7 @@ public struct RadialView: View {
                         )
                 )
                 .animation(
-                    reduceMotion ? .easeOut(duration: 0.05) : .easeOut(duration: 0.22),
+                    Animation.Halo.surface(reduceMotion: reduceMotion),
                     value: state.currentHoverSlot
                 )
                 .allowsHitTesting(false)
@@ -227,17 +239,23 @@ public struct RadialView: View {
         }
         .frame(width: d, height: d)
         .compositingGroup()
-        // Soft-edge mask: opaque from center to ~84% radius, then a linear
-        // alpha falloff to the rim. Replaces the old hard 0.8pt rim stroke
-        // with a Liquid-Glass-style feathered edge so the disc dissolves
-        // into the desktop instead of stamping a circle on it.
+        // Soft-edge mask: opaque from center to 80 % radius, then a linear
+        // alpha falloff to the rim. Was 84 %; widened to 80 % so the
+        // alpha gradient slope is gentler — the previous narrow band
+        // rasterized into a visible "tire-tread" stair-step (most painful
+        // on dark mode, where black weight-shadow stacked on a black
+        // background highlighted every alpha step).
+        //
+        // The matching `softEdgeStart` constant in `sectorView`'s mask
+        // must stay in lockstep so sector strokes/glow fade out together
+        // with the disc, not past it.
         .mask(
             Circle()
                 .fill(
                     RadialGradient(
                         stops: [
                             .init(color: .black, location: 0.0),
-                            .init(color: .black, location: 0.84),
+                            .init(color: .black, location: HaloUI.Geometry.softEdgeStart),
                             .init(color: .clear, location: 1.0)
                         ],
                         center: .center,
@@ -246,8 +264,19 @@ public struct RadialView: View {
                     )
                 )
         )
-        .shadow(color: .black.opacity(0.40), radius: 32, x: 0, y: 18)
-        .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 2)
+        // drawingGroup forces the disc + mask + shadow chain through a
+        // Metal offscreen buffer with float-precision alpha. The previous
+        // direct-rasterization path was the primary source of the
+        // tire-tread aliasing on the feathered rim. Skip it on Liquid
+        // Glass (macOS 26+) where the system already composites this at
+        // high quality and offscreen rasterization would forfeit the
+        // glass's content-aware refraction.
+        .modifier(LegacyAntialiased())
+        // One unified soft drop. The previous double-shadow stack
+        // (radius 32 + radius 8) compounded the rim alpha steps into a
+        // visibly notched "tire" silhouette; one larger, slightly
+        // weaker pass reads cleaner at every backdrop value.
+        .shadow(color: .black.opacity(0.34), radius: 28, x: 0, y: 14)
     }
 
     /// Base glass disc. Liquid Glass on macOS 26+, `NSVisualEffectView`
@@ -285,11 +314,14 @@ public struct RadialView: View {
         let isActive     = isHovered || isPreviewing
         let accent       = slot.identityColor.swiftUIColor
 
-        // Idle sectors: near-invisible glass. The only thing separating them
-        // from neighbours is the 1° angular gap in SectorShape, not a stroke.
-        let idleFill    = chrome.sectorIdleFill
-        let strokeColor: Color = isActive ? accent : chrome.sectorIdleStroke
-        let strokeWidth: CGFloat = isActive ? 1.4 : 0.5
+        // Idle sectors: completely invisible. The 1° angular gap in
+        // SectorShape carries the "this disc is divided" cue on its own;
+        // the previous 0.5pt idle stroke read as eight pizza-slice lines
+        // overlaid on a glass pebble, fighting the Liquid Glass language.
+        // Active sectors lose their hard accent stroke too — the inner
+        // radial fill + blurred inner glow carry the highlight, so the
+        // sector reads as "lit from within" rather than "framed".
+        let idleFill = chrome.sectorIdleFill
 
         // Sector fill is a radial gradient: bright accent at the inner edge
         // (near the hub) bleeds outward to a subtle tint at the outer rim.
@@ -329,15 +361,18 @@ public struct RadialView: View {
                         endRadius: HaloUI.Geometry.haloDiameter / 2
                     )
                 )
-                .overlay(sector.stroke(strokeColor, lineWidth: strokeWidth))
-                // Inner glow on active sectors: blurred accent stroke masked
-                // back into the sector shape. Gives the petal a lit-glass
-                // interior instead of a flat fill.
+                // Inner glow on active sectors only: a blurred accent
+                // stroke masked back into the sector shape. Wider blur
+                // (was radius 4) so the petal's edge dissolves into the
+                // surrounding glass instead of stamping a bright wedge
+                // onto it. Combined with the dropped accent stroke, the
+                // active sector now reads as "lit from within", not
+                // "framed and filled".
                 .overlay {
                     if isActive {
                         sector
                             .stroke(accent.opacity(0.55), lineWidth: 6)
-                            .blur(radius: 4)
+                            .blur(radius: 8)
                             .mask(sector)
                             .allowsHitTesting(false)
                     }
@@ -349,13 +384,15 @@ public struct RadialView: View {
                 // Same soft-edge mask the disc uses, so sector fill / stroke /
                 // inner glow fade out in lockstep with the visible disc rim
                 // instead of punching a hard wedge into the panel's halo area.
+                // Stays in lockstep with `wheelBackground`'s mask via the
+                // shared `softEdgeStart` constant.
                 .mask(
                     Circle()
                         .fill(
                             RadialGradient(
                                 stops: [
                                     .init(color: .black, location: 0.0),
-                                    .init(color: .black, location: AppPreferences.visibleOuterFactor),
+                                    .init(color: .black, location: HaloUI.Geometry.softEdgeStart),
                                     .init(color: .clear, location: 1.0),
                                 ],
                                 center: .center,
@@ -369,14 +406,8 @@ public struct RadialView: View {
                 .allowsHitTesting(false)
         }
         .scaleEffect(isCommitting ? 1.06 : 1.0)
-        .animation(
-            reduceMotion ? .easeOut(duration: 0.05) : .easeOut(duration: 0.14),
-            value: isActive
-        )
-        .animation(
-            reduceMotion ? .easeOut(duration: 0.05) : .easeOut(duration: 0.12),
-            value: isCommitting
-        )
+        .animation(Animation.Halo.snap(reduceMotion: reduceMotion), value: isActive)
+        .animation(Animation.Halo.snap(reduceMotion: reduceMotion), value: isCommitting)
     }
 
     private func sectorContent(slot: HaloSlot, isActive: Bool, accent: Color) -> some View {
@@ -424,7 +455,12 @@ public struct RadialView: View {
         let showKeyHint = AppPreferences.shared.numberKeyCommit && state.activeArc == nil
         let glyph = Self.keyGlyph(forSlot: slot.id)
         return ZStack {
-            SlotContent(slot: slot, isActive: isActive, accent: accent)
+            SlotContent(
+                slot: slot,
+                isActive: isActive,
+                accent: accent,
+                wheelHovered: state.currentHoverSlot != nil
+            )
                 .frame(width: HaloUI.Geometry.iconSize,
                        height: HaloUI.Geometry.iconSize)
                 .offset(x: iconCenter.x, y: -iconCenter.y)
@@ -538,7 +574,7 @@ public struct RadialView: View {
                 .interpolation(.high)
                 .scaledToFit()
                 .frame(width: iconSide, height: iconSide)
-                .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 .id(previewed.bundleID)
         } else if let originID = state.summonOriginBundleID,
                   let icon = AppIconResolver.icon(for: originID) {
@@ -586,8 +622,8 @@ public struct RadialView: View {
             .frame(maxWidth: HaloUI.Geometry.labelMaxWidth)
             .fixedSize(horizontal: false, vertical: true)
             .offset(x: center.x, y: -center.y)
-            .transition(.opacity.combined(with: .scale(scale: 0.94)))
-            .animation(.easeOut(duration: 0.14), value: slot.id)
+            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            .animation(Animation.Halo.echo(reduceMotion: reduceMotion), value: slot.id)
     }
 
     // MARK: - Phase helpers
@@ -655,6 +691,12 @@ private struct SlotContent: View {
     let slot: HaloSlot
     let isActive: Bool
     let accent: Color
+    /// Cursor is over the wheel (any slot). Only used to gate the empty-
+    /// slot dashed-border breathing animation, which would otherwise burn
+    /// CPU for no reason while Halo sits idle on screen.
+    let wheelHovered: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         iconCanvas
@@ -665,7 +707,7 @@ private struct SlotContent: View {
                         .stroke(accent, lineWidth: 1.4)
                 }
             }
-            .animation(.easeOut(duration: 0.12), value: isActive)
+            .animation(Animation.Halo.snap(reduceMotion: reduceMotion), value: isActive)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(accessibilityLabel))
             .accessibilityAddTraits(.isButton)
@@ -709,7 +751,7 @@ private struct SlotContent: View {
             // Match the on-screen size of real app icons (iconCanvas above
             // draws into `iconSize - 6`) so the dashed placeholder shares
             // the wheel's visual rhythm.
-            EmptySlotMark()
+            EmptySlotMark(active: wheelHovered)
                 .frame(width: HaloUI.Geometry.iconSize - 6,
                        height: HaloUI.Geometry.iconSize - 6)
         }
@@ -746,6 +788,7 @@ private struct KeyHint: View {
     let accent: Color
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         let chrome = WheelChrome(isDark: colorScheme == .dark)
@@ -761,7 +804,7 @@ private struct KeyHint: View {
                 radius: 5
             )
             .scaleEffect(isActive ? 1.18 : 1.0)
-            .animation(.easeOut(duration: 0.14), value: isActive)
+            .animation(Animation.Halo.snap(reduceMotion: reduceMotion), value: isActive)
             .allowsHitTesting(false)
     }
 }
@@ -780,8 +823,15 @@ private struct StatusDot: View {
 }
 
 private struct EmptySlotMark: View {
+    /// True while the wheel is being hovered. The dashed-border / glyph
+    /// breathing animation only runs in this state — when Halo is idle on
+    /// screen the placeholder stays fully static, so we don't drive a
+    /// `repeatForever` animation per empty slot for nothing.
+    let active: Bool
+
     @State private var animating = false
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// macOS app icons follow a squircle with ~22 % corner radius. For our
     /// 42 pt drawn-icon footprint that's ~9 pt; rounding to 11 keeps it in
@@ -801,9 +851,26 @@ private struct EmptySlotMark: View {
                 .font(.system(size: 20, weight: .light, design: .rounded))
                 .foregroundStyle(animating ? chrome.emptyMarkTextActive : chrome.emptyMarkText)
         }
-        .onAppear {
+        .onAppear { syncBreathing(to: active) }
+        .onChange(of: active) { newValue in syncBreathing(to: newValue) }
+    }
+
+    private func syncBreathing(to shouldBreathe: Bool) {
+        guard !reduceMotion else {
+            // Reduce Motion: never animate. Show the brighter "active"
+            // state while the wheel is hovered as a static cue.
+            animating = shouldBreathe
+            return
+        }
+        if shouldBreathe {
             withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
                 animating = true
+            }
+        } else {
+            // A short non-repeating ease-out lets the dashed border settle
+            // back to idle without snapping mid-cycle.
+            withAnimation(.easeOut(duration: 0.20)) {
+                animating = false
             }
         }
     }
@@ -829,12 +896,18 @@ struct WheelChrome {
 
     // Specular arc at the top. Pure white in both modes — it's a literal
     // light-catching highlight; only the alpha tones down for light.
-    var specularBright: Color { isDark ? .white.opacity(0.78) : .white.opacity(0.92) }
+    // Dark mode bumped 0.78 → 0.88 so the 12-o'clock highlight reads
+    // through the weight-shadow on OLED backdrops; light mode unchanged
+    // (it was already plenty bright on a near-white pebble).
+    var specularBright: Color { isDark ? .white.opacity(0.88) : .white.opacity(0.92) }
 
-    // Centre hub recess. Stays dark in both modes (it's a hole), but softer
-    // in light mode so it doesn't punch a black coin into a light disc.
-    var hubFill: Color { isDark ? .black.opacity(0.48) : .black.opacity(0.16) }
-    var hubInnerShadow: Color { isDark ? .black.opacity(0.55) : .black.opacity(0.30) }
+    // Centre hub recess. The hub is meant to read as a depression in the
+    // glass, not a hole punched through it. Both modes were sitting at
+    // values that made the hub read as a "well" (light) or "black hole"
+    // (dark) against the surrounding glass; softened both so the lens
+    // rim + inner shadow carry the recess cue instead of fill contrast.
+    var hubFill: Color { isDark ? .black.opacity(0.32) : .black.opacity(0.10) }
+    var hubInnerShadow: Color { isDark ? .black.opacity(0.40) : .black.opacity(0.22) }
     var hubRimTop: Color { isDark ? .white.opacity(0.24) : .black.opacity(0.18) }
     var hubRimBottom: Color { isDark ? .white.opacity(0.06) : .black.opacity(0.04) }
 
@@ -859,6 +932,25 @@ struct WheelChrome {
 
     // Centre-hub idle fallback glyph (`circle.dotted`).
     var hubFallback: Color { .primary.opacity(isDark ? 0.40 : 0.50) }
+}
+
+// MARK: - Antialiasing helper
+
+/// Forces the wheel disc through an offscreen Metal buffer with float-
+/// precision alpha — kills the rim stair-stepping that direct
+/// rasterization produces on the soft-edge mask.
+///
+/// Skipped on macOS 26+ where Liquid Glass already composites at high
+/// quality and the offscreen pass would forfeit the glass's content-aware
+/// refraction (it can no longer sample what's behind it).
+private struct LegacyAntialiased: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+        } else {
+            content.drawingGroup()
+        }
+    }
 }
 
 // MARK: - Glass chip background

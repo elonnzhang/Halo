@@ -12,6 +12,7 @@ public struct ActionArcView: View {
     public let hoverChip: Int?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     /// Geometry mirrors `ActionArcGeometry` so render and hit-test stay
     /// in lockstep — touching one constant in `ActionArcGeometry`
@@ -49,14 +50,18 @@ public struct ActionArcView: View {
         let accent = chipAccent(for: chip)
         let position = chipPosition(at: idx)
         let gated = isGated(chip)
+        let chrome = ArcChipChrome(isDark: colorScheme == .dark)
 
         let glyph = glyphFor(chip)
         let label = labelFor(chip)
 
         return ZStack {
-            // Glass base
+            // Glass base. Fill / stroke / shadow all read from
+            // ArcChipChrome so the chip matches whichever wheel
+            // appearance the user is on (the wheel itself flips via
+            // WheelChrome the same way).
             Circle()
-                .fill(gated ? Color.black.opacity(0.45) : Color.black.opacity(0.65))
+                .fill(gated ? chrome.fillGated : chrome.fill)
                 .background(
                     Circle()
                         .fill(.ultraThinMaterial)
@@ -64,11 +69,11 @@ public struct ActionArcView: View {
                 )
                 .overlay(
                     Circle().strokeBorder(
-                        isHovered ? accent : Color.white.opacity(0.10),
+                        isHovered ? accent : chrome.strokeIdle,
                         lineWidth: isHovered ? 1.6 : 0.8
                     )
                 )
-                .shadow(color: .black.opacity(0.55), radius: 9, x: 0, y: 4)
+                .shadow(color: chrome.dropShadow, radius: 9, x: 0, y: 4)
                 .shadow(
                     color: isHovered && !gated ? accent.opacity(0.55) : .clear,
                     radius: 18
@@ -78,7 +83,12 @@ public struct ActionArcView: View {
             // Glyph
             Image(systemName: glyph)
                 .font(.system(size: 17, weight: isHovered ? .semibold : .regular))
-                .foregroundStyle(glyphColor(chip: chip, isHovered: isHovered, gated: gated, accent: accent))
+                .foregroundStyle(glyphColor(
+                    isHovered: isHovered,
+                    gated: gated,
+                    accent: accent,
+                    chrome: chrome
+                ))
                 .scaleEffect(isHovered && !gated ? 1.10 : 1.0)
 
             // AX needed indicator (top-right yellow dot)
@@ -94,16 +104,16 @@ public struct ActionArcView: View {
             Text(label)
                 .font(.system(size: 10.5, weight: .semibold))
                 .foregroundStyle(
-                    isHovered ? Color.white : Color.white.opacity(0.75)
+                    isHovered ? chrome.labelActive : chrome.labelIdle
                 )
-                .shadow(color: .black.opacity(0.7), radius: 1.6, x: 0, y: 0.5)
+                .shadow(color: chrome.labelShadow, radius: 1.6, x: 0, y: 0.5)
                 .fixedSize()
                 .offset(y: chipDiameter / 2 + 11)
         }
         .scaleEffect(isHovered && !gated ? 1.06 : 1.0)
         .offset(x: position.x, y: position.y)
         .modifier(ChipEntryAnimation(
-            delay: reduceMotion ? 0 : Double(idx) * 0.030
+            delay: reduceMotion ? 0 : Double(idx) * Animation.HaloStagger.arcChip
         ))
     }
 
@@ -154,9 +164,15 @@ public struct ActionArcView: View {
         chip.needsAX && !arc.axGranted
     }
 
-    private func glyphColor(chip: ArcChip, isHovered: Bool, gated: Bool, accent: Color) -> Color {
-        if gated { return Color.white.opacity(0.30) }
-        return isHovered ? accent : accent.opacity(0.85)
+    private func glyphColor(
+        isHovered: Bool,
+        gated: Bool,
+        accent: Color,
+        chrome: ArcChipChrome
+    ) -> Color {
+        if gated { return chrome.glyphGated }
+        if isHovered { return accent }
+        return chrome.idleGlyph(accent: accent)
     }
 
     private func glyphFor(_ chip: ArcChip) -> String {
@@ -194,6 +210,53 @@ private extension ArcChip {
     }
 }
 
+// MARK: - Theme-aware chip palette
+
+/// Per-mode tokens for an Action Arc chip. Mirrors `WheelChrome`'s split:
+/// dark mode keeps the established "black glass + tinted glyph" reading;
+/// light mode flips to "translucent white glass + neutral glyph" so a
+/// chip on a near-white wheel doesn't read as a foreign black puck.
+///
+/// Accent colours (red/yellow/blue/green) themselves don't change per
+/// mode — they're identity, not chrome — but the *idle* glyph in light
+/// mode goes neutral grey so a yellow Fullscreen icon stays legible on
+/// white glass. Hovered chip still tints the glyph to accent in both
+/// modes; that's the "this is the chip you're picking" signal.
+struct ArcChipChrome {
+    let isDark: Bool
+
+    // Glass fill behind .ultraThinMaterial. Dark mode darkens the
+    // material; light mode lifts it brighter than the wheel so the chip
+    // reads as a separate puck and not a wheel cutout.
+    var fill: Color       { isDark ? .black.opacity(0.65) : .white.opacity(0.55) }
+    var fillGated: Color  { isDark ? .black.opacity(0.45) : .white.opacity(0.40) }
+
+    // Idle 0.8pt rim. Hovered rim uses the chip's accent in both modes
+    // (handled at the call site); this is just the "chip exists" hint.
+    var strokeIdle: Color { isDark ? .white.opacity(0.10) : .black.opacity(0.10) }
+
+    // Drop shadow under the chip. Light mode is much weaker — strong
+    // shadow on a light backdrop reads as cartoonish, and the wheel's
+    // own shadow already separates the chip from the desktop.
+    var dropShadow: Color { isDark ? .black.opacity(0.55) : .black.opacity(0.20) }
+
+    // Label text under the chip ("Quit" / "Fullscreen" / "Hide" / "Add").
+    var labelIdle: Color   { isDark ? .white.opacity(0.75) : .black.opacity(0.70) }
+    var labelActive: Color { isDark ? .white               : .black }
+    // Tight legibility shadow on the glyphs themselves. Light mode flips
+    // to a white halo so dark text still bumps off the bright disc.
+    var labelShadow: Color { isDark ? .black.opacity(0.70) : .white.opacity(0.85) }
+
+    // Idle glyph. Dark mode keeps the chip-tinted look ("warm coloured
+    // glyph on cool black glass") because that look reads well at night.
+    // Light mode goes neutral so accent colours like the Fullscreen
+    // yellow don't dissolve into white glass.
+    var glyphGated: Color { isDark ? .white.opacity(0.30) : .black.opacity(0.30) }
+    func idleGlyph(accent: Color) -> Color {
+        isDark ? accent.opacity(0.85) : .black.opacity(0.62)
+    }
+}
+
 /// Sequential pop entry animation: chip fades + scales up. Stagger via the
 /// `delay` so the four chips fan in one after the other. The parent owns
 /// the chip's offset, so we only modulate opacity + scale here.
@@ -206,9 +269,7 @@ private struct ChipEntryAnimation: ViewModifier {
             .opacity(shown ? 1 : 0)
             .scaleEffect(shown ? 1 : 0.40)
             .onAppear {
-                withAnimation(
-                    .spring(response: 0.36, dampingFraction: 0.78).delay(delay)
-                ) {
+                withAnimation(Animation.Halo.chipPop(delay: delay)) {
                     shown = true
                 }
             }
