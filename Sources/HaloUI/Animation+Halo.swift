@@ -62,17 +62,16 @@ extension Animation {
         static func confirmBounce() -> Animation {
             .spring(response: 0.40, dampingFraction: 0.70)
         }
-    }
 
-    // MARK: - Stagger constants
-    //
-    // Per-index delay multipliers for staggered entries. Living next to
-    // the springs they pair with so a future tweak stays in one file.
+        // MARK: - Stagger constants
+        //
+        // Per-index delay multipliers for staggered entries. Living
+        // alongside the springs they pair with — a future tweak stays
+        // in one type instead of straddling two `Animation` extensions.
 
-    enum HaloStagger {
         /// Action Arc chip-to-chip stagger. 22ms × 4 chips ≈ 66ms total
-        /// fan-in; combined with the chipPop spring the four chips fully
-        /// settle in ~150ms (vs. ~210ms previously).
-        static let arcChip: Double = 0.022
+        /// fan-in; combined with `chipPop` the four chips fully settle
+        /// in ~150ms (vs. ~210ms previously).
+        static let arcChipStagger: Double = 0.022
     }
 }

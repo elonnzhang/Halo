@@ -19,6 +19,16 @@ All notable changes to Halo.
 - Arc geometry scales with the user's wheel layout (`arcRadius = visibleOuterRadius + 110`). Chip pop-in animation replays on re-anchor.
 - Spec: `docs/superpowers/specs/2026-05-14-action-ring-design.md`. Mockup: `mockups/halo-action-arc.html`.
 
+### Animation + Liquid Glass polish
+
+- New **`Sources/HaloUI/Animation+Halo.swift`** centralises every wheel-side ease and spring (`snap` / `echo` / `surface` / `chipPop` / `confirmBounce` + `arcChipStagger`) with a single `reduceMotion` branch. Adjusting the wheel's "feel" is now a one-file change instead of scattered `easeOut(duration:)` calls across `RadialView` / `ActionArcView`.
+- **Animation timings tightened**: hover-tracking reactions (sector reveal, slot icon scale, halo glow, key-hint scale) standardised at 100ms (down from 120-140ms). Action Arc chip pop-in spring is now `response 0.30 / damping 0.72` with 22ms stagger (was 0.36 / 0.78 / 30ms) so four chips read as a quick fan-in. Hub icon crossfade uses a single `echo` (140ms easeOut) instead of the default transition.
+- **Empty-slot breathing is now lazy**: the dashed `+` placeholder only animates while the cursor is on the wheel; idle Halo no longer drives a `repeatForever` per empty slot. Reduce Motion path stays fully static.
+- **Soft-edge anti-aliasing**: introduced `HaloUI.Geometry.softEdgeStart = 0.80` (independent from `visibleOuterFactor = 0.84` which still anchors icons / digit-key hints / Arc geometry) plus a `LegacyAntialiased` modifier wrapping `drawingGroup()` on macOS < 26 (Liquid Glass on 26+ already composites at high quality and the offscreen pass would forfeit content-aware refraction). Combined with merging the wheel disc's double-shadow stack into one (`radius 28 / y 14 / 0.34`), this kills the visible "tire tread" rim stair-stepping in both light and dark mode.
+- **`WheelChrome` token tweaks**: `hub-fill` 48 → 32 % (dark) / 16 → 10 % (light); `hub-inner-shadow` 55 → 40 % (dark) / 30 → 22 % (light) so the hub reads as a depression rather than a punched hole. `halo-specular-peak` 78 → 88 % (dark) so the 12-o'clock highlight survives the weight-shadow on OLED backdrops. `slot-idle-stroke` removed entirely; the `slot active` 1.4pt accent stroke removed too — the inner glow blur (4 → 8 pt) carries the "lit from within" reading.
+- **Action Arc chip light-mode**: new `ArcChipChrome` mirrors `WheelChrome`'s split. Light mode goes translucent-white glass + neutral grey idle glyphs (so the yellow Fullscreen icon stays legible on a near-white wheel); dark mode keeps the original black glass + accent-tinted glyph reading. Hovered chip still tints the glyph to its accent in both modes.
+- **Anchored slot label suppression** (correctness fix): the `labelOverlay` guard was three branches under `@ViewBuilder` + `GlassEffectContainer`'s `glassEffectID` morph, which leaked the anchored slot's label on top of arc chips on macOS 26+ even after its content was gone. Flattened to a single boolean expression. Suppression is now scoped to *only* the anchored slot — hovering a different sector while the arc is up still shows that sector's app name (the user is now reading "what's this neighbour?", and the arc's chips are far enough off-axis to not collide).
+
 ## [1.2.0] — 2026-05-14
 
 ### 多 Profile / 场景环 (Apps tab)

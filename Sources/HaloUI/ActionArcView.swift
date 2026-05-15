@@ -113,7 +113,7 @@ public struct ActionArcView: View {
         .scaleEffect(isHovered && !gated ? 1.06 : 1.0)
         .offset(x: position.x, y: position.y)
         .modifier(ChipEntryAnimation(
-            delay: reduceMotion ? 0 : Double(idx) * Animation.HaloStagger.arcChip
+            delay: reduceMotion ? 0 : Double(idx) * Animation.Halo.arcChipStagger
         ))
     }
 

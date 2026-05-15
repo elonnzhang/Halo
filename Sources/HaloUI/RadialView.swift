@@ -88,8 +88,8 @@ public struct RadialView: View {
         // `GlassEffectContainer`, where the contained `glassEffectID`
         // morph holds the capsule shape on screen even after its content
         // is gone). A single boolean guard sidesteps both issues.
-        let isHoveringAnchoredSlot = state.activeArc != nil
-            && state.activeArc?.slotIndex == hoveredSlot?.id
+        let isHoveringAnchoredSlot = state.activeArc
+            .map { $0.slotIndex == hoveredSlot?.id } ?? false
         if !isHoveringAnchoredSlot, let slot = hoveredSlot, slot.app != nil {
             if #available(macOS 26.0, *) {
                 GlassEffectContainer {
@@ -852,7 +852,7 @@ private struct EmptySlotMark: View {
                 .foregroundStyle(animating ? chrome.emptyMarkTextActive : chrome.emptyMarkText)
         }
         .onAppear { syncBreathing(to: active) }
-        .onChange(of: active) { newValue in syncBreathing(to: newValue) }
+        .compatOnChange(of: active) { syncBreathing(to: $0) }
     }
 
     private func syncBreathing(to shouldBreathe: Bool) {
@@ -911,10 +911,11 @@ struct WheelChrome {
     var hubRimTop: Color { isDark ? .white.opacity(0.24) : .black.opacity(0.18) }
     var hubRimBottom: Color { isDark ? .white.opacity(0.06) : .black.opacity(0.04) }
 
-    // Sector chrome. Idle strokes pick up the opposite of the disc so they
-    // read as "barely visible separators" without flipping the visual logic.
-    var sectorIdleFill:   Color { isDark ? .white.opacity(0.015) : .black.opacity(0.012) }
-    var sectorIdleStroke: Color { isDark ? .white.opacity(0.03)  : .black.opacity(0.06) }
+    // Sector idle fill. Idle stroke was removed in the polish pass —
+    // the 1° angular gap in `SectorShape` carries the "this disc is
+    // divided" cue on its own; a stroke on top read as a pizza-slice
+    // frame pasted on the disc.
+    var sectorIdleFill: Color { isDark ? .white.opacity(0.015) : .black.opacity(0.012) }
 
     // Label chip text + its tight legibility shadow.
     var labelText:       Color { .primary }
@@ -942,7 +943,11 @@ struct WheelChrome {
 ///
 /// Skipped on macOS 26+ where Liquid Glass already composites at high
 /// quality and the offscreen pass would forfeit the glass's content-aware
-/// refraction (it can no longer sample what's behind it).
+/// refraction (the `glassEffect()` API samples real-time pixels behind
+/// it, which a `drawingGroup()` rasterization would erase). On the 26+
+/// branch the `.compositingGroup()` already applied upstream in
+/// `wheelBackground` is what flattens blend-mode layering — no behaviour
+/// is lost from this passthrough.
 private struct LegacyAntialiased: ViewModifier {
     func body(content: Content) -> some View {
         if #available(macOS 26.0, *) {

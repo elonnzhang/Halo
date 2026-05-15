@@ -93,7 +93,7 @@
 
 ### 4.1 一级反馈（hover ≥ 120ms）
 
-- 瓣本体亮起：身份色饱和度 +30%、描边 2 pt 身份色、内侧 6 pt 光晕
+- 瓣本体亮起：身份色 inner radial 渐变填充、内侧 6pt 光晕（accent @ 55% + `blur(8)`）。v1.2.x 起不再画 1.4pt accent 描边，让"亮起"读为"lit from within"而不是"框选"
 - 中心 dead-zone 图标淡出，**替换为该瓣 app 的图标**（让用户预览即将到达的目的地）
 - Halo 玻璃材质底色微弱注入身份色（5% 混合）
 - Halo 外圈薄薄一圈光晕沿屏幕径向外溢（10pt 高斯模糊 + 身份色 ×20% 透明度），让选择感"漏出"Halo 边界
@@ -196,13 +196,17 @@
 | 动效 | 时长 | 曲线 |
 | --- | --- | --- |
 | 召唤淡入 | 120ms | ease-out |
-| 瓣 hover 亮起 | 140ms | ease-out |
-| 中心图标交换 | 200ms | ease-in-out + 0.94 → 1.0 scale |
-| 外圈 halo 光晕 | 120ms | ease-out（与 hover 同步） |
-| 提交时瓣放大 | 120ms | ease-out + 1.0 → 1.06 scale |
+| 瓣 hover 亮起 | 100ms | ease-out（v1.2.x: 140 → 100，更"贴手"） |
+| 中心图标交换 | 140ms | ease-out + 0.96 → 1.0 scale（v1.2.x: 200ms ease-in-out / 0.94→1.0 改为更脆的 echo timing） |
+| 外圈 halo 光晕 | 100ms | ease-out（与 hover 同步） |
+| 提交时瓣放大 | 100ms | ease-out + 1.0 → 1.06 scale |
 | 提交时 vignette ripple | ~320ms | 半径扩散 + 透明度 0→峰值→0 |
 | Halo 淡出（提交 / 取消） | 120ms | ease-in |
 | Failed 抖动 | 40ms × 4 帧 | linear |
+| Action Arc chip pop-in | spring（response 0.30 / damping 0.72） | 22ms × index stagger |
+| 空槽 dashed 呼吸 | 2.4s ease-in-out（仅 wheel hover 时） | autoreverses |
+
+> 所有时长统一通过 `Animation.Halo.snap / echo / surface / chipPop` 在 `Sources/HaloUI/Animation+Halo.swift` 集中维护；调参一键改，无需在 RadialView / ActionArcView / WelcomeWindow 间扫描。Reduce Motion 开启时全部 ease 时长收窄到 0.05s。
 
 动画性能：panel `collectionBehavior` 去掉了 `.transient`，否则目标 app 前置会让系统立即 orderOut 吞掉 fade。`Switcher` 改为 fire-and-forget，CoreAnimation 不被 `DispatchGroup.wait` 阻塞，fade 真正可见。
 

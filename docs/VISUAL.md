@@ -185,9 +185,11 @@
        ╭────────╮
        │  + + + │   虚线轮廓 `1pt dashed rgba(255,255,255,0.18)`
        │   ＋    │   中心 "+" 符号 `rgba(255,255,255,0.32)`
-       │  + + +  │   呼吸动画：opacity 0.32 ⇄ 0.48，2.4s ease-in-out infinite
+       │  + + +  │   呼吸动画：opacity 0.32 ⇄ 0.48，2.4s ease-in-out
        ╰────────╯
 ```
+
+> 呼吸动画**只在轮盘被 hover 时启动**（任意 sector 进入 hover 即触发，cursor 离开整个轮盘后 200ms ease-out 平滑回到 idle）。Halo 处于 idle 状态时空槽完全静止，不再每槽跑一个 `repeatForever` 动画。Reduce Motion 开启时永远静止，仅以"较亮"色态作为"wheel 被 hover"的静态提示。
 
 提交空瓣 → 弹出 Pin 选择面板（普通 macOS sheet），允许从运行中的 app 列表里钉一个到该槽。
 
@@ -233,14 +235,13 @@
 | `halo-rim-top` | `white @ 34%` | rim stroke 顶端（受光） |
 | `halo-rim-mid` | `white @ 10%` | rim stroke 中段 |
 | `halo-rim-bot` | `white @ 2%` | rim stroke 底端（阴影） |
-| `halo-specular-peak` | `white @ 78%` | 12 点 specular 弧中段亮度 |
-| `hub-fill` | `black @ 48%` | 中心 lens 基底 |
-| `hub-inner-shadow` | `black @ 55%` | 上缘内阴影 gradient 头端 |
+| `halo-specular-peak` | `white @ 88%` | 12 点 specular 弧中段亮度（v1.2.x: 78 → 88，让高光在 OLED weight-shadow 上仍读得到） |
+| `hub-fill` | `black @ 32%` | 中心 lens 基底（v1.2.x: 48 → 32，hub 不再像"黑洞"，凹陷感由 rim + inner shadow 承担） |
+| `hub-inner-shadow` | `black @ 40%` | 上缘内阴影 gradient 头端（v1.2.x: 55 → 40，配合 hub-fill 弱化） |
 | `hub-rim-top` | `white @ 24%` | lens rim 顶端 |
 | `hub-rim-bot` | `white @ 6%` | lens rim 底端 |
 | `hub-specular` | `white @ 48%` | lens 顶部 specular |
 | `slot-idle-fill` | `white @ 1.5%` | 瓣默认填色（近乎不可见） |
-| `slot-idle-stroke` | `white @ 3%` | 瓣默认描边 |
 | `label-capsule-fill` | `white @ 6% over hudWindow blur` | 弧外 label 胶囊 |
 | `label-capsule-rim` | `white @ 28% → 4%` 线性 | 胶囊 rim stroke |
 | `text-primary` | `white @ 96%` | label 主文本 |
@@ -250,11 +251,12 @@
 身份色接入点（见 §4.2 / §4.3）：
 - 瓣 hover fill：`accent @ 10%`
 - 瓣 preview fill：`accent @ 16%`
-- 瓣 active 描边：`accent @ 100%` 1.4pt
-- 瓣 active 内发光：`accent @ 55%` 6pt stroke + `blur(4)` masked by sector
+- 瓣 active 内发光：`accent @ 55%` 6pt stroke + `blur(8)` masked by sector（v1.2.x: blur 4 → 8，让"光晕"散开成"lit from within"，不再像贴片）
 - 整盘 content tint：`accent @ 5%` `plusLighter`
 - 外圈 halo：`accent @ 32% → 0%` radial，`blur(18)`
 - commit vignette ripple：`accent`（见 §6）
+
+> v1.2.x 起，瓣 idle stroke 与 active 1.4pt 硬 accent stroke 都已移除。idle 状态完全靠 `SectorShape` 的 1° 角度间隙做"分槽"提示；active 状态靠上面的 inner glow + sector hover fill + slot icon 1.08× 缩放共同表达，避免在玻璃盘上生硬地画 8 条径向线。
 
 ### 4.2 取色策略（v1.1：移除 Hue-8 与饱和度兜底）
 
