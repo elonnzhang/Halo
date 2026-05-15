@@ -164,7 +164,8 @@ public final class AppPreferences: ObservableObject {
             name: "Default",
             pinnedBundleIDs: pins,
             overflowPinnedBundleIDs: overflow,
-            identityOverrides: overrides
+            identityOverrides: overrides,
+            slotCount: slot
         )
         writeProfiles([migrated], activeID: migrated.id)
         HaloLog.settings.info("Migrated legacy prefs into Default profile (slots: \(slot), pins: \(pins.compactMap { $0 }.count), overrides: \(overrides.count))")
@@ -257,17 +258,25 @@ public final class AppPreferences: ObservableObject {
         if let sourceID = sourceID,
            let source = _profiles.first(where: { $0.id == sourceID })
         {
+            // Clone inherits every field including slotCount and tint.
             new = BindingProfile(
                 id: UUID(),
                 name: name,
                 pinnedBundleIDs: source.pinnedBundleIDs,
                 overflowPinnedBundleIDs: source.overflowPinnedBundleIDs,
-                identityOverrides: source.identityOverrides
+                identityOverrides: source.identityOverrides,
+                slotCount: source.slotCount,
+                tint: source.tint
             )
         } else {
+            // Fresh profile inherits the *current* slot count so the
+            // user keeps the same wheel width they were configuring on
+            // before. The pin array is empty, so they start from a
+            // clean slate.
             new = BindingProfile(
                 name: name,
-                pinnedBundleIDs: Array(repeating: nil, count: n)
+                pinnedBundleIDs: Array(repeating: nil, count: n),
+                slotCount: n
             )
         }
         objectWillChange.send()
@@ -302,7 +311,7 @@ public final class AppPreferences: ObservableObject {
 
     public func switchToProfile(_ id: UUID) {
         loadProfilesIfNeeded()
-        guard _profiles.contains(where: { $0.id == id }) else {
+        guard let target = _profiles.first(where: { $0.id == id }) else {
             HaloLog.settings.error("switchToProfile(\(id)) — id not found")
             return
         }
@@ -310,7 +319,28 @@ public final class AppPreferences: ObservableObject {
         objectWillChange.send()
         _activeProfileID = id
         persistActiveID()
-        HaloLog.settings.info("Switched to profile '\(activeProfile.name)'")
+        // Mirror the new active profile's slotCount into the legacy key
+        // so a v1.2 rollback (or a `defaults read` snapshot) lands on the
+        // currently-visible wheel size.
+        defaults.set(max(4, min(12, target.slotCount)), forKey: Keys.slotCount)
+        HaloLog.settings.info("Switched to profile '\(target.name)' (slots: \(target.slotCount))")
+    }
+
+    /// Activate the next profile in the user's pill order, wrapping
+    /// around. No-op when there's only one profile. `delta` is +1 for
+    /// "next" / -1 for "previous" — matches the slot-cycle convention.
+    public func cycleActiveProfile(by delta: Int) {
+        loadProfilesIfNeeded()
+        guard _profiles.count > 1 else { return }
+        guard let idx = _profiles.firstIndex(where: { $0.id == _activeProfileID }) else {
+            // Active id is stale; activeProfile getter would self-heal,
+            // but we're moving anyway — just jump to the first profile.
+            switchToProfile(_profiles[0].id)
+            return
+        }
+        let n = _profiles.count
+        let next = ((idx + delta) % n + n) % n
+        switchToProfile(_profiles[next].id)
     }
 
     private func registerDefaults() {
@@ -335,21 +365,57 @@ public final class AppPreferences: ObservableObject {
 
     // MARK: - Simple scalars
 
+    /// Slot count now belongs to the *active* profile — switching profile
+    /// changes the wheel width, per the v1.3 handoff. The legacy
+    /// `Keys.slotCount` defaults are still mirrored on every write so a
+    /// v1.2 rollback (or an old `defaults read` snapshot) gets the most
+    /// recently-active profile's slotCount. Reads fall back to the legacy
+    /// key only if the profile array isn't loaded yet (cold path during
+    /// migration); once profiles are in memory the active profile is the
+    /// source of truth.
     public var slotCount: Int {
-        get { max(4, min(12, defaults.integer(forKey: Keys.slotCount))) }
+        get {
+            if _profilesLoaded {
+                return max(4, min(12, activeProfile.slotCount))
+            }
+            return max(4, min(12, defaults.integer(forKey: Keys.slotCount)))
+        }
         set {
             let clamped = max(4, min(12, newValue))
             guard clamped != slotCount else { return }
             objectWillChange.send()
             defaults.set(clamped, forKey: Keys.slotCount)
-            // The pin array on the *active* profile follows the global
-            // slotCount. Inactive profiles stay at their previous
-            // length; when switched to, pinnedBundleIDs is clamped on
-            // read and lazily resized on next mutation.
             updateActiveProfile { profile in
                 profile = profile.resizing(slotCount: clamped)
             }
         }
+    }
+
+    /// Set slot count for an arbitrary profile (not necessarily the
+    /// active one). Used by the Settings UI when the user has multiple
+    /// profile pills and tweaks the slot count on a non-active one.
+    public func setSlotCount(_ count: Int, for profileID: UUID) {
+        let clamped = max(4, min(12, count))
+        loadProfilesIfNeeded()
+        guard let idx = _profiles.firstIndex(where: { $0.id == profileID }) else { return }
+        guard _profiles[idx].slotCount != clamped else { return }
+        objectWillChange.send()
+        _profiles[idx] = _profiles[idx].resizing(slotCount: clamped)
+        if profileID == _activeProfileID {
+            defaults.set(clamped, forKey: Keys.slotCount)
+        }
+        writeProfiles(_profiles, activeID: _activeProfileID)
+    }
+
+    /// Update the tint of an arbitrary profile. Passing `nil` clears it
+    /// (no ambient glow on the wheel).
+    public func setTint(_ tint: IdentityColor?, for profileID: UUID) {
+        loadProfilesIfNeeded()
+        guard let idx = _profiles.firstIndex(where: { $0.id == profileID }) else { return }
+        guard _profiles[idx].tint != tint else { return }
+        objectWillChange.send()
+        _profiles[idx].tint = tint
+        writeProfiles(_profiles, activeID: _activeProfileID)
     }
 
     public var frequencyProfile: FrequencyProfile {

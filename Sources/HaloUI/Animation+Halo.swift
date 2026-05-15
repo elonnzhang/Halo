@@ -63,6 +63,45 @@ extension Animation {
             .spring(response: 0.40, dampingFraction: 0.70)
         }
 
+        // MARK: - Summon / dismiss
+        //
+        // Motion ① (爆开) and motion ⑤ (收起) from the handoff. Both
+        // drive `state.summonProgress` / `state.dismissProgress`;
+        // views read those values to scale, offset, and fade. Kept as
+        // timing curves (not springs) so motion holds the spec's
+        // "fast-out / soft-in" hero arc — `cubic-bezier(.2,.7,.2,1.05)`
+        // for summon, snappier `(.4,0,.7,.2)` for dismiss.
+
+        /// Motion ① · Summon. 320ms, slight overshoot at the end so
+        /// icons settle into place with a hair of inertia rather than
+        /// parking hard at the rim.
+        static func summon(reduceMotion: Bool = false) -> Animation {
+            reduceMotion
+                ? .easeOut(duration: 0.05)
+                : .timingCurve(0.2, 0.7, 0.2, 1.05, duration: 0.32)
+        }
+
+        /// Motion ⑤ · Launch collapse. 180ms ease-in so the wheel pulls
+        /// itself out fast enough that the target app's window can take
+        /// over before the user perceives a delay.
+        static func dismiss(reduceMotion: Bool = false) -> Animation {
+            reduceMotion
+                ? .easeIn(duration: 0.04)
+                : .timingCurve(0.4, 0, 0.7, 0.2, duration: 0.18)
+        }
+
+        /// Motion ② · Switch (springy slot-to-slot scroll/digit jump).
+        /// response 0.18 / damping 0.62 captures the "tick" of the
+        /// design's `cubic-bezier(.34, 1.5, .5, 1)` without authoring
+        /// a custom curve. Used for hover transitions where the user
+        /// committed to a switch (digit / scroll); the slower mouse
+        /// drag still uses `snap` so cursor tracking stays glued.
+        static func switchSpring(reduceMotion: Bool = false) -> Animation {
+            reduceMotion
+                ? .easeOut(duration: 0.05)
+                : .spring(response: 0.18, dampingFraction: 0.62)
+        }
+
         // MARK: - Stagger constants
         //
         // Per-index delay multipliers for staggered entries. Living

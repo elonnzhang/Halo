@@ -216,6 +216,27 @@ struct AppsTab: View {
 
             bindingHeader
 
+            // Per-profile slot count picker. Lives here (next to the
+            // profile's wheel preview) rather than in General because
+            // slotCount is now a per-profile knob — General still
+            // edits the active profile's value, but this is where a
+            // user editing "Work" or "Life" expects to find it.
+            Section {
+                Picker("Slot count", selection: Binding(
+                    get: { prefs.slotCount },
+                    set: { prefs.slotCount = $0 }
+                )) {
+                    ForEach([4, 6, 8, 10, 12], id: \.self) { Text("\($0)").tag($0) }
+                }
+                .pickerStyle(.segmented)
+            } header: {
+                Text("Slots for this profile")
+            } footer: {
+                Text("Each profile remembers its own slot count. Tab / ⇧Tab during summon switches profiles.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+
             Section {
                 BindingWheelView(prefs: prefs)
                     .frame(maxWidth: .infinity, alignment: .center)

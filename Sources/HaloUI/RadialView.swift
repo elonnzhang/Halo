@@ -50,7 +50,22 @@ public struct RadialView: View {
             if let arc = state.activeArc {
                 ActionArcView(arc: arc, hoverChip: state.arcHoverChip)
             }
+            // Profile tab strip — sits above the wheel inside the
+            // panel's breathing-room margin. Anchored to .top so it
+            // floats independently of the wheel's centred geometry.
+            profileTabStrip
         }
+        // Motion ① + ⑤: scale + opacity driven by state.summonProgress
+        // (0 collapsed → 1 settled) and state.dismissProgress (0 rest
+        // → 1 launched). Scales the ZStack contents WITHIN the
+        // surrounding constant frame so layout doesn't reflow — only
+        // the visual rendering animates. Hit-test gesture lives below
+        // this transform, so cursor coords keep tracking the panel's
+        // fixed-size frame; during the 0.32s summon curve the cursor
+        // is parked at hub centre anyway, so the brief mismatch is
+        // not user-visible.
+        .scaleEffect(transformScale)
+        .opacity(transformOpacity)
         .frame(width: HaloUI.Geometry.totalDiameter,
                height: HaloUI.Geometry.totalDiameter)
         .scaleEffect(HaloUI.Geometry.panelScale)
@@ -62,6 +77,22 @@ public struct RadialView: View {
         .gesture(hoverGesture)
     }
 
+    /// Visual scale combining the summon "explode" curve (0.40 → 1.00)
+    /// and the dismiss "launch" curve (1.00 → 1.55). Stays at 1.00
+    /// once the wheel is idle on screen.
+    private var transformScale: CGFloat {
+        let summon = 0.40 + 0.60 * state.summonProgress
+        let dismiss = 0.55 * state.dismissProgress
+        return summon + dismiss
+    }
+
+    /// Visual opacity. summonProgress fades in; dismissProgress fades
+    /// out — combined so the dismiss starts from full opacity even if
+    /// the user committed before the summon curve finished.
+    private var transformOpacity: Double {
+        state.summonProgress * (1 - state.dismissProgress)
+    }
+
     private var accessibilityRootLabel: String {
         if let arc = state.activeArc {
             return "Halo action arc for \(arc.appName)"
@@ -71,26 +102,14 @@ public struct RadialView: View {
 
     @ViewBuilder
     private var labelOverlay: some View {
-        // Suppress the slot label chip ONLY when the cursor is sitting on
-        // the slot the arc is anchored to — that's where the chip and the
-        // arc's own buttons collide, and it's also where the hub already
-        // shows the anchored app's icon (so the chip is redundant).
-        //
-        // If the cursor moves off the anchored slot to a neighbouring app
-        // while the arc is still up, that neighbour's label SHOULD show:
-        // the user is now reading "what's this other app?" and the arc's
-        // chips are far enough off-axis to not overlap.
-        //
-        // The guard is one short-circuit expression rather than a 3-branch
-        // `if / else if / else` ladder. SwiftUI's `@ViewBuilder` can keep
-        // a middle branch's view identity alive across an `EmptyView()`
-        // swap inside a 3-branch ladder (notably under macOS 26+'s
-        // `GlassEffectContainer`, where the contained `glassEffectID`
-        // morph holds the capsule shape on screen even after its content
-        // is gone). A single boolean guard sidesteps both issues.
-        let isHoveringAnchoredSlot = state.activeArc
-            .map { $0.slotIndex == hoveredSlot?.id } ?? false
-        if !isHoveringAnchoredSlot, let slot = hoveredSlot, slot.app != nil {
+        // Action Arc up → hide the slot label overlay entirely. The arc
+        // chip ring (radius +110pt past the visible rim) sits in the
+        // same orbital band as the label chips after we pulled labels
+        // closer (+32pt past rim), so any neighbour-label-while-arc
+        // still produced visible collisions. The hub already shows
+        // the anchored app's icon while arc is up; identity context
+        // doesn't go missing.
+        if state.activeArc == nil, let slot = hoveredSlot, slot.app != nil {
             if #available(macOS 26.0, *) {
                 GlassEffectContainer {
                     labelChip(for: slot)
@@ -108,32 +127,79 @@ public struct RadialView: View {
         hoveredSlot?.identityColor.swiftUIColor
     }
 
+    /// Ambient tint for the idle wheel — the active profile's chosen
+    /// colour, faded so the wheel reads as "this is the Work profile"
+    /// without competing with a hovered slot's stronger accent. `nil`
+    /// when the user hasn't picked a tint for the active profile.
+    private var profileTint: Color? {
+        state.profileTint?.swiftUIColor
+    }
+
+    // MARK: - Profile tab strip (edge-aware placement)
+
+    /// Pill switcher anchored above or below the wheel depending on
+    /// `state.edgeAnchor`. `.top` (wheel pushed against the screen
+    /// top) flips the strip *below* the wheel so it doesn't slam
+    /// against the menu bar; `.bottom` flips it *above*; `.none`
+    /// (panel in the middle of the screen) keeps the default above
+    /// placement. Hidden by ProfileTabBar when there's only one
+    /// profile.
+    private var profileTabStrip: some View {
+        let placeBelow = state.edgeAnchor == .top
+        return ProfileTabBar(
+            pills: state.profilePills,
+            activeID: state.activeProfileID,
+            onSwitch: { id in state.onSwitchProfile?(id) }
+        )
+        .padding(.top, placeBelow ? 0 : 18)
+        .padding(.bottom, placeBelow ? 18 : 0)
+        .frame(width: HaloUI.Geometry.totalDiameter,
+               height: HaloUI.Geometry.totalDiameter,
+               alignment: placeBelow ? .bottom : .top)
+        .allowsHitTesting(state.profilePills.count > 1)
+        .animation(Animation.Halo.echo(reduceMotion: reduceMotion),
+                   value: state.edgeAnchor)
+    }
+
     // MARK: - Halo glow
 
     @ViewBuilder
     private var haloGlow: some View {
+        // Hovered slot's accent wins; otherwise the active profile's
+        // ambient tint takes over the same gradient at half strength so
+        // identity continuity holds when no slot is under the cursor.
         if let accent = currentHoverAccent {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [accent.opacity(0.32), accent.opacity(0)],
-                        center: .center,
-                        startRadius: HaloUI.Geometry.haloDiameter / 2 - 24,
-                        endRadius: HaloUI.Geometry.haloDiameter / 2 + 20
-                    )
-                )
-                .blur(radius: 18)
-                .frame(
-                    width: HaloUI.Geometry.haloDiameter + 40,
-                    height: HaloUI.Geometry.haloDiameter + 40
-                )
-                .allowsHitTesting(false)
-                .transition(.opacity)
+            haloGlowGradient(color: accent, peakOpacity: 0.32)
                 .animation(
                     Animation.Halo.snap(reduceMotion: reduceMotion),
                     value: state.currentHoverSlot
                 )
+        } else if let tint = profileTint {
+            haloGlowGradient(color: tint, peakOpacity: 0.18)
+                .animation(
+                    Animation.Halo.surface(reduceMotion: reduceMotion),
+                    value: state.profileTint
+                )
         }
+    }
+
+    private func haloGlowGradient(color: Color, peakOpacity: Double) -> some View {
+        Circle()
+            .fill(
+                RadialGradient(
+                    colors: [color.opacity(peakOpacity), color.opacity(0)],
+                    center: .center,
+                    startRadius: HaloUI.Geometry.haloDiameter / 2 - 24,
+                    endRadius: HaloUI.Geometry.haloDiameter / 2 + 20
+                )
+            )
+            .blur(radius: 18)
+            .frame(
+                width: HaloUI.Geometry.haloDiameter + 40,
+                height: HaloUI.Geometry.haloDiameter + 40
+            )
+            .allowsHitTesting(false)
+            .transition(.opacity)
     }
 
     // MARK: - Wheel background (liquid glass)
@@ -363,21 +429,19 @@ public struct RadialView: View {
                         endRadius: HaloUI.Geometry.haloDiameter / 2
                     )
                 )
-                // Inner glow on active sectors only: a blurred accent
-                // stroke masked back into the sector shape. Wider blur
-                // (was radius 4) so the petal's edge dissolves into the
-                // surrounding glass instead of stamping a bright wedge
-                // onto it. Combined with the dropped accent stroke, the
-                // active sector now reads as "lit from within", not
-                // "framed and filled".
+                // Inner glow on active sectors. Always laid out; its
+                // opacity is driven by `isActive` so the surrounding
+                // `.animation` modifier can fade it in/out instead of
+                // popping it on a `if isActive { ... }` conditional —
+                // the old conditional rendered as a hard binary switch
+                // and was a big chunk of the "not smooth" hover feel.
                 .overlay {
-                    if isActive {
-                        sector
-                            .stroke(accent.opacity(0.55), lineWidth: 6)
-                            .blur(radius: 8)
-                            .mask(sector)
-                            .allowsHitTesting(false)
-                    }
+                    sector
+                        .stroke(accent.opacity(0.55), lineWidth: 6)
+                        .blur(radius: 8)
+                        .mask(sector)
+                        .opacity(isActive ? 1 : 0)
+                        .allowsHitTesting(false)
                 }
                 .frame(
                     width: HaloUI.Geometry.haloDiameter,
@@ -407,9 +471,19 @@ public struct RadialView: View {
             sectorContent(slot: slot, isActive: isActive, accent: accent)
                 .allowsHitTesting(false)
         }
-        .scaleEffect(isCommitting ? 1.06 : 1.0)
-        .animation(Animation.Halo.snap(reduceMotion: reduceMotion), value: isActive)
-        .animation(Animation.Halo.snap(reduceMotion: reduceMotion), value: isCommitting)
+        // Motion ⑤ companion: the committed slot punches forward as the
+        // wheel scales out, so the user's eye tracks the chosen app
+        // rather than the dissolving disc. 1.18 is loud enough to
+        // read at the 180ms dismiss duration without clipping the
+        // chip label that was sitting next to it.
+        .scaleEffect(isCommitting ? 1.18 : 1.0)
+        // Hover transitions use `echo` (140ms easeOut) instead of
+        // the snappier 100ms — sector fill + inner glow have a wide
+        // color delta (idle near-black → bright accent) so the longer
+        // curve lets the eye follow the warm-up rather than perceiving
+        // a hard pop when the cursor crosses the slot boundary.
+        .animation(Animation.Halo.echo(reduceMotion: reduceMotion), value: isActive)
+        .animation(Animation.Halo.chipPop(), value: isCommitting)
     }
 
     private func sectorContent(slot: HaloSlot, isActive: Bool, accent: Color) -> some View {
@@ -599,10 +673,32 @@ public struct RadialView: View {
     // MARK: - Label chip (glass capsule)
 
     private func labelChip(for slot: HaloSlot) -> some View {
+        // Per-slot label radius. The chip is a horizontal capsule, so
+        // slots at 3 / 9 o'clock would invade the wheel rim if we
+        // centred them at the fixed `HaloUI.Geometry.labelRadius` —
+        // the chip's INNER (rim-facing) edge is what we want to keep
+        // at a fixed clearance, not the chip's centre. Projection of
+        // chip half-extents onto the radial direction:
+        //
+        //     proj = halfWidth × |sin θ| + halfHeight × |cos θ|
+        //
+        // For θ=0 / 180 (top / bottom) the chip extends mostly
+        // horizontally so only `halfHeight` projects radially → chip
+        // stays close. For θ=90 / 270 (sides) `halfWidth` is the
+        // projection → chip pushes outward by ~halfWidth to keep its
+        // left/right edge clear of the wheel.
+        let chipHalfW: CGFloat = 50   // typical chip width estimate
+        let chipHalfH: CGFloat = 14
+        let rimGap: CGFloat = 8
+        let bearingRad = Double(slot.id) * 2 * .pi / Double(max(state.slotCount, 1))
+        let proj = chipHalfW * CGFloat(abs(sin(bearingRad)))
+            + chipHalfH * CGFloat(abs(cos(bearingRad)))
+        let innerEdgeRadius = HaloUI.Geometry.haloDiameter / 2 + rimGap + proj
+        let centerRadius = max(HaloUI.Geometry.labelRadius, innerEdgeRadius)
         let center = RadialGeometry.center(
             of: slot.id,
             sectorCount: state.slotCount,
-            radius: HaloUI.Geometry.labelRadius
+            radius: centerRadius
         )
         return Text(slot.app?.name ?? "")
             .font(.system(size: 13, weight: .bold))
@@ -676,7 +772,7 @@ public struct RadialView: View {
         // HaloWindow. Within the panel's 100pt halo/shadow buffer the
         // cursor still counts as hovering the nearest sector, matching the
         // out-of-panel global path.
-        RadialGeometry.sectorIndex(
+        let idx = RadialGeometry.sectorIndex(
             forGestureLocation: location,
             panelScale: HaloUI.Geometry.panelScale,
             totalDiameter: HaloUI.Geometry.totalDiameter,
@@ -684,6 +780,32 @@ public struct RadialView: View {
             innerRadius: HaloUI.Geometry.deadzoneDiameter / 2,
             outerRadius: HaloUI.Geometry.reachDiameter / 2
         )
+        // Mirror the cursor-poll's profile-strip dead-zone here so a
+        // click landing in the corridor between the visible disc rim
+        // and the pill row doesn't commit the nearest slot. Without
+        // this check a user clicking just-below-pill would slip past
+        // the strip's empty-space hit-test and hand the event to the
+        // wheel's gesture.
+        if idx != nil, state.profilePills.count > 1 {
+            let scale = HaloUI.Geometry.panelScale
+            let size = HaloUI.Geometry.totalDiameter
+            let centeredY = (location.y / scale) - size / 2
+            // SwiftUI gesture coords are y-down (origin top-left of
+            // the view), opposite to the cursor-poll's y-up math
+            // space. Flip the sign before comparing with the y-up
+            // edgeAnchor logic.
+            let centeredYUp = -centeredY
+            let visibleR = HaloUI.Geometry.visibleOuterRadius
+            let inCorridor: Bool
+            switch state.edgeAnchor {
+            case .top:
+                inCorridor = centeredYUp <= -visibleR
+            case .none, .bottom:
+                inCorridor = centeredYUp >= visibleR
+            }
+            if inCorridor { return nil }
+        }
+        return idx
     }
 }
 
@@ -709,7 +831,14 @@ private struct SlotContent: View {
                         .stroke(accent, lineWidth: 1.4)
                 }
             }
-            .animation(Animation.Halo.snap(reduceMotion: reduceMotion), value: isActive)
+            // Hover scale uses `echo` (140ms easeOut). A spring here
+            // overshoots when the cursor crosses the slot boundary,
+            // which reads as "jittery" rather than "tactile"; a
+            // shorter 100ms snap, on the other hand, is too abrupt
+            // for the eye to follow when paired with the sector
+            // fill warming up underneath. 140ms is the in-between
+            // that paces with the sector fill animation.
+            .animation(Animation.Halo.echo(reduceMotion: reduceMotion), value: isActive)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(accessibilityLabel))
             .accessibilityAddTraits(.isButton)

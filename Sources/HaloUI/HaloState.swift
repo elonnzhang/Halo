@@ -42,6 +42,47 @@ public final class HaloState: ObservableObject {
     /// makes `NSWorkspace.shared.frontmostApplication` return Halo).
     @Published public var summonOriginBundleID: String?
 
+    /// Ambient tint of the currently-active profile. `nil` when the user
+    /// hasn't chosen one — `RadialView` then renders no idle halo glow.
+    /// AppDelegate.applyPreferences pushes this on every prefs mutation
+    /// (profile switch, tint edit).
+    @Published public var profileTint: IdentityColor?
+
+    /// Profile pills rendered above the wheel. Mirrors `prefs.profiles`
+    /// (id + display name only — the view doesn't need pin or override
+    /// data). AppDelegate.applyPreferences pushes this on every prefs
+    /// mutation so creating / renaming / deleting profiles re-flows the
+    /// top strip.
+    @Published public var profilePills: [ProfilePill] = []
+
+    /// Currently-active profile id. The top strip highlights the
+    /// matching pill; `Tab` / `⇧Tab` shortcut and pill taps both feed
+    /// through `onSwitchProfile` below.
+    @Published public var activeProfileID: UUID?
+
+    /// Tap handler for the profile pill strip. AppDelegate wires this to
+    /// `prefs.switchToProfile(...)`. `nil` outside of the HaloApp host
+    /// (e.g. previews / tests) so taps are inert.
+    public var onSwitchProfile: ((UUID) -> Void)?
+
+    /// Where this summon ended up against the screen edge after clamp.
+    /// Drives the profile tab strip's placement — at the top edge the
+    /// strip flips below the wheel so it isn't slammed against the
+    /// menu bar (and inversely at the bottom edge).
+    @Published public var edgeAnchor: SummonEdgeAnchor = .none
+
+    /// Drives the summon "explosion from centre" animation (motion ①):
+    /// 0 = collapsed at the hub, 1 = full radius. `HaloWindow.summon`
+    /// sets this 0→1 inside a `withAnimation` block; `RadialView` reads
+    /// it to scale icons, the wheel disc, and the halo glow.
+    @Published public var summonProgress: Double = 0
+
+    /// Drives the commit "launch & fly away" animation (motion ⑤):
+    /// 0 = wheel at rest, 1 = scaled out + faded. AppDelegate latches
+    /// this 0→1 on commit so the wheel plays scale-up + opacity-drop in
+    /// lockstep with the panel's alphaValue fade.
+    @Published public var dismissProgress: Double = 0
+
     /// Invoked when the user decides to commit — mouse click, keyboard Return,
     /// digit hotkey, or hotkey release. Set by the AppDelegate; not @Published
     /// because nothing in the view layer needs to observe it.
@@ -160,6 +201,32 @@ public struct HaloSlot: Identifiable, Equatable {
 
     public static func emptySlot(id: Int, fallback: IdentityColor) -> HaloSlot {
         HaloSlot(id: id, app: nil, identityColor: fallback, runState: .empty)
+    }
+}
+
+/// Which screen edge the Halo panel ended up flush against after
+/// `RadialPanelFrame` clamping. The profile tab strip uses this to
+/// decide whether to render above or below the wheel — at the top
+/// edge the strip flips downward (it would otherwise sit on the
+/// menu bar); inversely at the bottom edge.
+public enum SummonEdgeAnchor: String, Sendable, Equatable {
+    case none
+    case top
+    case bottom
+}
+
+/// Lightweight projection of a `BindingProfile` for the Halo top-strip
+/// renderer — name + id + optional tint colour. Avoids dragging pin
+/// arrays through `@Published` (they change frequently and the strip
+/// doesn't care).
+public struct ProfilePill: Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public let name: String
+    public let tint: IdentityColor?
+    public init(id: UUID, name: String, tint: IdentityColor?) {
+        self.id = id
+        self.name = name
+        self.tint = tint
     }
 }
 
