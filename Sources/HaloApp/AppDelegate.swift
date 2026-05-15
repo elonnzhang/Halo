@@ -58,6 +58,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         state.slotCount = prefs.slotCount
         state.onCommit = { [weak self] in self?.commitSelection() }
+        state.onArcReanchorNeeded = { [weak self] newSlot in
+            self?.reanchorArc(toSlotIndex: newSlot)
+        }
         window = HaloWindow(state: state)
         menuBar = MenuBarController(
             onSummon: { [weak self] in self?.summonFromMenu() },
@@ -737,9 +740,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func tryShowArc() {
         guard state.activeArc == nil else { return }
         guard let target = arcAnchorSlot() else { return }
-        let (slotIdx, slot) = target
-        guard let app = slot.app else { return }
+        guard let arc = buildArc(forSlot: target.0, slot: target.1) else { return }
+        state.showArc(arc)
+        HaloLog.summon.debug("show arc app=\(arc.bundleID) fs=\(arc.appIsFullscreen) ax=\(arc.axGranted) slot=\(arc.slotIndex)")
+    }
 
+    /// Re-anchor the arc to a new slot when the user sweeps the cursor
+    /// across the wheel with the arc already up. Cheap to rebuild — chip
+    /// list + fullscreen snapshot are the only per-app pieces. No-op if
+    /// the new slot is empty so a stray hover onto a "+" placeholder
+    /// doesn't kill the arc.
+    private func reanchorArc(toSlotIndex newSlot: Int) {
+        guard state.activeArc != nil else { return }
+        guard let slot = state.slots.first(where: { $0.id == newSlot }),
+              slot.app != nil
+        else { return }
+        guard let arc = buildArc(forSlot: newSlot, slot: slot) else { return }
+        state.showArc(arc)
+    }
+
+    private func buildArc(forSlot slotIdx: Int, slot: HaloSlot) -> ActiveArc? {
+        guard let app = slot.app else { return nil }
         let customAction = prefs.actions(forBundleID: app.bundleID).first
         let chips: [ArcChip] = [
             .builtin(.quit),
@@ -754,7 +775,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let runningApp = runningApp else { return false }
             return FullScreenToggler.isFullscreen(forPID: runningApp.processIdentifier)
         }()
-        let arc = ActiveArc(
+        return ActiveArc(
             slotIndex: slotIdx,
             bundleID: app.bundleID,
             appName: app.name,
@@ -762,8 +783,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             appIsFullscreen: isFs,
             axGranted: AXPermissionGate.isTrusted
         )
-        state.showArc(arc)
-        HaloLog.summon.debug("show arc app=\(app.bundleID) fs=\(isFs) ax=\(arc.axGranted) slot=\(slotIdx)")
     }
 
     /// Resolves which slot the arc should anchor to. The hover takes

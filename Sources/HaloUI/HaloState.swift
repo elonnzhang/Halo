@@ -47,6 +47,12 @@ public final class HaloState: ObservableObject {
     /// because nothing in the view layer needs to observe it.
     public var onCommit: (() -> Void)?
 
+    /// Fires when the cursor's hovered slot changes while the Action Arc is
+    /// already up. AppDelegate uses this to re-anchor the arc to the new
+    /// slot (rebuilding chips for the new app) so the user can sweep across
+    /// the wheel and see each app's arc without having to dismiss + retap.
+    public var onArcReanchorNeeded: ((Int) -> Void)?
+
     public init() {}
 
     public var currentHoverSlot: Int? {
@@ -133,6 +139,12 @@ public final class HaloState: ObservableObject {
             if case .previewing(let prev) = phase, prev == i { return }
             phase = .hovering(i)
             SoundEffectPlayer.shared.play(.slide)
+            // Arc follows the wheel hover. When the user sweeps across
+            // slots with the arc already up, ask the delegate to rebuild
+            // the arc for the newly hovered slot.
+            if let arc = activeArc, arc.slotIndex != i {
+                onArcReanchorNeeded?(i)
+            }
         }
     }
 }
