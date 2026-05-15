@@ -124,9 +124,9 @@ Edit `Sources/HaloApp/SettingsWindow.swift`:
 
 ## Task 6: Version bump + CHANGELOG
 
-- `Resources/Info.plist`: `CFBundleShortVersionString` 1.1.2 → 1.2.0
-- `Sources/HaloCore/HaloCore.swift`: `version = "1.2.0"`
-- `CHANGELOG.md`: v1.2.0 entry. Explicitly call out the minimal scope.
+- `Resources/Info.plist`: `CFBundleShortVersionString` bumped to the next minor on top of v1.1.2 (the actual number gets picked at release-cut time, not pre-bumped while the work sits in `Unreleased`).
+- `Sources/HaloCore/HaloCore.swift`: `version` matches the bump above.
+- `CHANGELOG.md`: graduate the relevant section out of `Unreleased`. Explicitly call out the minimal scope.
 
 ## Task 7: Build + launch + verify migration
 

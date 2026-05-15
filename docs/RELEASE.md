@@ -28,7 +28,7 @@ Workflow for cutting a public release (Developer ID signed, notarized, stapled, 
 ### 1. Bump version
 
 Edit `Resources/Info.plist`:
-- `CFBundleShortVersionString` — semantic version, e.g. `1.2.0`.
+- `CFBundleShortVersionString` — semantic version, e.g. `1.1.2`.
 - `CFBundleVersion` — monotonic build number; increment.
 
 Re-run `swift test` to confirm nothing depends on the version string.

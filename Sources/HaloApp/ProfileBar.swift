@@ -3,9 +3,9 @@ import AppKit
 import HaloCore
 import HaloUI
 
-/// Lives at the top of `AppsTab`. The *only* UI surface for v1.2
-/// multi-profile: a pill row + `+` button + meta count. Switching,
-/// renaming, duplicating, deleting all flow through here.
+/// Lives at the top of `AppsTab`. The *only* UI surface for the
+/// initial multi-profile scope: a pill row + `+` button + meta count.
+/// Switching, renaming, duplicating, deleting all flow through here.
 struct ProfileBar: View {
     @ObservedObject var prefs: AppPreferences
 

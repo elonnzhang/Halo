@@ -1,7 +1,7 @@
 # Halo 多 Profile / 场景环 — Design Spec (v2, 最小版)
 
 - **Date:** 2026-05-14
-- **Target release:** v1.2.0
+- **Target release:** Unreleased (next minor on top of v1.1.2)
 - **Status:** Draft v2 — supersedes v1 (which over-engineered profile scope across 5 tabs/surfaces)
 - **Mockup:** [`mockups/halo-settings.html`](../../../mockups/halo-settings.html) §2 + [`mockups/multi-profile.html`](../../../mockups/multi-profile.html)
 
@@ -12,7 +12,7 @@ and their identity-colour overrides. Switch between them from a profile
 bar at the top of **Settings → Apps**. Everything else (slot count,
 ranking, whitelist, hotkey, layout, language, sound) stays user-global.
 
-## 2. Non-goals (v1.2)
+## 2. Non-goals (initial scope)
 
 The v1 spec landed pickers and chips across the sidebar, menu bar, and
 the General tab. v2 drops all of that. None of the following ship in
@@ -24,7 +24,7 @@ this release:
 - No General-tab chips marking which controls are per-profile.
 - No per-profile slot count, ranking profile, or whitelist. Those stay
   user-global and apply across all profiles.
-- No profile colors / dots in v1.2 (the mockup shows them; deferred —
+- No profile colors / dots in this scope (the mockup shows them; deferred —
   pure-text pills only).
 - No auto-detect of active profile from frontmost app.
 - No hotkey to switch profile.
@@ -113,7 +113,7 @@ public func renameProfile(_ id: UUID, to newName: String)
 public func deleteProfile(_ id: UUID)   // refuses if it would leave 0
 ```
 
-No `reorderProfiles` in v1.2 — the profile bar doesn't support drag,
+No `reorderProfiles` in this scope — the profile bar doesn't support drag,
 keeping the UI minimal.
 
 ### 4.3 Storage
@@ -122,9 +122,9 @@ keeping the UI minimal.
 |----------------------------------|----------|-------|
 | `halo.prefs.profiles.v1`         | Persistent | JSON `[BindingProfile]`. Source of truth. |
 | `halo.prefs.activeProfileID`     | Persistent | UUID string. |
-| `halo.prefs.pinnedSlots.v1`      | Read-only after migration; dropped in v1.3. |
-| `halo.prefs.overflowPins.v1`     | Read-only after migration; dropped in v1.3. |
-| `halo.prefs.identityOverride.v1` | Read-only after migration; dropped in v1.3. |
+| `halo.prefs.pinnedSlots.v1`      | Read-only after migration; dropped in the minor after that. |
+| `halo.prefs.overflowPins.v1`     | Read-only after migration; dropped in the minor after that. |
+| `halo.prefs.identityOverride.v1` | Read-only after migration; dropped in the minor after that. |
 
 All other legacy keys (`slotCount`, `frequencyProfile`, `whitelist.v1`,
 hotkey, layout, sound, language, …) stay untouched — they remain the
@@ -141,7 +141,7 @@ Runs once during `AppPreferences.init`:
    length.
 3. Build a single `BindingProfile` named `"Default"`, write
    `[default]` to `halo.prefs.profiles.v1`, set `activeProfileID`.
-4. Keep the legacy keys as a rollback safety net through v1.2; drop in v1.3.
+4. Keep the legacy keys as a rollback safety net through the initial multi-profile release; drop in the minor after that.
 
 ### 4.5 Engine integration
 
@@ -207,7 +207,7 @@ tab, sidebar, menu bar — none touched.
   lazily the next time they become active and `slotCount` is read.
 
   *Open question:* should inactive profiles also resize? Decision:
-  **no** in v1.2. Pin arrays for inactive profiles can be out of sync
+  **no** in this scope. Pin arrays for inactive profiles can be out of sync
   with global `slotCount`; when switching to them, projector clamps
   pinnedBundleIDs to the current slotCount on read and lazily resizes
   on next mutation. Simpler than walking every profile on a global
@@ -251,7 +251,7 @@ pass unchanged.
 
 ### UI tests
 
-No new UI tests for v1.2. The new SwiftUI view is mostly state-binding
+No new UI tests for this scope. The new SwiftUI view is mostly state-binding
 glue; the underlying `prefs.*Profile` methods carry the load and are
 unit-tested.
 
@@ -272,15 +272,15 @@ Build the `.app`, launch, walk:
 
 ## 8. Release
 
-Ship as **v1.2.0**. CHANGELOG entry summarises the feature, the
+Ship as part of the next minor on top of v1.1.2. CHANGELOG entry summarises the feature, the
 explicit non-goals, and the migration.
 
-## 9. Open follow-ups (post-v1.2)
+## 9. Open follow-ups (post initial scope)
 
 - v1.x: profile colour / dot (mockup shows it; auto-assigned from a 6-tone
   palette by index, or user-pickable).
 - v1.x: drag-to-reorder pills.
-- v1.x: drop legacy `UserDefaults` keys (v1.3).
+- v1.x: drop legacy `UserDefaults` keys (the minor after the initial multi-profile release).
 - v1.x: auto-detect active profile from frontmost app (BRAINSTORM
   roadmap item).
 - v2: integrate with the planned `.halo-profile` import/export from

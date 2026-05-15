@@ -123,7 +123,7 @@
 | 按数字键 `1`–`9` / `0` | 直接提交对应槽位（跳过 hover 时间） |
 | `Return` / `Space` | 当前选中瓣 ≠ 空 |
 
-提交实现（v1.3）：
+提交实现：
 
 1. `state.phase = .committing(i)`，选中瓣放大到 1.06×
 2. **先 fire ripple、再 dismiss Halo、最后调用 `Switcher.switchTo`**（顺序关键——如果先切换，目标 App 会抢焦点让 Halo 被系统立刻隐藏，fade-out 来不及播）
@@ -131,7 +131,7 @@
 4. Halo fade-out 120ms；commit ripple 从 Halo 中心向外扩散 ~320ms
 5. 频率统计 +1 通过 `NSWorkspaceDidActivateApplicationNotification` 异步累加
 
-> v1.2 曾因 `NSRunningApplication.activate(options:)` 在 cooperative activation 下静默失败而"松手后不切换"。已切换到 `NSWorkspace.openApplication`。
+> 开发中曾因 `NSRunningApplication.activate(options:)` 在 cooperative activation 下静默失败而"松手后不切换"。已切换到 `NSWorkspace.openApplication`。
 
 ### 5.2 取消
 

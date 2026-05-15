@@ -91,9 +91,10 @@ public final class AppPreferences: ObservableObject {
         static let actionBindings  = "halo.prefs.actionBindings.v1"
         static let appearanceMode  = "halo.prefs.appearanceMode"
         static let onboardingShown = "halo.onboarding.shown"
-        // v1.2 multi-profile — owns pins / overflow / identity overrides.
-        // The legacy keys above stay read-only as a rollback safety net
-        // through v1.2 and are dropped in v1.3.
+        // Multi-profile — owns pins / overflow / identity overrides.
+        // The legacy keys above stay read-only as a rollback safety
+        // net through the initial multi-profile release and are
+        // dropped in the minor after that.
         static let profilesV1      = "halo.prefs.profiles.v1"
         static let activeProfile   = "halo.prefs.activeProfileID"
     }

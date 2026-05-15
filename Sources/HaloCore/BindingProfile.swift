@@ -1,6 +1,6 @@
 import Foundation
 
-/// One named profile's worth of bindings. v1.2 scope: pinned slots,
+/// One named profile's worth of bindings. Initial scope: pinned slots,
 /// overflow pins, identity-colour overrides. Everything else
 /// (`slotCount`, `frequencyProfile`, `whitelist.v1`, hotkey, layout,
 /// language, sound, …) stays user-global on `AppPreferences`.
