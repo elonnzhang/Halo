@@ -36,7 +36,7 @@ struct ProfileTabBar: View {
                 Capsule(style: .continuous)
                     .strokeBorder(strokeColor, lineWidth: 0.6)
             )
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.45 : 0.18), radius: 8, y: 3)
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.30 : 0.12), radius: 16, y: 6)
             .animation(Animation.Halo.echo(reduceMotion: reduceMotion), value: activeID)
         }
     }
@@ -44,6 +44,7 @@ struct ProfileTabBar: View {
     @ViewBuilder
     private func pillView(_ pill: ProfilePill) -> some View {
         let isActive = pill.id == activeID
+        let isAll = pill.id == GridProfile.id
         let tintColor = pill.tint?.swiftUIColor ?? defaultTint
         let foreground: Color = isActive
             ? (colorScheme == .dark ? Color(white: 0.06) : Color.white)
@@ -54,17 +55,27 @@ struct ProfileTabBar: View {
         Button {
             onSwitch(pill.id)
         } label: {
-            Text(pill.name)
-                .font(.system(size: 12, weight: isActive ? .semibold : .medium))
-                .lineLimit(1)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
-                .foregroundStyle(foreground)
-                .background(
-                    Capsule(style: .continuous)
-                        .fill(isActive ? tintColor : Color.clear)
-                )
-                .contentShape(Capsule(style: .continuous))
+            Group {
+                if isAll {
+                    // Built-in ALL profile renders as a 3×3 grid SF
+                    // Symbol — visually distinct from named profile
+                    // pills so the user reads it as a different mode.
+                    Image(systemName: "circle.grid.3x3.fill")
+                        .font(.system(size: 12, weight: .medium))
+                } else {
+                    Text(pill.name)
+                        .font(.system(size: 12, weight: isActive ? .semibold : .medium))
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .foregroundStyle(foreground)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(isActive ? tintColor : Color.clear)
+            )
+            .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text("Switch to \(pill.name) profile"))
@@ -80,8 +91,8 @@ struct ProfileTabBar: View {
             } else {
                 Capsule(style: .continuous)
                     .fill(colorScheme == .dark
-                        ? Color.black.opacity(0.55)
-                        : Color.white.opacity(0.62))
+                        ? Color.black.opacity(0.38)
+                        : Color.white.opacity(0.46))
                     .background(
                         VisualEffectBackground(
                             material: .hudWindow,
@@ -96,8 +107,8 @@ struct ProfileTabBar: View {
 
     private var strokeColor: Color {
         colorScheme == .dark
-            ? Color.white.opacity(0.08)
-            : Color.black.opacity(0.10)
+            ? Color.white.opacity(0.10)
+            : Color.white.opacity(0.32)
     }
 
     /// Fallback pill tint when the profile has no user-chosen colour.

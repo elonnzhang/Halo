@@ -83,6 +83,20 @@ public final class HaloState: ObservableObject {
     /// lockstep with the panel's alphaValue fade.
     @Published public var dismissProgress: Double = 0
 
+    /// True while the built-in "ALL" virtual profile is on screen — the
+    /// radial wheel is hidden and `HaloGridWindow` shows a watchOS-style
+    /// honeycomb grid of every installed app.
+    ///
+    /// AppDelegate flips this in `enterGridMode` / `leaveGridMode`. The
+    /// wheel-side render path is unchanged; the grid window reads the
+    /// flag (and `gridState`) to decide what to show.
+    @Published public var isGridMode: Bool = false
+
+    /// State for the honeycomb grid (apps, zoom, pan, selection). Lives
+    /// on `HaloState` so the AppDelegate (commit / dismiss / cycle) and
+    /// the grid view share a single source of truth.
+    public let gridState: GridState = GridState()
+
     /// Invoked when the user decides to commit — mouse click, keyboard Return,
     /// digit hotkey, or hotkey release. Set by the AppDelegate; not @Published
     /// because nothing in the view layer needs to observe it.
