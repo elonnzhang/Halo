@@ -158,10 +158,10 @@ public struct HoneycombGridView: View {
     /// fall into the mid-40s on large catalogues. That contrast is the
     /// watchOS read: a clear focal constellation instead of an even macOS
     /// icon sheet.
-    private static let baseIconSize: CGFloat = 76
+    public static let baseIconSize: CGFloat = 76
     /// Slightly roomy pitch so the enlarged centre can breathe while outer
     /// icons still feel clustered after fisheye pull-in.
-    private static let baseSpacing: CGFloat = 100
+    public static let baseSpacing: CGFloat = 100
 
     private var iconSize: CGFloat { Self.baseIconSize * gridState.zoomLevel }
     private var spacing: CGFloat { Self.baseSpacing * gridState.zoomLevel }

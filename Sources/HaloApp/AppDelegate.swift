@@ -475,7 +475,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // last session ended on the ALL grid. The user can Tab back
         // into ALL after summon if they want it.
         if state.isGridMode { leaveGridMode() }
-        state.isGridMode = false
         state.hideArc()
         shiftHeld = NSEvent.modifierFlags.contains(.shift)
         let position = prefs.summonPosition
@@ -1209,8 +1208,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // stays correct across screen / zoom changes.
                     let viewSize = self.gridWindow.panel.contentView?.bounds.size ?? .zero
                     let zoomLevel = gs.zoomLevel
-                    let spacing   = 100 * zoomLevel     // HoneycombGridView.baseSpacing
-                    let iconSize  =  76 * zoomLevel     // HoneycombGridView.baseIconSize
+                    let spacing   = HoneycombGridView.baseSpacing * zoomLevel
+                    let iconSize  = HoneycombGridView.baseIconSize * zoomLevel
                     let vStretch: CGFloat = 1.18
                     let count = max(gs.filteredApps.count, 1)
                     let layout = HoneycombGeometry.spiralLayout(count: count)
