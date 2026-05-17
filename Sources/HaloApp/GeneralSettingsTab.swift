@@ -136,6 +136,17 @@ struct GeneralTab: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+                Toggle(isOn: Binding(
+                    get: { prefs.showAllProfile },
+                    set: { prefs.showAllProfile = $0 }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Show ALL profile")
+                        Text("Adds a built-in profile that opens a watchOS-style grid of every installed app. Tab to switch to it.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             } header: {
                 Text("Navigation")
             } footer: {
@@ -341,6 +352,10 @@ struct GeneralTab: View {
                 Toggle("Highlight frontmost on summon", isOn: Binding(
                     get: { prefs.highlightFrontmostOnSummon },
                     set: { prefs.highlightFrontmostOnSummon = $0 }
+                ))
+                Toggle("Show ALL profile", isOn: Binding(
+                    get: { prefs.showAllProfile },
+                    set: { prefs.showAllProfile = $0 }
                 ))
             }
             Section("Sound") {

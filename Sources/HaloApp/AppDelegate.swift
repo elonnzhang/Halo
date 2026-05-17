@@ -9,6 +9,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let prefs = AppPreferences.shared
     private let state = HaloState()
     private var window: HaloWindow!
+    /// Full-screen panel that replaces the wheel while the built-in
+    /// "ALL" virtual profile is active. Lives alongside `window`; only
+    /// one of the two is visible at a time. Wired up in
+    /// `applicationDidFinishLaunching`, summoned/dismissed via
+    /// `enterGridMode` / `leaveGridMode`.
+    private var gridWindow: HaloGridWindow!
     private var menuBar: MenuBarController!
     private var hotkey: HaloHotkey!
     private var onboarding = OnboardingOverlay()
@@ -59,6 +65,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // (scroll anchor, arc) gets reset.
         state.onSwitchProfile = { [weak self] id in
             guard let self = self else { return }
+            // Built-in ALL profile: enter grid mode (no real prefs
+            // mutation — `switchToProfile` would refuse the id since
+            // it's not in `_profiles`). Cycle path goes through
+            // `cycleProfileWhileSummoned` which handles the same case.
+            if id == GridProfile.id {
+                guard !self.state.isGridMode else { return }
+                self.state.scrollAnchor = nil
+                self.state.hideArc()
+                self.state.phase = .idle
+                self.enterGridMode()
+                SoundEffectPlayer.shared.play(.slide)
+                return
+            }
+            // Currently in grid mode and the user clicked a real
+            // profile pill — leave grid mode and switch.
+            if self.state.isGridMode {
+                self.state.scrollAnchor = nil
+                self.state.hideArc()
+                self.leaveGridMode()
+                self.prefs.switchToProfile(id)
+                SoundEffectPlayer.shared.play(.slide)
+                return
+            }
             guard id != self.prefs.activeProfileID else { return }
             self.state.scrollAnchor = nil
             self.state.hideArc()
@@ -67,6 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             SoundEffectPlayer.shared.play(.slide)
         }
         window = HaloWindow(state: state)
+        gridWindow = HaloGridWindow(state: state)
         menuBar = MenuBarController(
             onSummon: { [weak self] in self?.summonFromMenu() },
             onSettings: { [weak self] in self?.openSettings() },
@@ -99,7 +129,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             gap: prefs.cmdDoubleTapGap
         )
         monitor.onTriggered = { [weak self] in self?.summon() }
-        monitor.onReleased = { [weak self] in self?.commitSelection() }
+        monitor.onReleased = { [weak self] in self?.commitFromHold() }
         monitor.suppressionGate = { [weak self] in
             guard let self = self else { return false }
             guard let frontmost = NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
@@ -153,14 +183,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Sync the top-strip pill model. Always rewrite when shape /
         // names / tints change; we compare via Equatable so a no-op
         // mutation doesn't churn the SwiftUI animation.
-        let pills = prefs.profiles.map {
+        var pills = prefs.profiles.map {
             ProfilePill(id: $0.id, name: $0.name, tint: $0.tint)
+        }
+        // Built-in "ALL" profile (watchOS-style honeycomb grid). When
+        // the user has the toggle on, we prepend a virtual pill at
+        // position 0 that the cycle / tap path special-cases — the id
+        // is never written into `prefs.profiles`, so Settings, the
+        // menu-bar Profile submenu, and serialization remain
+        // unaffected.
+        if prefs.showAllProfile {
+            pills.insert(
+                ProfilePill(id: GridProfile.id, name: GridProfile.displayName, tint: nil),
+                at: 0
+            )
         }
         if state.profilePills != pills {
             state.profilePills = pills
         }
-        if state.activeProfileID != prefs.activeProfileID {
+        // While grid mode is on, leave `state.activeProfileID` pinned
+        // to `GridProfile.id` so the pill highlight follows. Otherwise
+        // any prefs mutation (Settings tint edit, slotCount slide)
+        // would knock the highlight back to the real active profile.
+        if state.isGridMode {
+            // No-op for activeProfileID; we still want every other
+            // mirroring above (slotCount, tint) to flow through so
+            // the wheel is correctly configured for when the user
+            // leaves grid mode.
+        } else if state.activeProfileID != prefs.activeProfileID {
             state.activeProfileID = prefs.activeProfileID
+        }
+        // If the user just turned `showAllProfile` off while ALL was
+        // on screen, fall back to the real active profile so the
+        // panel doesn't get stuck rendering a hidden pill's view.
+        if state.isGridMode && !prefs.showAllProfile {
+            leaveGridMode()
         }
         // Re-register the Carbon hotkey ONLY when the chord changed.
         // Pre-fix this fired on every prefs mutation (slider drag → 10
@@ -210,7 +267,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self = self else { return }
             switch event {
             case .holdEngaged:   self.summon()
-            case .holdReleased:  self.commitSelection()
+            case .holdReleased:  self.commitFromHold()
             }
         }
         // Wire the whitelist gate on every (re)registration — Carbon
@@ -286,6 +343,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ]
 
     private func refreshSlots() {
+        // Wheel slots aren't visible while the ALL grid is on — skip
+        // the work so the activation observer doesn't churn through
+        // identity-color extraction during a grid session.
+        guard !state.isGridMode else { return }
         let userMaxN = prefs.slotCount
         let records = usageStore.allRecords().filter {
             !Self.systemBundleBlocklist.contains($0.app.bundleID)
@@ -410,9 +471,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Slots are kept current by the activation observer and by prefs
         // changes; we don't need to re-extract dominant colors here — that
         // burns ~100ms/icon and makes Halo feel sluggish.
-        // Always start a summon on layer 1. Seed `shiftHeld` from the live
-        // HID state so the first ⇧ flagsChanged after summon is correctly
-        // classified as a press (not a stale off→on transition).
+        // Always start a summon on layer 1 (the wheel), even if the
+        // last session ended on the ALL grid. The user can Tab back
+        // into ALL after summon if they want it.
+        if state.isGridMode { leaveGridMode() }
+        state.isGridMode = false
         state.hideArc()
         shiftHeld = NSEvent.modifierFlags.contains(.shift)
         let position = prefs.summonPosition
@@ -471,12 +534,65 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController?.show()
     }
 
+    /// Hotkey hold-release path. The wheel uses release-to-commit
+    /// (slot under cursor launches when the user lets go), but the
+    /// grid intentionally does NOT — Launchpad-style browsing should
+    /// only launch on an explicit click or Return. Pressing-and-
+    /// releasing the hotkey while in grid mode just dismisses Halo,
+    /// leaving the previously-frontmost app active.
+    private func commitFromHold() {
+        if state.isGridMode {
+            cancel()
+            return
+        }
+        commitSelection()
+    }
+
     private func commitSelection() {
         // Tear down the first-summon onboarding chip as soon as the user
         // commits — the lesson is over, no need to keep the hint floating.
         onboarding.dismiss()
         scrollAccumDelta = 0
         state.scrollAnchor = nil
+
+        // Grid mode (built-in ALL profile): launch the icon under the
+        // cursor / keyboard selection, then dismiss the grid panel.
+        // No slot, no arc — these don't apply to the honeycomb view.
+        //
+        // Visually we play a press burst on the selected icon (driven
+        // by `committingBundleID`) before the panel fades — the user
+        // sees the cell snap up then collapse, mirroring the watchOS
+        // app-launch micro-animation, while we wait ~180ms for the
+        // hop into the target app.
+        if state.isGridMode {
+            HaloLog.summon.debug("commit grid bundleID=\(self.state.gridState.selectedBundleID ?? "nil")")
+            guard let bundleID = state.gridState.selectedBundleID else {
+                cancel()
+                return
+            }
+            SoundEffectPlayer.shared.play(.commit)
+            state.gridState.committingBundleID = bundleID
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 180_000_000)
+                guard let self = self else { return }
+                // If the user cancelled (ESC) during the burst animation
+                // committingBundleID will have been cleared by resetViewport();
+                // bail so the app doesn't launch after an explicit cancel.
+                guard self.state.gridState.committingBundleID == bundleID else { return }
+                // Reset transient grid state and start the cross-fade.
+                self.gridWindow.dismiss(animated: true)
+                self.state.isGridMode = false
+                self.state.activeProfileID = self.prefs.activeProfileID
+                self.state.phase = .hidden
+                self.state.gridState.resetViewport()
+                let outcome = self.switcher.switchTo(bundleID: bundleID)
+                if outcome == .failed {
+                    HaloLog.switcher.info("grid commit failed bundleID=\(bundleID)")
+                }
+            }
+            return
+        }
+
         HaloLog.summon.debug("commit phase=\(String(describing: self.state.phase)) hover=\(String(describing: self.state.currentHoverSlot)) arc=\(self.state.activeArc != nil) chip=\(String(describing: self.state.arcHoverChip))")
 
         // Arc up. Priority:
@@ -628,6 +744,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scrollAccumDelta = 0
         state.scrollAnchor = nil
         state.hideArc()
+        // Grid path: dismiss the full-screen panel, reset transient
+        // grid state, and don't re-summon the wheel (cancel = full
+        // dismiss, the wheel is already orderOut-ed under the grid).
+        if state.isGridMode {
+            state.isGridMode = false
+            state.activeProfileID = prefs.activeProfileID
+            state.phase = .hidden
+            state.gridState.resetViewport()
+            gridWindow.dismiss(animated: true)
+            return
+        }
         window.dismiss(animated: true, restorePreviousFront: true)
     }
 
@@ -670,21 +797,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
             guard let self = self, self.state.phase != .hidden else { return event }
             let keyCode = Int(event.keyCode)
-            // ESC → cancel
+            // ESC → cancel (works for both wheel and grid mode)
             if keyCode == 53 { self.cancel(); return nil }
-            // ←↑ cycle -1, →↓ cycle +1
-            if keyCode == 123 || keyCode == 126 { self.cycleHighlight(by: -1); return nil }
-            if keyCode == 124 || keyCode == 125 { self.cycleHighlight(by:  1); return nil }
             // Tab / ⇧Tab → next / previous Profile. Routes through
-            // `prefs.cycleActiveProfile`, which fires objectWillChange so
-            // `applyPreferences` refreshes the wheel slots on the next
-            // runloop tick. No-op when there's only one profile (matches
-            // the menu-bar submenu's hidden state).
+            // `cycleProfileWhileSummoned`, which knows how to flip
+            // between the wheel and the grid (ALL profile).
             if keyCode == 48 { // Tab
                 let delta = event.modifierFlags.contains(.shift) ? -1 : 1
                 self.cycleProfileWhileSummoned(by: delta)
                 return nil
             }
+            // Grid mode: route keystrokes to search + arrow nav.
+            // Return / Space commit the icon under the cursor /
+            // keyboard focus. ESC and Tab were handled above.
+            if self.state.isGridMode {
+                if keyCode == 36 || keyCode == 49 || keyCode == 76 {
+                    self.commitSelection()
+                    return nil
+                }
+                // Backspace → trim the search query.
+                if keyCode == 51 {
+                    self.state.gridState.backspaceSearch()
+                    return nil
+                }
+                // Arrow keys → step the keyboard selection. Delta
+                // ±1 for ←→, ±columns for ↑↓ so the user can walk
+                // the cluster row-by-row in addition to mousing.
+                if [123, 124, 125, 126].contains(keyCode) {
+                    let cols = self.gridColumnsEstimate()
+                    let delta: Int
+                    switch keyCode {
+                    case 123: delta = -1                   // ←
+                    case 124: delta =  1                   // →
+                    case 126: delta = -cols                // ↑
+                    case 125: delta =  cols                // ↓
+                    default: delta = 0
+                    }
+                    let next = self.state.gridState.neighbourBundleID(
+                        of: self.state.gridState.selectedBundleID,
+                        delta: delta,
+                        columns: cols
+                    )
+                    self.state.gridState.selectedBundleID = next
+                    return nil
+                }
+                // Cmd-anything stays a shortcut; don't capture as
+                // search input. Live-key character routing for the
+                // remaining keystrokes goes through `characters`
+                // (NOT charactersIgnoringModifiers) so ⇧ produces
+                // capital letters. Filter to printable ASCII so we
+                // don't pollute the query with control glyphs.
+                if !event.modifierFlags.intersection([.command, .control, .option]).isEmpty {
+                    return nil
+                }
+                if let chars = event.characters, !chars.isEmpty {
+                    for ch in chars where ch.isLetter || ch.isNumber
+                        || ch == " " || ch == "-" || ch == "."
+                        || ch == "_" {
+                        self.state.gridState.appendSearch(ch)
+                    }
+                }
+                return nil
+            }
+            // ←↑ cycle -1, →↓ cycle +1
+            if keyCode == 123 || keyCode == 126 { self.cycleHighlight(by: -1); return nil }
+            if keyCode == 124 || keyCode == 125 { self.cycleHighlight(by:  1); return nil }
             // Digit-key commit gated by Settings → Navigation. KeyCode
             // table covers `1–9 0 - =` so the layout is stable across
             // international keyboards (no `characters` lookup).
@@ -745,15 +922,125 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// transient state (highlight phase, scroll anchor, arc) so the new
     /// profile's first slot lights up cleanly when the wheel re-renders
     /// at the new slot count.
+    ///
+    /// When `prefs.showAllProfile` is on, an extra virtual "ALL"
+    /// position is prepended so Tab traverses `[ALL, Default, …]`. ALL
+    /// can't go through `prefs.switchToProfile` (its id isn't in
+    /// `_profiles`) so the AppDelegate handles entry / exit directly.
     private func cycleProfileWhileSummoned(by delta: Int) {
-        guard prefs.profiles.count > 1 else { return }
+        var ids: [UUID] = prefs.profiles.map(\.id)
+        if prefs.showAllProfile {
+            ids.insert(GridProfile.id, at: 0)
+        }
+        guard ids.count > 1 else { return }
+
+        let currentID = state.isGridMode ? GridProfile.id : prefs.activeProfileID
+        guard let idx = ids.firstIndex(of: currentID) else { return }
+        let n = ids.count
+        let next = ((idx + delta) % n + n) % n
+        let nextID = ids[next]
+
         // Drop transient state before the profile flip so the old slot
         // index doesn't leak through to the new (possibly shorter) wheel.
         state.scrollAnchor = nil
         state.hideArc()
         state.phase = .idle
-        prefs.cycleActiveProfile(by: delta)
         SoundEffectPlayer.shared.play(.slide)
+
+        if nextID == GridProfile.id {
+            enterGridMode()
+        } else if state.isGridMode {
+            leaveGridMode()
+            prefs.switchToProfile(nextID)
+        } else {
+            prefs.cycleActiveProfile(by: delta)
+        }
+    }
+
+    // MARK: - Grid mode (built-in ALL profile)
+
+    /// Mirror of the column formula in `HoneycombGridView`: 7-9 columns most
+    /// of the time, clamped to 5..13. Lives here so the keyMonitor can step
+    /// the keyboard selection by full rows without re-rendering.
+    private func gridColumnsEstimate() -> Int {
+        let count = max(state.gridState.filteredApps.count, 1)
+        let raw = Int(ceil(Double(count).squareRoot() * 1.35))
+        return min(13, max(5, raw))
+    }
+
+    /// Hide the wheel and surface the full-screen honeycomb grid.
+    /// Idempotent: a no-op when grid mode is already on.
+    ///
+    /// Cross-fade rather than swap: the wheel panel fades out
+    /// concurrently with the grid panel fading in so the user sees a
+    /// single continuous transition, not a flash-cut. Both fades use
+    /// matched easeOut/easeIn timings (0.16s) so they meet at ~50 %
+    /// alpha at the midpoint.
+    private func enterGridMode() {
+        guard !state.isGridMode else { return }
+        // Trigger an app scan on first entry. Subsequent entries reuse
+        // the cached list so cycle Tab → ALL → Tab → ALL doesn't churn
+        // the disk.
+        let records = usageStore.allRecords().filter {
+            !Self.systemBundleBlocklist.contains($0.app.bundleID)
+        }
+        let runningIDs = Set(NSWorkspace.shared.runningApplications.compactMap { app -> String? in
+            guard app.activationPolicy == .regular,
+                  let bundleID = app.bundleIdentifier,
+                  !Self.systemBundleBlocklist.contains(bundleID)
+            else { return nil }
+            return bundleID
+        })
+        state.gridState.loadApps(usageRecords: records, runningBundleIDs: runningIDs)
+        state.isGridMode = true
+        state.activeProfileID = GridProfile.id
+        // Bring up the grid panel first so its alpha animation can run
+        // alongside the wheel's fade-out.
+        gridWindow.summon()
+        // Fade the wheel panel out in parallel. After the fade we
+        // orderOut so it doesn't intercept clicks under the grid.
+        let wheelPanel = window.panel
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.16
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            wheelPanel.animator().alphaValue = 0
+        }, completionHandler: {
+            Task { @MainActor in
+                wheelPanel.orderOut(nil)
+                // Restore alpha so a future re-entry (leaveGridMode →
+                // wheel) doesn't have to reset it before fading in.
+                wheelPanel.alphaValue = 1
+            }
+        })
+    }
+
+    /// Restore the wheel panel and dismiss the grid.
+    /// Idempotent: a no-op when grid mode is already off.
+    ///
+    /// We deliberately do NOT call `HaloWindow.summon()` here — that
+    /// would recapture `previousFrontApp` (now Halo itself, since the
+    /// grid is frontmost), warp the cursor, and replay the explode
+    /// curve. We just want the wheel back where it was, with its
+    /// pre-grid context intact, so the user can ESC and land back on
+    /// the app they originally summoned from.
+    private func leaveGridMode() {
+        guard state.isGridMode else { return }
+        state.isGridMode = false
+        state.activeProfileID = prefs.activeProfileID
+        // Cross-fade: bring the wheel panel back at alpha 0, animate
+        // up while the grid animates down. orderOut preserved the
+        // wheel's frame, so it returns to exactly where it was.
+        let wheelPanel = window.panel
+        wheelPanel.alphaValue = 0
+        wheelPanel.orderFrontRegardless()
+        wheelPanel.makeKey()
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = 0.16
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            wheelPanel.animator().alphaValue = 1
+        }
+        gridWindow.dismiss(animated: true)
+        state.gridState.resetViewport()
     }
 
     // MARK: - Action Arc (layer 2 — tap-toggle, not hold)
@@ -765,6 +1052,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func installFlagsMonitor() {
         flagsMonitor = NSEvent.addLocalMonitorForEvents(matching: [.flagsChanged]) { [weak self] event in
             guard let self = self, self.state.phase != .hidden else { return event }
+            // Action Arc is a wheel-only affordance — silence the ⇧
+            // toggle while grid mode is up.
+            if self.state.isGridMode { return event }
             let nowHeld = event.modifierFlags.contains(.shift)
             // Only react on the off→on edge; ignore the release edge and
             // ignore other modifier deltas (⌘ during double-tap, ⌥, ⌃).
@@ -788,6 +1078,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             matching: [.rightMouseDown]
         ) { [weak self] event in
             guard let self = self, self.state.phase != .hidden else { return event }
+            // Right-click is for the Action Arc — wheel only. Let the
+            // event flow normally in grid mode (the grid view doesn't
+            // currently use right-click but might gain a context menu
+            // later, and we don't want a global swallow here).
+            if self.state.isGridMode { return event }
             self.toggleArc()
             // Swallow so the right-click can't drop a context menu onto
             // whatever's behind Halo.
@@ -891,10 +1186,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func installScrollMonitor() {
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { [weak self] event in
             guard let self = self,
-                  self.prefs.scrollToSwitch,
                   self.state.phase != .hidden
             else { return event }
 
+            // Grid mode: route the scroll through to the grid's pan
+            // offset. Two-finger trackpad scroll and mouse-wheel both
+            // feed `scrollingDelta{X,Y}`. Disregard `scrollToSwitch`
+            // here — that toggle gates slot cycling; grid pan is a
+            // separate affordance.
+            if self.state.isGridMode {
+                let dx = event.scrollingDeltaX
+                let dy = event.scrollingDeltaY
+                if dx != 0 || dy != 0 {
+                    guard self.state.gridState.draggingBundleID == nil else { return nil }
+                    let gs = self.state.gridState
+                    let proposed = CGSize(
+                        width:  gs.panOffset.width  + dx,
+                        height: gs.panOffset.height + dy
+                    )
+                    // Clamp inline — same limits the pan gesture uses.
+                    // viewSize comes from the live panel frame so this
+                    // stays correct across screen / zoom changes.
+                    let viewSize = self.gridWindow.panel.contentView?.bounds.size ?? .zero
+                    let zoomLevel = gs.zoomLevel
+                    let spacing   = 100 * zoomLevel     // HoneycombGridView.baseSpacing
+                    let iconSize  =  76 * zoomLevel     // HoneycombGridView.baseIconSize
+                    let vStretch: CGFloat = 1.18
+                    let count = max(gs.filteredApps.count, 1)
+                    let layout = HoneycombGeometry.spiralLayout(count: count)
+                    let bounds = HoneycombGeometry.layoutBounds(
+                        layout: layout, spacing: spacing, verticalStretch: vStretch)
+                    let maxX = max(0, viewSize.width  / 2 + bounds.width  / 2 - iconSize / 2)
+                    let maxY = max(0, viewSize.height / 2 + bounds.height / 2 - iconSize / 2)
+                    gs.panOffset = CGSize(
+                        width:  max(-maxX, min(maxX,  proposed.width)),
+                        height: max(-maxY, min(maxY, proposed.height))
+                    )
+                }
+                return nil
+            }
+
+            guard self.prefs.scrollToSwitch else { return event }
             let dy: Double
             if event.hasPreciseScrollingDeltas {
                 dy = event.scrollingDeltaY
@@ -926,6 +1258,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let mouse = NSEvent.mouseLocation
             Task { @MainActor in
                 guard let self = self, self.state.phase != .hidden else { return }
+                // In grid mode the panel covers the whole screen, so
+                // a global click is always inside one of our windows;
+                // local taps are handled by the grid view's own gesture.
+                // Skip the cancel-on-outside-click path entirely.
+                if self.state.isGridMode { return }
                 if !self.window.panel.frame.contains(mouse) {
                     self.cancel()
                 }

@@ -91,6 +91,7 @@ public final class AppPreferences: ObservableObject {
         static let actionBindings  = "halo.prefs.actionBindings.v1"
         static let appearanceMode  = "halo.prefs.appearanceMode"
         static let onboardingShown = "halo.onboarding.shown"
+        static let showAllProfile  = "halo.prefs.showAllProfile"
         // Multi-profile — owns pins / overflow / identity overrides.
         // The legacy keys above stay read-only as a rollback safety
         // net through the initial multi-profile release and are
@@ -360,6 +361,7 @@ public final class AppPreferences: ObservableObject {
             Keys.doubleTapTrigger: DoubleTapTrigger.command.rawValue,
             Keys.soundEffects: true,
             Keys.appearanceMode: AppearanceMode.system.rawValue,
+            Keys.showAllProfile: false,
         ])
     }
 
@@ -575,6 +577,19 @@ public final class AppPreferences: ObservableObject {
         set {
             objectWillChange.send()
             defaults.set(newValue, forKey: Keys.soundEffects)
+        }
+    }
+
+    /// When true, the Profile Tab Strip shows a built-in "ALL" pill at
+    /// position 0 that swaps the wheel for a watchOS-style honeycomb
+    /// grid of every installed app. Off by default — single-profile
+    /// users shouldn't see a degenerate `[ALL] [Default]` strip unless
+    /// they opt in.
+    public var showAllProfile: Bool {
+        get { defaults.bool(forKey: Keys.showAllProfile) }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue, forKey: Keys.showAllProfile)
         }
     }
 
