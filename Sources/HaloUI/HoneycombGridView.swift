@@ -39,6 +39,13 @@ public struct HoneycombGridView: View {
     @State private var cellFrames: [String: CGRect] = [:]
     /// Drives the cascade-in animation. 0 = pre-summon, 1 = settled.
     @State private var appearProgress: Double = 0
+    /// True while a pan / pinch gesture is in flight (or just settled).
+    /// Heavy SwiftUI modifiers (shadow blur, label shadow) are degraded
+    /// to zero-radius while this is true so each IconCell render skips
+    /// the offscreen blur pass — the dominant cost at high zoom where
+    /// big icons multiply N shadow passes per frame.
+    @State private var isInteracting: Bool = false
+    @State private var interactionIdleTask: Task<Void, Never>?
 
     public init(state: HaloState) {
         self.state = state
@@ -200,14 +207,16 @@ public struct HoneycombGridView: View {
             dx: -iconSize * 0.42,
             dy: -iconSize * 0.42
         )
-        let layout = HoneycombGeometry.adaptiveSpiralLayout(
-            count: list.count,
-            spacing: spacing,
-            verticalStretch: verticalSpacingStretch,
-            keepOut: keepOut,
-            originX: originX,
-            originY: originY
-        )
+        let layout = PerfSignpost.measure("adaptiveSpiralLayout") {
+            HoneycombGeometry.adaptiveSpiralLayout(
+                count: list.count,
+                spacing: spacing,
+                verticalStretch: verticalSpacingStretch,
+                keepOut: keepOut,
+                originX: originX,
+                originY: originY
+            )
+        }
 
         // Stronger fisheye than a normal desktop grid: the focused core is
         // visibly larger, while dense catalogues compress the outer rings.
@@ -301,8 +310,19 @@ public struct HoneycombGridView: View {
         .scaleEffect(0.78 + 0.22 * appearProgress)
         .onAppear { cellFrames = nextFrames }
         .onChange(of: gridState.filteredApps.map(\.bundleID)) { _ in cellFrames = nextFrames }
-        .onChange(of: gridState.panOffset) { _ in cellFrames = nextFrames }
-        .onChange(of: gridState.zoomLevel) { _ in cellFrames = nextFrames }
+        // Deliberately NOT updating cellFrames on panOffset / zoomLevel
+        // change. The dict is consumed by (a) hover repel for the
+        // selected bundle and (b) drag drop-target lookup. (a) reads a
+        // relative offset between two cell centres that both translate
+        // / scale together, so a one-frame stale dict is invariant
+        // under pure pan or pure zoom. (b) is gated by panGesture's
+        // `draggingBundleID == nil` guard — no drag is in flight
+        // during pan/pinch. Updating per gesture frame doubled the
+        // render work on the hot path: the @State mutation forced
+        // grid() to re-evaluate after each tick, re-running the
+        // adaptiveSpiralLayout + fisheye reduce. We refresh cellFrames
+        // only when the app list itself changes (different bundles to
+        // hit-test) and on first appear.
     }
 
     private func searchFocusedPosition(
@@ -464,7 +484,8 @@ public struct HoneycombGridView: View {
             isDropTarget: isDropTarget,
             isCommitDimming: isCommitDimming,
             labelOpacity: labelOpacity,
-            projectedScale: scale
+            projectedScale: scale,
+            suppressShadows: isInteracting && !isDragging
         )
         .scaleEffect(scale * cellExtraScale(isSelected: isSelected, isCommitting: isCommitting, isDragging: isDragging))
         .opacity(stripFade * (isCommitDimming ? (commitPulse ? 0.58 : 0.08) : cellOpacity(distance: distance, radius: fisheyeRadius, isSelected: isSelected, isDragging: isDragging)))
@@ -776,10 +797,27 @@ public struct HoneycombGridView: View {
         dragBaseline = clamped
     }
 
+    /// Mark the cluster as actively gesturing. Heavy SwiftUI modifiers
+    /// (shadow blur on every IconCell) are gated on `isInteracting` and
+    /// downgrade to zero-radius while this is on. We auto-clear after
+    /// 120 ms of no further activity so the cluster settles back into
+    /// its polished render without the user having to "release" twice.
+    private func bumpInteraction() {
+        if !isInteracting { isInteracting = true }
+        interactionIdleTask?.cancel()
+        interactionIdleTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            if !Task.isCancelled, isInteracting {
+                isInteracting = false
+            }
+        }
+    }
+
     private func panGesture(in viewSize: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 1)
             .onChanged { value in
                 guard gridState.draggingBundleID == nil else { return }
+                bumpInteraction()
                 // Recompute limits every event so zoom changes and
                 // app-count changes (search) are always reflected.
                 let limits = panLimits(in: viewSize)
@@ -794,12 +832,14 @@ public struct HoneycombGridView: View {
             }
             .onEnded { _ in
                 dragBaseline = gridState.panOffset
+                bumpInteraction()
             }
     }
 
     private func zoomGesture(in viewSize: CGSize) -> some Gesture {
         MagnificationGesture()
             .onChanged { mag in
+                bumpInteraction()
                 let next = pinchBaseline * mag
                 gridState.zoomLevel = max(0.5, min(2.5, next))
             }
@@ -831,6 +871,10 @@ private struct IconCell: View {
     /// modulation (selected = full opacity).
     let labelOpacity: Double
     let projectedScale: CGFloat
+    /// Set by the parent while a pan/pinch is in flight. When true,
+    /// the icon + label shadows render at radius 0 so SwiftUI skips
+    /// the offscreen blur pass.
+    let suppressShadows: Bool
 
     @State private var image: NSImage?
 
@@ -850,7 +894,18 @@ private struct IconCell: View {
         ZStack {
             iconImage
                 .frame(width: baseSize, height: baseSize)
-                .shadow(color: .black.opacity(isDragging ? 0.32 : 0.24), radius: isDragging ? 12 : 5, y: isDragging ? 7 : 2)
+                // Shadow radius collapses to 0 while a pan / pinch is
+                // in flight (`suppressShadows == true`). SwiftUI shadow
+                // with non-zero radius forces an offscreen blur pass
+                // per cell per frame; at high zoom with ~60 visible
+                // cells that's the dominant cost. Zero-radius is a
+                // cheap no-op and visually a single-frame loss only
+                // while the user is mid-gesture.
+                .shadow(
+                    color: .black.opacity(isDragging ? 0.32 : 0.24),
+                    radius: suppressShadows ? 0 : (isDragging ? 12 : 5),
+                    y: suppressShadows ? 0 : (isDragging ? 7 : 2)
+                )
                 .brightness(isSelected || isDragging ? 0.045 : 0)
         }
     }
@@ -882,7 +937,11 @@ private struct IconCell: View {
             .frame(width: baseSize + 48, height: 14)
             .minimumScaleFactor(0.82)
             .opacity(isCommitDimming ? 0.0 : labelVisibility)
-            .shadow(color: .black.opacity(0.42), radius: 2, y: 1)
+            .shadow(
+                color: .black.opacity(0.42),
+                radius: suppressShadows ? 0 : 2,
+                y: suppressShadows ? 0 : 1
+            )
     }
 
     private var labelVisibility: Double {
