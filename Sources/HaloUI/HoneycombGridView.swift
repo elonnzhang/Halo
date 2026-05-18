@@ -331,37 +331,26 @@ public struct HoneycombGridView: View {
     @ViewBuilder
     private func gridAtmosphere(in viewSize: CGSize) -> some View {
         let active = gridState.selectedBundleID != nil || !gridState.searchQuery.isEmpty
-        ZStack {
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [Color.white.opacity(active ? 0.10 : 0.055), Color.clear],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: min(viewSize.width, viewSize.height) * 0.38
-                    )
+        // The wheel pairs its specular arc with a halo rim so the
+        // highlight reads as glass reflecting off a known edge. The
+        // grid panel is full-screen with no rim, so dropping the same
+        // arc in floats it as a free-standing curve in mid-air. Keep
+        // just the soft centre glow.
+        Circle()
+            .fill(
+                RadialGradient(
+                    colors: [Color.white.opacity(active ? 0.10 : 0.055), Color.clear],
+                    center: .center,
+                    startRadius: 0,
+                    endRadius: min(viewSize.width, viewSize.height) * 0.38
                 )
-                .frame(width: min(viewSize.width, viewSize.height) * 0.82)
-                .blendMode(.plusLighter)
-                .opacity(0.48)
-
-            SpecularArc(startAngleDegrees: -132, endAngleDegrees: -48)
-                .stroke(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0), Color.white.opacity(0.12), Color.white.opacity(0)],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    ),
-                    style: StrokeStyle(lineWidth: 1.1, lineCap: .round)
-                )
-                .frame(width: min(viewSize.width, viewSize.height) * 0.72,
-                       height: min(viewSize.width, viewSize.height) * 0.72)
-                .blur(radius: 0.4)
-                .opacity(active ? 0.78 : 0.38)
-        }
-        .position(x: viewSize.width / 2, y: viewSize.height / 2)
-        .allowsHitTesting(false)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: active)
+            )
+            .frame(width: min(viewSize.width, viewSize.height) * 0.82)
+            .blendMode(.plusLighter)
+            .opacity(0.48)
+            .position(x: viewSize.width / 2, y: viewSize.height / 2)
+            .allowsHitTesting(false)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: active)
     }
 
     /// Bounding rect (in grid local coords) that the ProfileTabBar
