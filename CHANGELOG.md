@@ -2,6 +2,47 @@
 
 All notable changes to Halo.
 
+## [1.2.0] — 2026-05-18
+
+### ALL grid (layer 0 — watchOS-style full-screen launcher)
+
+- New built-in **ALL profile** that opens a full-screen, watchOS-inspired honeycomb of every installed app. Enter by Tab from the wheel's top pill bar (or by clicking the 9-dots pill that prepends the bar when Settings → General → Show ALL profile is on).
+- Apps are gathered from `/Applications`, `/System/Applications`, and `~/Applications` (depth-2 recursion), deduped by bundle ID. Scan runs once on first entry inside a `Task.detached`, then publishes on the main actor; subsequent entries reuse the cached catalogue.
+- **Usage-ranked sort**: apps are scored by recency × frequency × running-bonus (running apps get a small boost) and rendered in spiral order from the centre out. A stronger-than-desktop fisheye lifts the focal core and compresses the rim — large catalogues read as a single focal constellation, not a uniform sheet.
+- **Search**: just start typing. Substring match against name + bundle ID; matched icons pull toward the centre via a search-focused projection. Backspace trims, ESC clears.
+- **Keyboard navigation**: arrow keys step the selection through neighbouring hex cells using a spatial nearest-in-direction heuristic, not row-major order — keyboard motion lines up with what the user sees after the fisheye projection. Return / Space / Click launches.
+- **Pinch + pan**: trackpad pinch zooms 0.5×–2.5× around the cluster centre; two-finger drag or scroll-wheel pans, with bounds clamped so the last icon's visible edge can't disappear past the viewport.
+- **Drop-target visual** during a drag (folders / order tweaks land in a follow-up).
+- **Drop-shadow gating during pan/pinch**: per-cell shadows render at radius 0 while a gesture is in flight (auto-clears 120 ms after the last gesture event), so SwiftUI skips the offscreen blur pass on ~60 visible cells at high zoom. Restores full polish within one frame of release.
+- ProfileTabBar above the cluster locks to the wheel's pre-grid screen position so toggling between wheel and grid leaves the strip visually still.
+- Spec: `docs/superpowers/specs/2026-05-18-halo-launch-and-grid-perf-design.md`.
+
+### Perf instrumentation
+
+- New `HaloCore/PerfSignpost.swift` — thin `OSSignposter` wrapper. Always emits signposts under `com.halo.launcher / perf` (zero cost when nothing is recording in Instruments). Set `HALO_PERF_LOG=1` in the launch env to also write ms-precision lines to `~/Library/Logs/Halo/halo.log` for triage without Xcode.
+- Measured sites: `applicationDidFinishLaunching`, `applyPreferences`, `refreshSlots`, `DCE.extract` (per icon), `enterGridMode`, `GridState.scanInstalledApps`, `adaptiveSpiralLayout` (per render).
+- On-device baseline (Apple Silicon, fresh launch + first ALL entry): cold launch 116–211 ms total; `refreshSlots` first call 13–72 ms then 2 ms on subsequent calls; `DCE.extract` ≈ 1 ms/icon (not the ~100 ms older code comments assumed); `GridState.scanInstalledApps` ≈ 89 ms off-main; `adaptiveSpiralLayout` median 0.09 ms during a 5-second pan (p99 0.11 ms).
+
+### Render-path tightening
+
+- `AppIconResolver` now caches `NSImage` references in a 256-entry process-lifetime `NSCache` keyed by bundle ID. Repeat lookups across the ~15 call sites (wheel, grid, settings, picker, arc) collapse to a dict hit and reuse the already-decoded bitmap rep.
+- `GridState.loadApps` warms the icon cache for the top 80 ordered apps on the same detached task after the scan + sort step, so the first ALL render's `IconCell.task` finds icons already memory-resident.
+- `cellFrames = nextFrames` is no longer re-published on `panOffset` or `zoomLevel` changes. The dict is only read by hover-repel (selected bundle's centre) and drag drop-target lookup, both of which read RELATIVE offsets that translate / scale together — a one-frame stale dict is invariant under pure pan or pure zoom. Updating per gesture frame was doubling grid()'s body work via @State invalidation. Refresh now happens only on bundle-list change and onAppear.
+
+### Fixes
+
+- `panelScale` now applies to the ALL grid: icon size, hex spacing, and the ProfileTabBar all scale with the user's Settings → Appearance → Panel size slider. Previously only the wheel honoured it, so flipping to ALL at 1.3× snapped everything back to 1.0×.
+- Removed the free-floating `SpecularArc` from the ALL grid's atmosphere layer. The wheel pairs it with a halo rim where it reads as glass reflecting off a known edge; on a full-screen panel with no rim it floated as a stray curve in mid-air. Soft centre `RadialGradient` is retained for focus.
+- Honeycomb grid pan constraints + icon spacing pass (watchOS feel): cluster centred without the legacy halo cleanup hack, pan limits derived from the layout bounds rather than a fixed margin.
+- Summon-to-slot hover jump fix: synchronous seed of `scrollAnchor` from `lastFrontmostBundleID` no longer writes to `state.phase`, eliminating a 1/60s flash through an unrelated slot before settling on the frontmost app's pinned slot.
+- macOS 12 / 13 Settings window close no longer crashes — the legacy `SettingsWindowController` teardown path now matches the macOS 14+ flow.
+
+### Docs
+
+- READMEs (English + Chinese) refreshed and slimmed (197 → 113 lines each). New layered Use section: **Wheel · Action Arc · ALL grid**. v1.1.2 + post-v1.1.2 status callout.
+- New `docs/STORAGE.md` consolidating the UserDefaults reference table, diagnostic log layout, reset / uninstall recipes, and the `HALO_PERF_LOG` env var. READMEs link out instead of inlining 90 lines of storage detail.
+- New `docs/superpowers/specs/2026-05-18-halo-launch-and-grid-perf-design.md` recording the perf instrumentation + Caches plan and D-list of measurement-driven follow-ups.
+
 ## [1.1.2] — 2026-05-15
 
 ### Action Arc (二段手势, layer 2)
