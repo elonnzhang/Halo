@@ -25,6 +25,7 @@ public enum HaloLog {
     public static let usage      = HaloLogger(category: "usage")
     public static let settings   = HaloLogger(category: "settings")
     public static let onboarding = HaloLogger(category: "onboarding")
+    public static let perf       = HaloLogger(category: "perf")
 
     /// Where the live log file lives. Created lazily on first write.
     public static let logFileURL: URL = {

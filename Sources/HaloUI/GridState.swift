@@ -115,16 +115,31 @@ public final class GridState: ObservableObject {
         dropTargetBundleID = nil
 
         Task.detached(priority: .userInitiated) {
-            let scanned = Self.scanInstalledApps()
+            let scanned = PerfSignpost.measure("GridState.scanInstalledApps") {
+                Self.scanInstalledApps()
+            }
             let ordered = Self.orderApps(
                 scanned,
                 usageRecords: usageRecords,
                 runningBundleIDs: runningBundleIDs
             )
+            // Warm the AppIconResolver NSCache for the first viewport so
+            // SwiftUI's IconCell.task hits an in-memory image instead of
+            // calling NSWorkspace.icon(forFile:) ~50× on the main actor
+            // during the first ALL render.
+            //
+            // NSWorkspace.icon is documented main-thread-only on older
+            // macOS — hop back so we don't hit an assert on macOS 12-13.
+            // Top-80 covers ~7-9 cols × ~5-6 visible rows + a row of
+            // scroll headroom on a typical 16" display.
+            let prefetchTargets = ordered.prefix(80).map(\.bundleID)
             await MainActor.run { [weak self] in
                 guard let self else { return }
                 self.apps = ordered
                 self.isLoading = false
+                for bundleID in prefetchTargets {
+                    AppIconResolver.prefetch(bundleID: bundleID)
+                }
             }
         }
     }

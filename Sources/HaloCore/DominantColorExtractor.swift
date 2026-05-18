@@ -39,8 +39,10 @@ public struct DominantColorExtractor {
     private let lightnessHigh = 0.92
 
     public func extract(from image: NSImage) -> IdentityColor? {
-        guard let cg = rasterize(image: image, size: renderSide) else { return nil }
-        return extract(fromBitmap: cg)
+        PerfSignpost.measure("DCE.extract") {
+            guard let cg = rasterize(image: image, size: renderSide) else { return nil }
+            return extract(fromBitmap: cg)
+        }
     }
 
     public func extract(from ciImage: CIImage) -> IdentityColor? {

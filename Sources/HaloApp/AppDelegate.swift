@@ -55,6 +55,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var lastRegisteredHotkeyMods: HotkeyModifiers?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        PerfSignpost.measure("applicationDidFinishLaunching") {
+            applicationDidFinishLaunchingBody()
+        }
+    }
+
+    private func applicationDidFinishLaunchingBody() {
         HaloLog.lifecycle.info("Halo \(Halo.version) launching")
         installActivationObserver()
 
@@ -170,6 +176,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Preferences sync
 
     private func applyPreferences() {
+        PerfSignpost.measure("applyPreferences") { applyPreferencesBody() }
+    }
+
+    private func applyPreferencesBody() {
         if state.slotCount != prefs.slotCount {
             state.slotCount = prefs.slotCount
         }
@@ -343,6 +353,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ]
 
     private func refreshSlots() {
+        PerfSignpost.measure("refreshSlots") { refreshSlotsBody() }
+    }
+
+    private func refreshSlotsBody() {
         // Wheel slots aren't visible while the ALL grid is on — skip
         // the work so the activation observer doesn't churn through
         // identity-color extraction during a grid session.
@@ -976,6 +990,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// matched easeOut/easeIn timings (0.16s) so they meet at ~50 %
     /// alpha at the midpoint.
     private func enterGridMode() {
+        PerfSignpost.measure("enterGridMode") { enterGridModeBody() }
+    }
+
+    private func enterGridModeBody() {
         guard !state.isGridMode else { return }
         // Trigger an app scan on first entry. Subsequent entries reuse
         // the cached list so cycle Tab → ALL → Tab → ALL doesn't churn
