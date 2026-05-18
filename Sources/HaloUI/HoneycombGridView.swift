@@ -163,8 +163,12 @@ public struct HoneycombGridView: View {
     /// icons still feel clustered after fisheye pull-in.
     public static let baseSpacing: CGFloat = 100
 
-    private var iconSize: CGFloat { Self.baseIconSize * gridState.zoomLevel }
-    private var spacing: CGFloat { Self.baseSpacing * gridState.zoomLevel }
+    private var iconSize: CGFloat {
+        Self.baseIconSize * gridState.zoomLevel * HaloUI.Geometry.panelScale
+    }
+    private var spacing: CGFloat {
+        Self.baseSpacing * gridState.zoomLevel * HaloUI.Geometry.panelScale
+    }
     private var verticalSpacingStretch: CGFloat { 1.18 }
 
     @ViewBuilder
@@ -702,11 +706,17 @@ public struct HoneycombGridView: View {
     @ViewBuilder
     private func profileStripOverlay(viewSize: CGSize) -> some View {
         let stripPos = stripScreenPosition(in: viewSize)
+        // Wheel side scales the entire RadialView (incl. its own
+        // ProfileTabBar) via `.scaleEffect(panelScale)` on the root.
+        // Grid is full-screen so we can't scale the whole panel —
+        // scale just the TabBar so it matches the wheel's strip
+        // size when the user has a non-1.0 panelScale.
         ProfileTabBar(
             pills: state.profilePills,
             activeID: state.activeProfileID,
             onSwitch: { id in state.onSwitchProfile?(id) }
         )
+        .scaleEffect(HaloUI.Geometry.panelScale)
         .position(stripPos)
         .allowsHitTesting(state.profilePills.count > 1)
     }

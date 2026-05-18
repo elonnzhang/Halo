@@ -1208,8 +1208,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     // stays correct across screen / zoom changes.
                     let viewSize = self.gridWindow.panel.contentView?.bounds.size ?? .zero
                     let zoomLevel = gs.zoomLevel
-                    let spacing   = HoneycombGridView.baseSpacing * zoomLevel
-                    let iconSize  = HoneycombGridView.baseIconSize * zoomLevel
+                    let panelScale = HaloUI.Geometry.panelScale
+                    let spacing   = HoneycombGridView.baseSpacing * zoomLevel * panelScale
+                    let iconSize  = HoneycombGridView.baseIconSize * zoomLevel * panelScale
                     let vStretch: CGFloat = 1.18
                     let count = max(gs.filteredApps.count, 1)
                     let layout = HoneycombGeometry.spiralLayout(count: count)
