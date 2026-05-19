@@ -2,6 +2,12 @@
 
 All notable changes to Halo.
 
+## [1.2.1] — 2026-05-19
+
+### Fix
+
+- `HoneycombGeometry.resolvedCenter` now pushes the resolved cell centre 0.5pt past the inflated avoid rect rather than landing exactly on its edge. `CGRect.intersects` counts edge-touch as intersecting, so the previous implementation could leave a cell visually flush with the keep-out boundary after `resolvedProjectedCenter`'s fisheye iteration loop converged. The 0.5pt epsilon also absorbs the 0.25pt convergence threshold so post-resolution sub-pixel drift can't pull the rendered cell back onto the boundary. Visually invisible (sub-pixel); fixes 5 `HoneycombGeometryTests` failures that had been blocking the Release CI workflow since v1.2.0.
+
 ## [1.2.0] — 2026-05-18
 
 ### ALL grid (layer 0 — watchOS-style full-screen launcher)

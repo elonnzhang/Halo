@@ -215,11 +215,19 @@ public enum HoneycombGeometry {
         )
         guard avoid.contains(center) else { return center }
 
+        // Push slightly past the boundary, not exactly onto it. A point
+        // sitting on `avoid.minX` makes `visible.intersects(exclusion +
+        // margin)` true because CGRect.intersects counts edge-touch as
+        // intersecting. The 0.5pt epsilon also leaves headroom for the
+        // 0.25-pt convergence threshold in `resolvedProjectedCenter`'s
+        // fisheye iteration loop, so post-resolution drift can't pull
+        // the cell back onto the boundary. Sub-pixel, visually invisible.
+        let eps: CGFloat = 0.5
         let distances: [(point: CGPoint, distance: CGFloat, vertical: Bool)] = [
-            (CGPoint(x: avoid.minX, y: center.y), center.x - avoid.minX, false),
-            (CGPoint(x: avoid.maxX, y: center.y), avoid.maxX - center.x, false),
-            (CGPoint(x: center.x, y: avoid.minY), center.y - avoid.minY, true),
-            (CGPoint(x: center.x, y: avoid.maxY), avoid.maxY - center.y, true),
+            (CGPoint(x: avoid.minX - eps, y: center.y), center.x - avoid.minX, false),
+            (CGPoint(x: avoid.maxX + eps, y: center.y), avoid.maxX - center.x, false),
+            (CGPoint(x: center.x, y: avoid.minY - eps), center.y - avoid.minY, true),
+            (CGPoint(x: center.x, y: avoid.maxY + eps), avoid.maxY - center.y, true),
         ]
         guard let best = distances.min(by: { lhs, rhs in
             let lhsScore = lhs.distance * (lhs.vertical ? 0.78 : 1)
