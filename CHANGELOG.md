@@ -2,6 +2,24 @@
 
 All notable changes to Halo.
 
+## [Unreleased]
+
+### Profile deepening
+
+- Profiles now own **slot count**, **ambient tint**, and **frequency ranking** (MFU / Balanced / MRU) per scene. Switching profile re-sizes the wheel, re-tints the idle glow, and re-ranks Top-N immediately. Reverses the v1.2 split (where ranking was global) — see `docs/superpowers/specs/2026-05-14-multi-profile-design.md` §3.
+- Settings → Apps gains an in-place editor for the active profile's slot count, tint (8-swatch OKLCH palette + "no tint"), and ranking. Settings → General no longer carries any of those three controls; instead it shows a single-line pointer label that switches Settings to the Apps tab on click.
+- Profile pills in the Apps tab carry a **color dot** derived from the profile's tint (or an auto-assigned hue from a 6-tone fallback palette when no tint is set), so the active scene reads at a glance.
+- Profile pills are **drag-to-reorder** via SwiftUI `.onDrag` / `.onDrop`. Order persists across launches.
+- The Halo wheel preview in Settings → Apps now supports **drag-to-swap**: drag any pinned slot onto another slot to swap the two pins (or drop onto an empty slot to move the pin there). Source slot dims to 40 % during the drag; the drop target gets a 2pt accent border. Empty slots can't be drag sources — only drop targets — so an accidental drag from an empty area doesn't quietly unpin its neighbour.
+- One-time migration (`halo.prefs.profilesFrequencyMigrated.v1` sentinel) backfills every existing profile's ranking from the previous global value; users keep their MFU / MRU choice across the upgrade and the sentinel prevents the backfill from clobbering per-profile choices on subsequent launches.
+- Blank profile creation now inherits the active profile's frequency (mirroring the existing slot-count inheritance), so new scenes start from a sensible baseline.
+
+### Internal
+
+- Drops the read paths for the three legacy v1.0 binding keys (`halo.prefs.pinnedSlots.v1`, `halo.prefs.overflowPins.v1`, `halo.prefs.identityOverride.v1`) — they're now exclusively touched by `migrateLegacyKeysIntoDefaultProfile()`, which still handles direct v1.0 → v1.3.0 jumps.
+- New `AppPreferences.reorderProfile(_:to:)` / `setFrequencyProfile(_:for:)` APIs for the Apps tab's per-profile editing surface.
+- 17 new unit tests across `BindingProfileFrequencyTests` and `AppPreferencesProfileTests` covering the frequency field, migration sentinel, blank/clone inheritance, and reorder semantics.
+
 ## [1.2.1] — 2026-05-19
 
 ### Fix

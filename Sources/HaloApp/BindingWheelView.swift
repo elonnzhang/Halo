@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import HaloCore
 import HaloUI
 
@@ -12,11 +13,15 @@ import HaloUI
 /// - Tap an empty slot → opens `AppPickerSheet` to pin an app.
 /// - Tap a pinned slot → opens a popover with Change / Clear / colour
 ///   controls anchored to that slot.
+/// - Drag a pinned slot onto another slot → swap the two pins (or move
+///   the source pin into an empty target, leaving the source empty).
 struct BindingWheelView: View {
     @ObservedObject var prefs: AppPreferences
 
     @State private var editingSlot: Int? = nil
     @State private var pickerForSlot: Int? = nil
+    @State private var draggedSlot: Int? = nil
+    @State private var hoverSlot: Int? = nil
 
     // Geometry tuned for the Settings 560×540 window. Smaller than the
     // live Halo (which is 380 pt) so it doesn't dominate the panel, but
@@ -51,6 +56,14 @@ struct BindingWheelView: View {
         .compatOnChange(of: prefs.slotCount) { _ in
             editingSlot = nil
             pickerForSlot = nil
+            draggedSlot = nil
+            hoverSlot = nil
+        }
+        // Profile switch wipes drag state so a half-finished drag from
+        // the old profile doesn't carry into the new one.
+        .compatOnChange(of: prefs.activeProfileID) { _ in
+            draggedSlot = nil
+            hoverSlot = nil
         }
         .sheet(item: pickerSheetBinding) { wrap in
             AppPickerSheet { picked in
@@ -139,6 +152,8 @@ struct BindingWheelView: View {
     private func slotButton(slot: Int) -> some View {
         let bundleID = prefs.pinnedBundleIDs[safe: slot] ?? nil
         let isPinned = bundleID != nil
+        let isDragSource = draggedSlot == slot
+        let isDropTarget = hoverSlot == slot && draggedSlot != nil && draggedSlot != slot
 
         Button {
             if isPinned {
@@ -152,6 +167,8 @@ struct BindingWheelView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .opacity(isDragSource ? 0.40 : 1.0)
+        .overlay(dropTargetOverlay(isHighlighted: isDropTarget))
         .popover(isPresented: editingBinding(for: slot), arrowEdge: .top) {
             SlotEditorPopover(
                 slot: slot,
@@ -163,6 +180,27 @@ struct BindingWheelView: View {
             )
         }
         .help(helpText(slot: slot, bundleID: bundleID))
+        // Only pinned slots can be drag sources — dragging an empty
+        // slot would surprise users by clearing an unrelated pin via
+        // the swap semantic.
+        .modifier(SlotDragSource(slot: slot, enabled: isPinned, draggedSlot: $draggedSlot))
+        .onDrop(of: [UTType.plainText], delegate: SlotDropDelegate(
+            targetSlot: slot,
+            prefs: prefs,
+            draggedSlot: $draggedSlot,
+            hoverSlot: $hoverSlot
+        ))
+    }
+
+    /// 2pt accent stroke around the drop-target slot during a drag.
+    /// Inset enough to read clearly without clipping the icon glyph.
+    @ViewBuilder
+    private func dropTargetOverlay(isHighlighted: Bool) -> some View {
+        if isHighlighted {
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .strokeBorder(Color.accentColor, lineWidth: 2)
+                .padding(2)
+        }
     }
 
     @ViewBuilder
@@ -238,9 +276,76 @@ struct BindingWheelView: View {
     private func helpText(slot: Int, bundleID: String?) -> String {
         if let id = bundleID,
            let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: id) {
-            return (url.lastPathComponent as NSString).deletingPathExtension
+            let name = (url.lastPathComponent as NSString).deletingPathExtension
+            return String(format: NSLocalizedString("%@ · drag to swap slots",
+                                                    comment: "Slot tooltip when pinned"),
+                          name)
         }
-        return NSLocalizedString("Auto", comment: "")
+        return NSLocalizedString("Auto · drop an app here to move it",
+                                 comment: "Slot tooltip when empty")
+    }
+}
+
+/// Conditional `.onDrag` modifier. Only pinned slots may be drag
+/// sources — applying `.onDrag` to an empty slot would let the user
+/// initiate a swap with an empty payload, which under the swap semantic
+/// would silently clear the destination's pin. Side-effecting set of
+/// `draggedSlot` happens in the closure so the source pill dims as soon
+/// as SwiftUI starts the drag.
+private struct SlotDragSource: ViewModifier {
+    let slot: Int
+    let enabled: Bool
+    @Binding var draggedSlot: Int?
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.onDrag {
+                draggedSlot = slot
+                return NSItemProvider(object: String(slot) as NSString)
+            }
+        } else {
+            content
+        }
+    }
+}
+
+/// Drop delegate for one wheel slot. Source identity comes from the
+/// view-local `draggedSlot` `@State` (set by `SlotDragSource`) — we
+/// don't read the NSItemProvider payload because the binding is
+/// always available within the same view tree and avoids the async
+/// load-back dance. `performDrop` routes through
+/// `AppPreferences.swapPins(at:and:)` so the active profile is
+/// mutated atomically.
+private struct SlotDropDelegate: DropDelegate {
+    let targetSlot: Int
+    let prefs: AppPreferences
+    @Binding var draggedSlot: Int?
+    @Binding var hoverSlot: Int?
+
+    func dropEntered(info: DropInfo) {
+        guard let source = draggedSlot, source != targetSlot else { return }
+        hoverSlot = targetSlot
+    }
+
+    func dropExited(info: DropInfo) {
+        if hoverSlot == targetSlot { hoverSlot = nil }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard let source = draggedSlot, source != targetSlot else {
+            return DropProposal(operation: .forbidden)
+        }
+        return DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        defer {
+            draggedSlot = nil
+            hoverSlot = nil
+        }
+        guard let source = draggedSlot, source != targetSlot else { return false }
+        prefs.swapPins(at: source, and: targetSlot)
+        return true
     }
 }
 

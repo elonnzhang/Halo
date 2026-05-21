@@ -1,11 +1,11 @@
 import Foundation
 
 /// One named profile's worth of bindings. v1.2 scope: pinned slots,
-/// overflow pins, identity-colour overrides. v1.3 (handoff alignment):
-/// `slotCount` and `tint` moved per-profile so each scene can have its own
-/// wheel size and ambient identity colour. Everything else
-/// (`frequencyProfile`, `whitelist.v1`, hotkey, layout, language, sound, …)
-/// stays user-global on `AppPreferences`.
+/// overflow pins, identity-colour overrides. v1.3 deepening:
+/// `slotCount`, `tint`, and `frequencyProfile` moved per-profile so each
+/// scene can have its own wheel size, ambient identity colour, and
+/// ranking strategy. Everything else (`whitelist.v1`, hotkey, layout,
+/// language, sound, …) stays user-global on `AppPreferences`.
 public struct BindingProfile: Codable, Identifiable, Sendable, Equatable {
     public let id: UUID
     public var name: String
@@ -22,6 +22,11 @@ public struct BindingProfile: Codable, Identifiable, Sendable, Equatable {
     /// is hovered. `nil` keeps Halo's idle look untinted (current
     /// behaviour). Picker UI ships in v1.3.
     public var tint: IdentityColor?
+    /// Ranking strategy applied to the Top-N feed for this profile.
+    /// Decoder default is `.balanced` so v1.2 plists still load; the
+    /// `AppPreferences` migration backfills the legacy global value on
+    /// the first v1.3 load so users don't silently lose their setting.
+    public var frequencyProfile: FrequencyProfile
 
     public init(
         id: UUID = UUID(),
@@ -30,7 +35,8 @@ public struct BindingProfile: Codable, Identifiable, Sendable, Equatable {
         overflowPinnedBundleIDs: [String] = [],
         identityOverrides: [String: IdentityColor] = [:],
         slotCount: Int = 8,
-        tint: IdentityColor? = nil
+        tint: IdentityColor? = nil,
+        frequencyProfile: FrequencyProfile = .balanced
     ) {
         self.id = id
         self.name = name
@@ -39,12 +45,16 @@ public struct BindingProfile: Codable, Identifiable, Sendable, Equatable {
         self.identityOverrides = identityOverrides
         self.slotCount = max(4, min(12, slotCount))
         self.tint = tint
+        self.frequencyProfile = frequencyProfile
     }
 
-    /// Custom decoder so v1.2 plists (which lack `slotCount` and `tint`)
-    /// still load. Missing `slotCount` inherits the pin-array length so
-    /// the profile keeps rendering at whatever width it was last sized
-    /// to; missing `tint` stays `nil` (no ambient glow).
+    /// Custom decoder so v1.2 plists (which lack `slotCount`, `tint`,
+    /// and `frequencyProfile`) still load. Missing `slotCount` inherits
+    /// the pin-array length so the profile keeps rendering at whatever
+    /// width it was last sized to; missing `tint` stays `nil`; missing
+    /// `frequencyProfile` defaults to `.balanced` and gets overwritten
+    /// by `AppPreferences.migrateFrequencyIntoProfilesIfNeeded()` on
+    /// first launch after upgrade.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let id = try c.decode(UUID.self, forKey: .id)
@@ -55,6 +65,7 @@ public struct BindingProfile: Codable, Identifiable, Sendable, Equatable {
         let inferredSlotCount = max(4, min(12, pins.count))
         let slotCount = (try c.decodeIfPresent(Int.self, forKey: .slotCount)) ?? inferredSlotCount
         let tint = try c.decodeIfPresent(IdentityColor.self, forKey: .tint)
+        let frequency = (try c.decodeIfPresent(FrequencyProfile.self, forKey: .frequencyProfile)) ?? .balanced
         self.init(
             id: id,
             name: name,
@@ -62,7 +73,8 @@ public struct BindingProfile: Codable, Identifiable, Sendable, Equatable {
             overflowPinnedBundleIDs: overflow,
             identityOverrides: overrides,
             slotCount: slotCount,
-            tint: tint
+            tint: tint,
+            frequencyProfile: frequency
         )
     }
 }

@@ -26,10 +26,11 @@ struct GeneralTab: View {
     @ViewBuilder
     private var nativeForm: some View {
         Form {
-            // Slot count moved per-profile; see Apps tab → "Slots
-            // for this profile". This section now only carries
-            // settings that stay user-global.
-            Section("Summon position & ranking") {
+            // Slot count, ambient tint, and ranking strategy all moved
+            // per-profile in v1.3.0 — they live under Apps now. This
+            // section keeps only user-global summon behaviour and
+            // surfaces a pointer for the per-profile knobs.
+            Section("Summon") {
                 Picker("Summon position", selection: Binding(
                     get: { prefs.summonPosition },
                     set: { prefs.summonPosition = $0 }
@@ -39,15 +40,7 @@ struct GeneralTab: View {
                 }
                 .pickerStyle(.segmented)
 
-                Picker("Frequency profile", selection: Binding(
-                    get: { prefs.frequencyProfile },
-                    set: { prefs.frequencyProfile = $0 }
-                )) {
-                    Text("MFU").tag(FrequencyProfile.mfuOnly)
-                    Text("Balanced").tag(FrequencyProfile.balanced)
-                    Text("MRU").tag(FrequencyProfile.mruOnly)
-                }
-                .pickerStyle(.segmented)
+                perProfilePointer
             }
 
             Section {
@@ -284,10 +277,9 @@ struct GeneralTab: View {
     @ViewBuilder
     private var legacyForm: some View {
         Form {
-            // Slot count moved per-profile (see Apps tab); keep the
-            // section but drop the slot-count picker on the macOS 12
-            // fallback form too.
-            Section("Summon position & ranking") {
+            // Slot count, tint, and ranking moved per-profile; legacy
+            // form mirrors the native form's pointer.
+            Section("Summon") {
                 Picker("Summon position", selection: Binding(
                     get: { prefs.summonPosition },
                     set: { prefs.summonPosition = $0 }
@@ -296,15 +288,7 @@ struct GeneralTab: View {
                     Text("Screen center").tag(SummonPosition.center)
                 }
                 .pickerStyle(.segmented)
-                Picker("Frequency profile", selection: Binding(
-                    get: { prefs.frequencyProfile },
-                    set: { prefs.frequencyProfile = $0 }
-                )) {
-                    Text("MFU").tag(FrequencyProfile.mfuOnly)
-                    Text("Balanced").tag(FrequencyProfile.balanced)
-                    Text("MRU").tag(FrequencyProfile.mruOnly)
-                }
-                .pickerStyle(.segmented)
+                perProfilePointer
             }
             Section("Trigger") {
                 HStack {
@@ -443,6 +427,29 @@ struct GeneralTab: View {
             }
         }
         .compatGroupedFormStyle()
+    }
+
+    /// One-line pointer surfaced under both the native and legacy
+    /// forms' summon section. v1.3.0 moved slot count, ambient tint,
+    /// and ranking strategy onto the active profile; this label tells
+    /// users where the controls went and switches Settings to the Apps
+    /// tab on click so they don't have to hunt for them.
+    private var perProfilePointer: some View {
+        Button {
+            SettingsFocusCoordinator.shared.requestFocus(.apps)
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.turn.down.right")
+                    .font(.system(size: 11))
+                Text("Slots, tint, and ranking are per profile — set under Apps")
+                    .font(.callout)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(.secondary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Switch to the Apps tab")
     }
 
     /// Pulls the last hour of unified-log entries under the Halo subsystem

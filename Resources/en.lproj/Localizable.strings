@@ -161,3 +161,16 @@
 "This profile's pins and identity colours will be removed. Global settings are unaffected." = "This profile's pins and identity colours will be removed. Global settings are unaffected.";
 "%d profile" = "%d profile";
 "%d profiles" = "%d profiles";
+
+/* v1.3.0 Profile deepening */
+"Profile settings for %@" = "Profile settings for %@";
+"Slots for this profile" = "Slots for this profile";
+"Tint" = "Tint";
+"No tint" = "No tint";
+"Slots, tint, and ranking are per profile — set under Apps" = "Slots, tint, and ranking are per profile — set under Apps";
+"Switch to the Apps tab" = "Switch to the Apps tab";
+"Each profile remembers its own slot count, tint, and ranking. Tab / ⇧Tab during summon switches profiles." = "Each profile remembers its own slot count, tint, and ranking. Tab / ⇧Tab during summon switches profiles.";
+"Active profile · double-click to rename · drag to reorder" = "Active profile · double-click to rename · drag to reorder";
+"Click to switch · double-click to rename · drag to reorder" = "Click to switch · double-click to rename · drag to reorder";
+"%@ · drag to swap slots" = "%@ · drag to swap slots";
+"Auto · drop an app here to move it" = "Auto · drop an app here to move it";

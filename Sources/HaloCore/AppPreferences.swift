@@ -93,11 +93,20 @@ public final class AppPreferences: ObservableObject {
         static let onboardingShown = "halo.onboarding.shown"
         static let showAllProfile  = "halo.prefs.showAllProfile"
         // Multi-profile — owns pins / overflow / identity overrides.
-        // The legacy keys above stay read-only as a rollback safety
-        // net through the initial multi-profile release and are
-        // dropped in the minor after that.
+        // As of v1.3.0 the three legacy keys above are only touched
+        // by `migrateLegacyKeysIntoDefaultProfile()`, which exists
+        // exclusively for direct v1.0 → v1.3.0 upgrades that never saw
+        // the v1.1.2 multi-profile schema. The projection getters
+        // (`pinnedBundleIDs`, `overflowPinnedBundleIDs`,
+        // `identityOverride(for:)`) read from the active profile only.
         static let profilesV1      = "halo.prefs.profiles.v1"
         static let activeProfile   = "halo.prefs.activeProfileID"
+        // v1.3.0 frequency-per-profile migration sentinel. Set once
+        // after the legacy global `Keys.profile` value has been
+        // backfilled into every existing profile's `frequencyProfile`
+        // field; prevents subsequent launches from re-overwriting the
+        // user's per-profile choices.
+        static let profilesFrequencyMigrated = "halo.prefs.profilesFrequencyMigrated.v1"
     }
 
     // MARK: - Layout defaults
@@ -126,6 +135,7 @@ public final class AppPreferences: ObservableObject {
         if defaults.data(forKey: Keys.profilesV1) == nil {
             migrateLegacyKeysIntoDefaultProfile()
         }
+        migrateFrequencyIntoProfilesIfNeeded()
     }
 
     private func migrateLegacyKeysIntoDefaultProfile() {
@@ -170,6 +180,28 @@ public final class AppPreferences: ObservableObject {
         )
         writeProfiles([migrated], activeID: migrated.id)
         HaloLog.settings.info("Migrated legacy prefs into Default profile (slots: \(slot), pins: \(pins.compactMap { $0 }.count), overrides: \(overrides.count))")
+    }
+
+    /// One-shot backfill of the legacy global `Keys.profile` ranking
+    /// value into every profile's per-profile `frequencyProfile`. Runs
+    /// at most once thanks to the `profilesFrequencyMigrated.v1`
+    /// sentinel; subsequent launches no-op even if the legacy key is
+    /// later mirrored by a v1.2 rollback or a `defaults write`.
+    private func migrateFrequencyIntoProfilesIfNeeded() {
+        guard !defaults.bool(forKey: Keys.profilesFrequencyMigrated) else { return }
+        loadProfilesIfNeeded()
+        let raw = defaults.string(forKey: Keys.profile) ?? FrequencyProfile.balanced.rawValue
+        let legacy = FrequencyProfile(rawValue: raw) ?? .balanced
+        var changed = 0
+        for idx in _profiles.indices where _profiles[idx].frequencyProfile != legacy {
+            _profiles[idx].frequencyProfile = legacy
+            changed += 1
+        }
+        if changed > 0 {
+            writeProfiles(_profiles, activeID: _activeProfileID)
+            HaloLog.settings.info("Migrated \(changed) profiles to per-profile frequency: \(legacy.rawValue)")
+        }
+        defaults.set(true, forKey: Keys.profilesFrequencyMigrated)
     }
 
     public var profiles: [BindingProfile] {
@@ -255,11 +287,13 @@ public final class AppPreferences: ObservableObject {
     public func addProfile(name: String, cloning sourceID: UUID?) -> BindingProfile {
         loadProfilesIfNeeded()
         let n = slotCount
+        let inheritedFrequency = (_profiles.first(where: { $0.id == _activeProfileID })?.frequencyProfile) ?? .balanced
         let new: BindingProfile
         if let sourceID = sourceID,
            let source = _profiles.first(where: { $0.id == sourceID })
         {
-            // Clone inherits every field including slotCount and tint.
+            // Clone inherits every field including slotCount, tint,
+            // and frequencyProfile.
             new = BindingProfile(
                 id: UUID(),
                 name: name,
@@ -267,17 +301,19 @@ public final class AppPreferences: ObservableObject {
                 overflowPinnedBundleIDs: source.overflowPinnedBundleIDs,
                 identityOverrides: source.identityOverrides,
                 slotCount: source.slotCount,
-                tint: source.tint
+                tint: source.tint,
+                frequencyProfile: source.frequencyProfile
             )
         } else {
-            // Fresh profile inherits the *current* slot count so the
-            // user keeps the same wheel width they were configuring on
-            // before. The pin array is empty, so they start from a
-            // clean slate.
+            // Fresh profile inherits the *current* slot count and
+            // ranking strategy so the user keeps the same wheel width
+            // and Top-N behaviour they were configuring on before. The
+            // pin array is empty, so they start from a clean slate.
             new = BindingProfile(
                 name: name,
                 pinnedBundleIDs: Array(repeating: nil, count: n),
-                slotCount: n
+                slotCount: n,
+                frequencyProfile: inheritedFrequency
             )
         }
         objectWillChange.send()
@@ -325,6 +361,20 @@ public final class AppPreferences: ObservableObject {
         // currently-visible wheel size.
         defaults.set(max(4, min(12, target.slotCount)), forKey: Keys.slotCount)
         HaloLog.settings.info("Switched to profile '\(target.name)' (slots: \(target.slotCount))")
+    }
+
+    /// Move `id` to `newIndex` in the profile list. Clamps to the
+    /// current bounds; no-op if the profile is already at the target.
+    /// Pure presentation — the active profile stays active.
+    public func reorderProfile(_ id: UUID, to newIndex: Int) {
+        loadProfilesIfNeeded()
+        guard let current = _profiles.firstIndex(where: { $0.id == id }) else { return }
+        let target = max(0, min(_profiles.count - 1, newIndex))
+        guard current != target else { return }
+        objectWillChange.send()
+        let moved = _profiles.remove(at: current)
+        _profiles.insert(moved, at: target)
+        writeProfiles(_profiles, activeID: _activeProfileID)
     }
 
     /// Activate the next profile in the user's pill order, wrapping
@@ -420,15 +470,45 @@ public final class AppPreferences: ObservableObject {
         writeProfiles(_profiles, activeID: _activeProfileID)
     }
 
+    /// Ranking strategy for the *active* profile. v1.3.0 reverses the
+    /// v1.2 contract (which kept this global) — see
+    /// `docs/superpowers/specs/2026-05-14-multi-profile-design.md` §3.
+    /// The setter mirrors the new value back to the legacy
+    /// `Keys.profile` global so a v1.2 rollback (or an outside
+    /// `defaults read`) lands on the most-recently-active profile's
+    /// ranking. Reads fall back to the legacy key only on the cold
+    /// path before `_profilesLoaded`.
     public var frequencyProfile: FrequencyProfile {
         get {
+            if _profilesLoaded {
+                return activeProfile.frequencyProfile
+            }
             let raw = defaults.string(forKey: Keys.profile) ?? FrequencyProfile.balanced.rawValue
             return FrequencyProfile(rawValue: raw) ?? .balanced
         }
         set {
+            guard newValue != frequencyProfile else { return }
             objectWillChange.send()
             defaults.set(newValue.rawValue, forKey: Keys.profile)
+            updateActiveProfile { profile in
+                profile.frequencyProfile = newValue
+            }
         }
+    }
+
+    /// Set the ranking strategy for an arbitrary profile, not
+    /// necessarily the active one. Used by the Apps tab when the user
+    /// edits a non-active profile pill.
+    public func setFrequencyProfile(_ profile: FrequencyProfile, for profileID: UUID) {
+        loadProfilesIfNeeded()
+        guard let idx = _profiles.firstIndex(where: { $0.id == profileID }) else { return }
+        guard _profiles[idx].frequencyProfile != profile else { return }
+        objectWillChange.send()
+        _profiles[idx].frequencyProfile = profile
+        if profileID == _activeProfileID {
+            defaults.set(profile.rawValue, forKey: Keys.profile)
+        }
+        writeProfiles(_profiles, activeID: _activeProfileID)
     }
 
     public var summonPosition: SummonPosition {
@@ -640,6 +720,25 @@ public final class AppPreferences: ObservableObject {
                 profile = profile.resizing(slotCount: n)
             }
             profile.pinnedBundleIDs[slot] = id
+        }
+    }
+
+    /// Swap the pinned bundle IDs at two slots within the active
+    /// profile. No-op when either index is out of range or both
+    /// indices are equal. One write through `updateActiveProfile` so
+    /// observers see a single transition rather than the intermediate
+    /// state.
+    public func swapPins(at slotA: Int, and slotB: Int) {
+        let n = slotCount
+        guard (0..<n).contains(slotA), (0..<n).contains(slotB), slotA != slotB else { return }
+        objectWillChange.send()
+        updateActiveProfile { profile in
+            if profile.pinnedBundleIDs.count != n {
+                profile = profile.resizing(slotCount: n)
+            }
+            let tmp = profile.pinnedBundleIDs[slotA]
+            profile.pinnedBundleIDs[slotA] = profile.pinnedBundleIDs[slotB]
+            profile.pinnedBundleIDs[slotB] = tmp
         }
     }
 

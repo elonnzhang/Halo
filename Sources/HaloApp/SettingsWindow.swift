@@ -36,9 +36,16 @@ final class SettingsWindowController {
 
     func show() {
         NSApp.setActivationPolicy(.regular)
-        centerOnCurrentScreen()
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        // Centre after the window is on screen so SwiftUI has had a
+        // run-loop tick to finalise NSHostingController's intrinsic
+        // content size; otherwise `window.frame.size` still reflects
+        // the init `contentRect` (880 × 720 + titlebar) and the
+        // post-layout shrink/grow would offset the window from centre.
+        DispatchQueue.main.async { [weak self] in
+            self?.centerOnCurrentScreen()
+        }
         WindowCloseObserver.attach(window: window) {
             NSApp.setActivationPolicy(.accessory)
         }
@@ -220,11 +227,11 @@ struct AppsTab: View {
 
             bindingHeader
 
-            // Per-profile slot count picker. Lives here (next to the
-            // profile's wheel preview) rather than in General because
-            // slotCount is now a per-profile knob — General still
-            // edits the active profile's value, but this is where a
-            // user editing "Work" or "Life" expects to find it.
+            // Per-profile knobs. v1.3.0 lifts slot count, ambient tint,
+            // and ranking strategy onto the active profile — General
+            // tab no longer carries any of these. Switching profile
+            // from the bar above re-binds every control in this
+            // section to the new active profile's value.
             Section {
                 Picker("Slot count", selection: Binding(
                     get: { prefs.slotCount },
@@ -233,10 +240,23 @@ struct AppsTab: View {
                     ForEach([4, 6, 8, 10, 12], id: \.self) { Text("\($0)").tag($0) }
                 }
                 .pickerStyle(.segmented)
+
+                tintPicker
+
+                Picker("Ranking", selection: Binding(
+                    get: { prefs.frequencyProfile },
+                    set: { prefs.frequencyProfile = $0 }
+                )) {
+                    Text("MFU").tag(FrequencyProfile.mfuOnly)
+                    Text("Balanced").tag(FrequencyProfile.balanced)
+                    Text("MRU").tag(FrequencyProfile.mruOnly)
+                }
+                .pickerStyle(.segmented)
             } header: {
-                Text("Slots for this profile")
+                Text(String(format: NSLocalizedString("Profile settings for %@", comment: ""),
+                            prefs.activeProfile.name))
             } footer: {
-                Text("Each profile remembers its own slot count. Tab / ⇧Tab during summon switches profiles.")
+                Text("Each profile remembers its own slot count, tint, and ranking. Tab / ⇧Tab during summon switches profiles.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -310,6 +330,86 @@ struct AppsTab: View {
             .padding(.vertical, 4)
         }
     }
+
+    // MARK: - Tint picker
+
+    /// Eight OKLCH-tuned swatches + a "no tint" cell. Selecting a
+    /// swatch writes it as the active profile's ambient `tint`; the "no
+    /// tint" cell clears it. Selection is ring-outlined; matching is by
+    /// hue within a small tolerance so the picker stays visually stable
+    /// even if a swatch was previously round-tripped through sRGB.
+    private var tintPicker: some View {
+        // Manual HStack instead of `LabeledContent` because the latter
+        // is macOS 13+. SwiftUI Form already gives the row a uniform
+        // baseline, so a plain `Text("Tint") ... Spacer() ... swatches`
+        // layout reads the same.
+        HStack(spacing: 6) {
+            Text("Tint")
+            Spacer()
+            ForEach(Array(Self.tintSwatches.enumerated()), id: \.offset) { _, swatch in
+                swatchButton(swatch)
+            }
+            Button {
+                prefs.setTint(nil, for: prefs.activeProfileID)
+            } label: {
+                ZStack {
+                    Circle()
+                        .strokeBorder(Color.primary.opacity(0.30), lineWidth: 1)
+                    Image(systemName: "xmark")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(width: 18, height: 18)
+                .overlay(selectionRing(isSelected: prefs.activeProfile.tint == nil))
+            }
+            .buttonStyle(.plain)
+            .help("No tint")
+        }
+    }
+
+    private func swatchButton(_ color: IdentityColor) -> some View {
+        let selected = matchesActiveTint(color)
+        return Button {
+            prefs.setTint(color, for: prefs.activeProfileID)
+        } label: {
+            Circle()
+                .fill(color.swiftUIColor)
+                .frame(width: 18, height: 18)
+                .overlay(selectionRing(isSelected: selected))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func selectionRing(isSelected: Bool) -> some View {
+        Circle()
+            .strokeBorder(
+                isSelected ? Color.accentColor : Color.clear,
+                lineWidth: 2
+            )
+            .padding(-3)
+    }
+
+    private func matchesActiveTint(_ color: IdentityColor) -> Bool {
+        guard let active = prefs.activeProfile.tint else { return false }
+        return abs(active.lightness - color.lightness) < 0.01
+            && abs(active.chroma - color.chroma) < 0.01
+            && IdentityColor.hueDistance(active.hue, color.hue) < 1.0
+    }
+
+    /// Eight swatches at perceptually-matched lightness/chroma, sweeping
+    /// hue. Wide enough to give the user a recognisable "scene colour"
+    /// without offering the full OKLCH gamut here (the wheel's per-app
+    /// override popover is where finer control lives).
+    private static let tintSwatches: [IdentityColor] = [
+        IdentityColor(lightness: 0.65, chroma: 0.18, hue: 25),   // red
+        IdentityColor(lightness: 0.72, chroma: 0.17, hue: 55),   // orange
+        IdentityColor(lightness: 0.78, chroma: 0.16, hue: 90),   // amber
+        IdentityColor(lightness: 0.72, chroma: 0.17, hue: 140),  // green
+        IdentityColor(lightness: 0.68, chroma: 0.14, hue: 190),  // teal
+        IdentityColor(lightness: 0.62, chroma: 0.18, hue: 230),  // blue
+        IdentityColor(lightness: 0.60, chroma: 0.20, hue: 285),  // violet
+        IdentityColor(lightness: 0.65, chroma: 0.18, hue: 325),  // magenta
+    ]
 
     private var bindingSummary: String {
         let pinned = prefs.pinnedBundleIDs.compactMap { $0 }.count

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 import HaloCore
 import HaloUI
 
@@ -17,11 +18,25 @@ struct ProfileBar: View {
     @State private var newName: String = ""
     @State private var newCloneActive = true
     @State private var deletingID: UUID?
+    @State private var draggedID: UUID?
+
+    /// Fallback color palette used when a profile has no `tint` set.
+    /// Six OKLCH-tuned hues at perceptually-matched lightness/chroma —
+    /// distinguishable at 6pt without being garish. Index into by
+    /// profile's row position so order is stable.
+    private static let fallbackPalette: [Color] = [
+        IdentityColor(lightness: 0.65, chroma: 0.18, hue: 25).swiftUIColor,   // red
+        IdentityColor(lightness: 0.78, chroma: 0.16, hue: 80).swiftUIColor,   // amber
+        IdentityColor(lightness: 0.70, chroma: 0.16, hue: 145).swiftUIColor,  // green
+        IdentityColor(lightness: 0.68, chroma: 0.14, hue: 190).swiftUIColor,  // teal
+        IdentityColor(lightness: 0.62, chroma: 0.18, hue: 250).swiftUIColor,  // blue
+        IdentityColor(lightness: 0.65, chroma: 0.18, hue: 325).swiftUIColor,  // magenta
+    ]
 
     var body: some View {
         HStack(spacing: 6) {
-            ForEach(prefs.profiles, id: \.id) { profile in
-                pill(profile)
+            ForEach(Array(prefs.profiles.enumerated()), id: \.element.id) { idx, profile in
+                pill(profile, index: idx)
             }
             addButton
             Spacer(minLength: 8)
@@ -52,7 +67,7 @@ struct ProfileBar: View {
     // MARK: - Pill
 
     @ViewBuilder
-    private func pill(_ profile: BindingProfile) -> some View {
+    private func pill(_ profile: BindingProfile, index: Int) -> some View {
         let isActive = profile.id == prefs.activeProfileID
         let isRenaming = renamingID == profile.id
 
@@ -60,26 +75,58 @@ struct ProfileBar: View {
             if isRenaming {
                 renameField(for: profile)
             } else {
-                Text(profile.name)
-                    .font(.system(size: 12, weight: isActive ? .semibold : .medium))
-                    .lineLimit(1)
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .contentShape(Rectangle())
-                    // Double-click first so SwiftUI gives it priority; single
-                    // click then handles plain switching.
-                    .onTapGesture(count: 2) { startRename(profile) }
-                    .onTapGesture(count: 1) {
-                        if !isActive { prefs.switchToProfile(profile.id) }
-                    }
+                HStack(spacing: 6) {
+                    colorDot(for: profile, index: index)
+                    Text(profile.name)
+                        .font(.system(size: 12, weight: isActive ? .semibold : .medium))
+                        .lineLimit(1)
+                        .foregroundStyle(.primary)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .contentShape(Rectangle())
+                // Double-click first so SwiftUI gives it priority; single
+                // click then handles plain switching.
+                .onTapGesture(count: 2) { startRename(profile) }
+                .onTapGesture(count: 1) {
+                    if !isActive { prefs.switchToProfile(profile.id) }
+                }
             }
         }
         .background(pillBackground(isActive: isActive, isRenaming: isRenaming))
         .overlay(pillBorder(isActive: isActive, isRenaming: isRenaming))
+        .opacity(draggedID == profile.id ? 0.45 : 1.0)
         .contextMenu { pillMenu(profile, isActive: isActive) }
-        .help(isActive ? "Active profile · double-click to rename"
-                       : "Click to switch · double-click to rename")
+        .help(isActive ? "Active profile · double-click to rename · drag to reorder"
+                       : "Click to switch · double-click to rename · drag to reorder")
+        .onDrag {
+            draggedID = profile.id
+            return NSItemProvider(object: profile.id.uuidString as NSString)
+        }
+        .onDrop(of: [UTType.plainText], delegate: ProfilePillDropDelegate(
+            targetID: profile.id,
+            prefs: prefs,
+            draggedID: $draggedID
+        ))
+    }
+
+    /// 6pt circle to the left of the pill label. Uses the profile's
+    /// `tint` when set; otherwise picks from a fallback palette by row
+    /// index. Unset tint is rendered at 60% opacity so the user can see
+    /// at a glance that the slot hasn't been customised yet.
+    private func colorDot(for profile: BindingProfile, index: Int) -> some View {
+        let color: Color
+        let opacity: Double
+        if let tint = profile.tint {
+            color = tint.swiftUIColor
+            opacity = 1.0
+        } else {
+            color = Self.fallbackPalette[index % Self.fallbackPalette.count]
+            opacity = 0.6
+        }
+        return Circle()
+            .fill(color.opacity(opacity))
+            .frame(width: 6, height: 6)
     }
 
     private func renameField(for profile: BindingProfile) -> some View {
@@ -243,5 +290,40 @@ struct ProfileBar: View {
         let n = prefs.profiles.count
         let key = n == 1 ? "%d profile" : "%d profiles"
         return String(format: NSLocalizedString(key, comment: ""), n)
+    }
+}
+
+/// Drop delegate for one pill. When another pill is dropped onto this
+/// one, calls `reorderProfile` so the dragged profile lands at this
+/// pill's current index. Restores `draggedID` once the drop resolves so
+/// the source pill's opacity returns to 1.0.
+private struct ProfilePillDropDelegate: DropDelegate {
+    let targetID: UUID
+    let prefs: AppPreferences
+    @Binding var draggedID: UUID?
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        // Mouse left the pill mid-drag; nothing to do — the drag is
+        // still live, so we don't reset `draggedID` until the drag
+        // either commits via performDrop or is cancelled (handled by
+        // the next drag start overwriting `draggedID`).
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        guard let dragged = draggedID, dragged != targetID else {
+            draggedID = nil
+            return false
+        }
+        guard let targetIndex = prefs.profiles.firstIndex(where: { $0.id == targetID }) else {
+            draggedID = nil
+            return false
+        }
+        prefs.reorderProfile(dragged, to: targetIndex)
+        draggedID = nil
+        return true
     }
 }

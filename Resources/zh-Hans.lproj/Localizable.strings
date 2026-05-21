@@ -160,3 +160,16 @@
 "This profile's pins and identity colours will be removed. Global settings are unaffected." = "该场景的固定槽位和身份色将被移除。全局设置不受影响。";
 "%d profile" = "%d 个场景";
 "%d profiles" = "%d 个场景";
+
+/* v1.3.0 Profile deepening — 多 profile 字段下沉 */
+"Profile settings for %@" = "%@ 的设置";
+"Slots for this profile" = "本场景的槽位数";
+"Tint" = "环境色";
+"No tint" = "无";
+"Slots, tint, and ranking are per profile — set under Apps" = "槽位数、环境色和排序方式按场景独立，请到「Apps」标签内调整";
+"Switch to the Apps tab" = "切换到「Apps」标签";
+"Each profile remembers its own slot count, tint, and ranking. Tab / ⇧Tab during summon switches profiles." = "每个场景独立记忆槽位数、环境色和排序方式。Halo 召出时按 Tab / ⇧Tab 切换场景。";
+"Active profile · double-click to rename · drag to reorder" = "当前场景 · 双击重命名 · 拖动可重排";
+"Click to switch · double-click to rename · drag to reorder" = "点击切换 · 双击重命名 · 拖动可重排";
+"%@ · drag to swap slots" = "%@ · 拖到其它槽位可互换";
+"Auto · drop an app here to move it" = "自动 · 把另一个槽位拖到这里完成移动";

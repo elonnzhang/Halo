@@ -38,8 +38,9 @@ this release:
 | Pinned slots                  | ✓           |        |
 | Overflow pins                 | ✓           |        |
 | Identity-color overrides      | ✓           |        |
-| Slot count (4 – 12)           |             | ✓      |
-| Ranking profile (MFU/Balanced/MRU) |        | ✓      |
+| Slot count (4 – 12)           | ✓ (v1.3.0)  |        |
+| Ambient tint                  | ✓ (v1.3.0)  |        |
+| Ranking profile (MFU/Balanced/MRU) | ✓ (v1.3.0) |    |
 | Whitelist                     |             | ✓      |
 | Hotkey + double-tap trigger   |             | ✓      |
 | Layout sliders + panel scale  |             | ✓      |
@@ -50,8 +51,18 @@ this release:
 | Autostart                     |             | ✓      |
 | Onboarding state              |             | ✓      |
 
-Rationale: a profile is "this set of pinned apps and their colours."
-Everything else is part of the user's general Halo configuration.
+Rationale (v1.2): a profile is "this set of pinned apps and their
+colours." Everything else is part of the user's general Halo
+configuration.
+
+Updated in v1.3.0: slot count and ambient tint moved per-profile so
+each scene can have its own wheel size and idle-glow hue; ranking
+moved per-profile after observing that users with multiple profiles
+also wanted distinct ranking strategies (e.g. Coding favouring MFU,
+Personal favouring MRU). Whitelist, hotkey, and the rest stay global —
+their value is in being stable across scenes, not configurable per
+scene. See
+[`docs/superpowers/plans/2026-05-20-profile-deepening.md`](../plans/2026-05-20-profile-deepening.md).
 
 ## 4. Architecture
 
@@ -277,11 +288,18 @@ explicit non-goals, and the migration.
 
 ## 9. Open follow-ups (post initial scope)
 
-- v1.x: profile colour / dot (mockup shows it; auto-assigned from a 6-tone
-  palette by index, or user-pickable).
-- v1.x: drag-to-reorder pills.
-- v1.x: drop legacy `UserDefaults` keys (the minor after the initial multi-profile release).
+- ✅ v1.3.0: profile colour / dot — derived from the per-profile `tint`
+  with a fallback OKLCH palette indexed by row. See
+  [`docs/superpowers/plans/2026-05-20-profile-deepening.md`](../plans/2026-05-20-profile-deepening.md).
+- ✅ v1.3.0: drag-to-reorder pills via SwiftUI `.onDrag` / `.onDrop`,
+  routed through `AppPreferences.reorderProfile(_:to:)`.
+- ✅ v1.3.0: legacy `pinnedSlots.v1` / `overflowPins.v1` /
+  `identityOverride.v1` are now only read by the one-shot v1.0 → v1.3.0
+  migration; projection getters read exclusively from the active
+  profile.
 - v1.x: auto-detect active profile from frontmost app (BRAINSTORM
   roadmap item).
 - v2: integrate with the planned `.halo-profile` import/export from
-  the "可分享主题与配置卡片" brainstorm item.
+  the "可分享主题与配置卡片" brainstorm item — the v1.3.0 schema
+  (`BindingProfile { id, name, pins, overflow, overrides, slotCount,
+  tint, frequencyProfile }`) is the candidate payload.

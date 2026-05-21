@@ -175,12 +175,72 @@ final class AppPreferencesProfileTests: XCTestCase {
         XCTAssertEqual(prefs.whitelistedBundleIDs, ["com.valvesoftware.steam"])
     }
 
-    func test_frequencyProfileStaysGlobalAcrossProfileSwitches() {
+    /// v1.3.0 reversal of the v1.2 §3 contract: `frequencyProfile` is
+    /// now per-profile. Blank profiles inherit the active profile's
+    /// ranking (mirrors the `slotCount` inheritance pattern), then
+    /// diverge once the user edits them.
+    func test_frequencyProfilePerProfile_acrossSwitches() {
         let prefs = AppPreferences(defaults: freshDefaults())
+        let defaultID = prefs.activeProfileID
         prefs.frequencyProfile = .mfuOnly
         let work = prefs.addProfile(name: "Work", cloning: nil)
+        // Blank profile inherits current frequency.
+        XCTAssertEqual(work.frequencyProfile, .mfuOnly)
         prefs.switchToProfile(work.id)
+        prefs.frequencyProfile = .mruOnly
+        XCTAssertEqual(prefs.frequencyProfile, .mruOnly)
+        // Switching back keeps Default at MFU — distinct per-profile state.
+        prefs.switchToProfile(defaultID)
         XCTAssertEqual(prefs.frequencyProfile, .mfuOnly)
+        XCTAssertEqual(prefs.activeProfile.frequencyProfile, .mfuOnly)
+    }
+
+    func test_setFrequencyProfile_forNonActiveProfile_doesNotMutateActiveValue() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        let defaultID = prefs.activeProfileID
+        prefs.frequencyProfile = .balanced
+        let work = prefs.addProfile(name: "Work", cloning: nil)
+        prefs.setFrequencyProfile(.mruOnly, for: work.id)
+        // Default (still active) is unchanged.
+        XCTAssertEqual(prefs.frequencyProfile, .balanced)
+        XCTAssertEqual(prefs.activeProfileID, defaultID)
+        // Switching to Work picks up the change.
+        prefs.switchToProfile(work.id)
+        XCTAssertEqual(prefs.frequencyProfile, .mruOnly)
+    }
+
+    func test_cloneProfile_inheritsFrequency() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        prefs.frequencyProfile = .mruOnly
+        let clone = prefs.addProfile(name: "Clone", cloning: prefs.activeProfileID)
+        XCTAssertEqual(clone.frequencyProfile, .mruOnly)
+    }
+
+    // MARK: - Frequency migration sentinel
+
+    func test_frequencyMigration_backfillsLegacyGlobalIntoProfile() {
+        let defaults = freshDefaults()
+        defaults.set(FrequencyProfile.mfuOnly.rawValue, forKey: "halo.prefs.frequencyProfile")
+        let prefs = AppPreferences(defaults: defaults)
+        XCTAssertEqual(prefs.activeProfile.frequencyProfile, .mfuOnly)
+        XCTAssertEqual(prefs.frequencyProfile, .mfuOnly)
+        XCTAssertTrue(defaults.bool(forKey: "halo.prefs.profilesFrequencyMigrated.v1"))
+    }
+
+    func test_frequencyMigration_runsOnceViaSentinel() {
+        let defaults = freshDefaults()
+        defaults.set(FrequencyProfile.mfuOnly.rawValue, forKey: "halo.prefs.frequencyProfile")
+        // First init runs migration → MFU.
+        _ = AppPreferences(defaults: defaults)
+        XCTAssertTrue(defaults.bool(forKey: "halo.prefs.profilesFrequencyMigrated.v1"))
+        // Pretend a v1.2 rollback wrote a different value to the legacy
+        // global. Without the sentinel, a re-init would re-overwrite
+        // every profile and clobber the user's choice; with the sentinel
+        // it must no-op.
+        defaults.set(FrequencyProfile.mruOnly.rawValue, forKey: "halo.prefs.frequencyProfile")
+        let prefs2 = AppPreferences(defaults: defaults)
+        XCTAssertEqual(prefs2.activeProfile.frequencyProfile, .mfuOnly,
+                       "sentinel should prevent re-migration after first run")
     }
 
     // MARK: - Profile management API
@@ -233,6 +293,97 @@ final class AppPreferencesProfileTests: XCTestCase {
         prefs.deleteProfile(onlyID)
         XCTAssertEqual(prefs.profiles.count, 1)
         XCTAssertEqual(prefs.activeProfile.id, onlyID)
+    }
+
+    // MARK: - swapPins
+
+    func test_swapPins_twoPinned_swapsBundleIDs() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        prefs.setPinnedBundleID("com.apple.Safari", at: 0)
+        prefs.setPinnedBundleID("com.apple.Notes", at: 5)
+        prefs.swapPins(at: 0, and: 5)
+        XCTAssertEqual(prefs.pinnedBundleIDs[0], "com.apple.Notes")
+        XCTAssertEqual(prefs.pinnedBundleIDs[5], "com.apple.Safari")
+    }
+
+    func test_swapPins_pinnedAndEmpty_movesAndLeavesEmpty() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        prefs.setPinnedBundleID("com.apple.Safari", at: 2)
+        prefs.swapPins(at: 2, and: 6)
+        XCTAssertNil(prefs.pinnedBundleIDs[2])
+        XCTAssertEqual(prefs.pinnedBundleIDs[6], "com.apple.Safari")
+    }
+
+    func test_swapPins_sameSlot_isNoOp() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        prefs.setPinnedBundleID("com.apple.Safari", at: 3)
+        prefs.swapPins(at: 3, and: 3)
+        XCTAssertEqual(prefs.pinnedBundleIDs[3], "com.apple.Safari")
+    }
+
+    func test_swapPins_outOfRange_isNoOp() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        prefs.setPinnedBundleID("com.apple.Safari", at: 0)
+        prefs.swapPins(at: 0, and: 99)
+        prefs.swapPins(at: -1, and: 0)
+        XCTAssertEqual(prefs.pinnedBundleIDs[0], "com.apple.Safari")
+    }
+
+    func test_swapPins_isScopedToActiveProfile() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        prefs.setPinnedBundleID("com.apple.Safari", at: 0)
+        let workID = prefs.addProfile(name: "Work", cloning: nil).id
+        prefs.switchToProfile(workID)
+        prefs.setPinnedBundleID("com.apple.Notes", at: 0)
+        prefs.swapPins(at: 0, and: 3)
+        // Active Work: swap took effect.
+        XCTAssertNil(prefs.pinnedBundleIDs[0])
+        XCTAssertEqual(prefs.pinnedBundleIDs[3], "com.apple.Notes")
+        // Inactive Default: untouched.
+        prefs.switchToProfile(prefs.profiles[0].id)
+        XCTAssertEqual(prefs.pinnedBundleIDs[0], "com.apple.Safari")
+        XCTAssertNil(prefs.pinnedBundleIDs[3])
+    }
+
+    // MARK: - reorderProfile
+
+    func test_reorderProfile_movesPillWithoutChangingActive() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        let defaultID = prefs.activeProfileID
+        let a = prefs.addProfile(name: "A", cloning: nil)
+        let b = prefs.addProfile(name: "B", cloning: nil)
+        prefs.reorderProfile(b.id, to: 0)
+        XCTAssertEqual(prefs.profiles.map { $0.id }, [b.id, defaultID, a.id])
+        XCTAssertEqual(prefs.activeProfileID, defaultID)
+    }
+
+    func test_reorderProfile_clampsOutOfBoundsTarget() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        let defaultID = prefs.activeProfileID
+        let a = prefs.addProfile(name: "A", cloning: nil)
+        prefs.reorderProfile(defaultID, to: 99)
+        XCTAssertEqual(prefs.profiles.map { $0.id }, [a.id, defaultID])
+        prefs.reorderProfile(defaultID, to: -5)
+        XCTAssertEqual(prefs.profiles.map { $0.id }, [defaultID, a.id])
+    }
+
+    func test_reorderProfile_unknownIDIsNoOp() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        let beforeIDs = prefs.profiles.map { $0.id }
+        prefs.reorderProfile(UUID(), to: 0)
+        XCTAssertEqual(prefs.profiles.map { $0.id }, beforeIDs)
+    }
+
+    func test_reorderProfile_persistsAcrossRecreate() {
+        let defaults = freshDefaults()
+        do {
+            let prefs = AppPreferences(defaults: defaults)
+            _ = prefs.addProfile(name: "A", cloning: nil)
+            let b = prefs.addProfile(name: "B", cloning: nil)
+            prefs.reorderProfile(b.id, to: 0)
+        }
+        let prefs2 = AppPreferences(defaults: defaults)
+        XCTAssertEqual(prefs2.profiles.map { $0.name }, ["B", "Default", "A"])
     }
 
     func test_persistedProfilesSurviveRecreate() {
