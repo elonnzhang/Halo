@@ -549,15 +549,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Hotkey hold-release path. The wheel uses release-to-commit
     /// (slot under cursor launches when the user lets go), but the
-    /// grid intentionally does NOT — Launchpad-style browsing should
-    /// only launch on an explicit click or Return. Pressing-and-
-    /// releasing the hotkey while in grid mode just dismisses Halo,
-    /// leaving the previously-frontmost app active.
+    /// grid is Launchpad-style browsing — the user needs the hand free
+    /// to mouse around or arrow-key into a cell. Releasing the trigger
+    /// in grid mode is a no-op: ESC, click-outside (handled by the
+    /// grid view), Return, or clicking a cell are the dismiss paths.
     private func commitFromHold() {
-        if state.isGridMode {
-            cancel()
-            return
-        }
+        if state.isGridMode { return }
         commitSelection()
     }
 

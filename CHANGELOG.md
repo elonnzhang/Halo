@@ -14,6 +14,11 @@ All notable changes to Halo.
 - One-time migration (`halo.prefs.profilesFrequencyMigrated.v1` sentinel) backfills every existing profile's ranking from the previous global value; users keep their MFU / MRU choice across the upgrade and the sentinel prevents the backfill from clobbering per-profile choices on subsequent launches.
 - Blank profile creation now inherits the active profile's frequency (mirroring the existing slot-count inheritance), so new scenes start from a sensible baseline.
 
+### Fixes
+
+- ALL grid no longer dismisses when the user releases the summon trigger. Pre-fix, `commitFromHold` called `cancel()` in grid mode — turning ALL into a hold-only affordance and dismissing the page the moment the user's finger lifted off Option. Releasing the trigger in grid mode is now a no-op; ESC, clicking outside, Return, or tapping a cell remain the dismiss paths. The wheel still commits on release.
+- Wheel summon now keeps the wheel centre much closer to the cursor near screen edges. `RadialPanelFrame.frame` previously clamped the entire panel (incl. 140pt × panelScale of transparent breathing room) inside `visibleFrame`, which pushed the visible disc inward by the full panel padding when the cursor was near an edge — and the subsequent `warpCursorToPanelCentre` had to drag the system cursor a long way to follow. The clamp now constrains only the visible disc, so the panel can poke past the visible edge while the disc stays fully on-screen. Cursor warp distance drops to at most half the disc.
+
 ### Internal
 
 - Drops the read paths for the three legacy v1.0 binding keys (`halo.prefs.pinnedSlots.v1`, `halo.prefs.overflowPins.v1`, `halo.prefs.identityOverride.v1`) — they're now exclusively touched by `migrateLegacyKeysIntoDefaultProfile()`, which still handles direct v1.0 → v1.3.0 jumps.

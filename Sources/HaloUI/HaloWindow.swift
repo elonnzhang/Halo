@@ -71,13 +71,15 @@ public final class HaloWindow {
         // Recompute scaled size each summon — `panelScale` can change at
         // runtime via Settings without an app restart.
         let scaledSize = HaloUI.Geometry.scaledTotalDiameter
+        let discSize = HaloUI.Geometry.haloDiameter * HaloUI.Geometry.panelScale
         let cursor = origin ?? NSEvent.mouseLocation
         let screen = screenContaining(cursor) ?? NSScreen.main ?? NSScreen.screens.first!
         let visible = screen.visibleFrame
         let frame = RadialPanelFrame.frame(
             forCursor: cursor,
             in: visible,
-            wheelSize: scaledSize
+            panelSize: scaledSize,
+            discSize: discSize
         )
         panel.setFrame(frame, display: true)
 

@@ -157,31 +157,45 @@ public enum RadialGeometry {
 }
 
 /// Pure geometry for clamping the wheel to the screen when summoned at the
-/// cursor. When the cursor is too close to an edge, the wheel is pushed inward
-/// by exactly the overflow distance; when the screen can't fit the wheel, the
-/// wheel is centered on the visible frame (degenerate fallback).
+/// cursor.
+///
+/// The panel hosting the wheel is larger than the visible disc — it carries
+/// `(panelSize - discSize) / 2` of transparent breathing room on every side
+/// for the halo glow, label chip, profile-tab strip, and Action Arc chips.
+/// That padding can safely sit off-screen; only the visible disc has to stay
+/// inside `visibleFrame`. Clamping by `discSize` (instead of `panelSize`)
+/// keeps the wheel centre much closer to the cursor when the user summons
+/// near a screen edge — minimising the warp distance that `HaloWindow.summon`
+/// applies to the system cursor.
+///
+/// Degenerate fallback: if `visibleFrame` can't even fit the disc, the panel
+/// is centred on the visible frame.
 public enum RadialPanelFrame {
     public static func frame(
         forCursor cursor: CGPoint,
         in visibleFrame: CGRect,
-        wheelSize: CGFloat
+        panelSize: CGFloat,
+        discSize: CGFloat
     ) -> CGRect {
-        let size = CGSize(width: wheelSize, height: wheelSize)
-        if visibleFrame.width < wheelSize || visibleFrame.height < wheelSize {
+        let size = CGSize(width: panelSize, height: panelSize)
+        if visibleFrame.width < discSize || visibleFrame.height < discSize {
             return CGRect(
                 origin: CGPoint(
-                    x: visibleFrame.midX - wheelSize / 2,
-                    y: visibleFrame.midY - wheelSize / 2
+                    x: visibleFrame.midX - panelSize / 2,
+                    y: visibleFrame.midY - panelSize / 2
                 ),
                 size: size
             )
         }
-        let desiredX = cursor.x - wheelSize / 2
-        let desiredY = cursor.y - wheelSize / 2
-        let minX = visibleFrame.minX
-        let maxX = visibleFrame.maxX - wheelSize
-        let minY = visibleFrame.minY
-        let maxY = visibleFrame.maxY - wheelSize
+        // `overhang` is how far the panel can poke past each visible edge
+        // while keeping the disc fully on-screen.
+        let overhang = (panelSize - discSize) / 2
+        let desiredX = cursor.x - panelSize / 2
+        let desiredY = cursor.y - panelSize / 2
+        let minX = visibleFrame.minX - overhang
+        let maxX = visibleFrame.maxX - panelSize + overhang
+        let minY = visibleFrame.minY - overhang
+        let maxY = visibleFrame.maxY - panelSize + overhang
         let clampedX = max(minX, min(desiredX, maxX))
         let clampedY = max(minY, min(desiredY, maxY))
         return CGRect(origin: CGPoint(x: clampedX, y: clampedY), size: size)
