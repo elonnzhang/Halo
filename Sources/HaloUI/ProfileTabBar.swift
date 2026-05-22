@@ -36,7 +36,6 @@ struct ProfileTabBar: View {
                 Capsule(style: .continuous)
                     .strokeBorder(strokeColor, lineWidth: 0.6)
             )
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.30 : 0.12), radius: 16, y: 6)
             .animation(Animation.Halo.echo(reduceMotion: reduceMotion), value: activeID)
         }
     }

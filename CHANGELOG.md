@@ -18,6 +18,7 @@ All notable changes to Halo.
 
 - ALL grid no longer dismisses when the user releases the summon trigger. Pre-fix, `commitFromHold` called `cancel()` in grid mode — turning ALL into a hold-only affordance and dismissing the page the moment the user's finger lifted off Option. Releasing the trigger in grid mode is now a no-op; ESC, clicking outside, Return, or tapping a cell remain the dismiss paths. The wheel still commits on release.
 - Wheel summon now keeps the wheel centre much closer to the cursor near screen edges. `RadialPanelFrame.frame` previously clamped the entire panel (incl. 140pt × panelScale of transparent breathing room) inside `visibleFrame`, which pushed the visible disc inward by the full panel padding when the cursor was near an edge — and the subsequent `warpCursorToPanelCentre` had to drag the system cursor a long way to follow. The clamp now constrains only the visible disc, so the panel can poke past the visible edge while the disc stays fully on-screen. Cursor warp distance drops to at most half the disc.
+- Profile tab strip drops its drop shadow. The capsule's glass + 0.6pt strokeBorder are enough to separate it from the wheel halo / grid backdrop; the prior `.shadow(.black, radius: 16, y: 6)` produced a visible dark halo around the pill that read as a hard edge on translucent surfaces.
 
 ### Internal
 
