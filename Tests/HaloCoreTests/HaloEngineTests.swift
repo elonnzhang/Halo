@@ -17,7 +17,7 @@ final class HaloEngineTests: XCTestCase {
         ]
         let engine = HaloEngine(profile: .balanced)
 
-        let result = engine.top(n: 4, from: records, now: now)
+        let result = engine.top(n: 4, from: records)
 
         XCTAssertEqual(result, [safari, slack, mail, notes])
     }
@@ -32,7 +32,7 @@ final class HaloEngineTests: XCTestCase {
         ]
         let engine = HaloEngine(profile: .balanced, pinned: [notes, mail])
 
-        let result = engine.top(n: 4, from: records, now: now)
+        let result = engine.top(n: 4, from: records)
 
         XCTAssertEqual(result.prefix(2), [notes, mail].prefix(2),
                        "pinned apps should occupy the leading slots in pin order")
@@ -51,7 +51,7 @@ final class HaloEngineTests: XCTestCase {
         ]
         let engine = HaloEngine(profile: .mfuOnly)
 
-        let result = engine.top(n: 4, from: records, now: now)
+        let result = engine.top(n: 4, from: records)
 
         XCTAssertEqual(result, [safari, slack, mail, notes])
     }
@@ -66,7 +66,7 @@ final class HaloEngineTests: XCTestCase {
         ]
         let engine = HaloEngine(profile: .mruOnly)
 
-        let result = engine.top(n: 4, from: records, now: now)
+        let result = engine.top(n: 4, from: records)
 
         XCTAssertEqual(result, [notes, mail, slack, safari])
     }
@@ -86,7 +86,7 @@ final class HaloEngineTests: XCTestCase {
         }
         let engine = HaloEngine(profile: .balanced)
 
-        let result = engine.top(n: 8, from: records, now: now)
+        let result = engine.top(n: 8, from: records)
 
         XCTAssertEqual(result.count, 8)
         // MFU portion = top 5 by activation = apps[0..<5]

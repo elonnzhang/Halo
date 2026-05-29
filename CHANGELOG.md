@@ -25,6 +25,7 @@ All notable changes to Halo.
 - Drops the read paths for the three legacy v1.0 binding keys (`halo.prefs.pinnedSlots.v1`, `halo.prefs.overflowPins.v1`, `halo.prefs.identityOverride.v1`) — they're now exclusively touched by `migrateLegacyKeysIntoDefaultProfile()`, which still handles direct v1.0 → v1.3.0 jumps.
 - New `AppPreferences.reorderProfile(_:to:)` / `setFrequencyProfile(_:for:)` APIs for the Apps tab's per-profile editing surface.
 - 17 new unit tests across `BindingProfileFrequencyTests` and `AppPreferencesProfileTests` covering the frequency field, migration sentinel, blank/clone inheritance, and reorder semantics.
+- `HaloEngine.top(n:from:)` drops its unused `now` parameter. The 7-day recency window is applied upstream in `UsageStore.allRecords()`, so the engine ranks purely by absolute activation count / last-used — `now` never affected the result and only added a misleading API surface plus a redundant `Date()` allocation on every `refreshSlots`. No behaviour change.
 
 ## [1.2.1] — 2026-05-19
 

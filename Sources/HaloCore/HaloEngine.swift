@@ -15,7 +15,7 @@ public struct HaloEngine: Sendable {
         self.pinned = pinned
     }
 
-    public func top(n: Int, from records: [UsageRecord], now: Date = Date()) -> [AppRef] {
+    public func top(n: Int, from records: [UsageRecord]) -> [AppRef] {
         precondition((4...12).contains(n), "N must be in 4...12")
 
         var result: [AppRef] = []
