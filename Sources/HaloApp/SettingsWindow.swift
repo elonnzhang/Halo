@@ -432,67 +432,15 @@ struct AppsTab: View {
 
 // Internal visibility (no `private`) so `BindingWheelView` in a sibling
 // file can host this sheet for the per-slot Pin… action.
+/// Settings → Apps empty-slot picker. Thin host around the shared
+/// `AppListPicker`; keeps its `onPick` contract so `BindingWheelView`'s
+/// `.sheet { AppPickerSheet { … } }` is unchanged.
 struct AppPickerSheet: View {
     let onPick: (String?) -> Void
-    @State private var apps: [(bundleID: String, name: String, url: URL)] = []
-    @State private var search = ""
 
     var body: some View {
-        CompatNavigationContainer {
-            List(filtered, id: \.bundleID) { item in
-                Button {
-                    onPick(item.bundleID)
-                } label: {
-                    HStack {
-                        Image(nsImage: NSWorkspace.shared.icon(forFile: item.url.path))
-                            .resizable().frame(width: 20, height: 20)
-                        Text(item.name)
-                        Spacer()
-                        Text(item.bundleID).font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .buttonStyle(.plain)
-            }
-            .searchable(text: $search, placement: .toolbar, prompt: "Search apps")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { onPick(nil) }
-                }
-            }
-        }
-        .frame(width: 480, height: 460)
-        .onAppear(perform: load)
-    }
-
-    private var filtered: [(bundleID: String, name: String, url: URL)] {
-        guard !search.isEmpty else { return apps }
-        let q = search.lowercased()
-        return apps.filter { $0.name.lowercased().contains(q) || $0.bundleID.lowercased().contains(q) }
-    }
-
-    private func load() {
-        var seen: Set<String> = []
-        var out: [(String, String, URL)] = []
-        let searchPaths = ["/Applications", "/System/Applications"]
-        for path in searchPaths {
-            let urls = (try? FileManager.default.contentsOfDirectory(
-                at: URL(fileURLWithPath: path),
-                includingPropertiesForKeys: [.isApplicationKey],
-                options: [.skipsHiddenFiles]
-            )) ?? []
-            for url in urls where url.pathExtension == "app" {
-                guard let bundle = Bundle(url: url),
-                      let bid = bundle.bundleIdentifier,
-                      !seen.contains(bid)
-                else { continue }
-                seen.insert(bid)
-                let name = (url.lastPathComponent as NSString).deletingPathExtension
-                out.append((bid, name, url))
-            }
-        }
-        apps = out.sorted { $0.1.lowercased() < $1.1.lowercased() }
-            .map { (bundleID: $0.0, name: $0.1, url: $0.2) }
+        AppListPicker(onPick: onPick)
+            .frame(width: 480, height: 460)
     }
 }
 
