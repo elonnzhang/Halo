@@ -6,6 +6,8 @@ Single, self-contained macOS app. **No Accessibility permission** required for t
 
 [中文 README](README_zh.md) · [CHANGELOG](CHANGELOG.md)
 
+![Halo](./attachment/halo.png)
+![Halo](./attachment/launcher.png)
 ## Status
 
 **v1.1.2** (2026-05-15) — Action Arc (⇧ / right-click to open a 4-chip fan: Quit / Fullscreen / Hide / Custom). Multi-profile pins (named pin bundles, switchable from a top pill bar). Settings rebuilt around `NavigationSplitView`. Whitelist tab. Panel-size renderer scale (0.80–1.50×). Scroll-wheel slot cycling. Full Liquid Glass on macOS 26.
