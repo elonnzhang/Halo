@@ -267,24 +267,6 @@ public struct HoneycombGridView: View {
         let launchAnchor = gridState.committingBundleID.flatMap { committing in
             cells.first(where: { $0.id == committing })?.position
         }
-        let nextFrames = cells.reduce(into: [String: CGRect]()) { partial, cell in
-            let projection = HoneycombGeometry.fisheyeOffset(
-                position: cell.position,
-                viewCenter: viewCentre,
-                maxRadius: fisheyeRadius,
-                strength: frameProjectionStrength
-            )
-            let center = CGPoint(
-                x: cell.position.x + projection.width,
-                y: cell.position.y + projection.height
-            )
-            partial[cell.id] = CGRect(
-                x: center.x - iconSize / 2,
-                y: center.y - iconSize / 2,
-                width: iconSize,
-                height: iconSize
-            )
-        }
 
         ZStack {
             ForEach(cells, id: \.id) { cell in
@@ -308,21 +290,54 @@ public struct HoneycombGridView: View {
         .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.74), value: gridState.apps)
         .opacity(gridState.committingBundleID == nil ? appearProgress : (commitPulse ? 0.96 : 0.12))
         .scaleEffect(0.78 + 0.22 * appearProgress)
-        .onAppear { cellFrames = nextFrames }
-        .onChange(of: gridState.filteredApps.map(\.bundleID)) { _ in cellFrames = nextFrames }
-        // Deliberately NOT updating cellFrames on panOffset / zoomLevel
-        // change. The dict is consumed by (a) hover repel for the
-        // selected bundle and (b) drag drop-target lookup. (a) reads a
-        // relative offset between two cell centres that both translate
-        // / scale together, so a one-frame stale dict is invariant
-        // under pure pan or pure zoom. (b) is gated by panGesture's
-        // `draggingBundleID == nil` guard — no drag is in flight
-        // during pan/pinch. Updating per gesture frame doubled the
-        // render work on the hot path: the @State mutation forced
-        // grid() to re-evaluate after each tick, re-running the
-        // adaptiveSpiralLayout + fisheye reduce. We refresh cellFrames
-        // only when the app list itself changes (different bundles to
-        // hit-test) and on first appear.
+        .onAppear {
+            refreshCellFrames(cells: cells, viewCentre: viewCentre,
+                              fisheyeRadius: fisheyeRadius, strength: frameProjectionStrength)
+        }
+        .onChange(of: gridState.filteredApps.map(\.bundleID)) { _ in
+            refreshCellFrames(cells: cells, viewCentre: viewCentre,
+                              fisheyeRadius: fisheyeRadius, strength: frameProjectionStrength)
+        }
+        // cellFrames (consumed by hover-repel + drag drop-target lookup) is
+        // refreshed only when the app list changes or on first appear — never
+        // on panOffset / zoomLevel. (a) hover-repel reads a relative offset
+        // between two cell centres that translate / scale together, so a stale
+        // dict is invariant under pure pan or pure zoom; (b) drag drop-target
+        // lookup is gated by panGesture's `draggingBundleID == nil` guard, so
+        // no drag is in flight during pan/pinch. The per-cell fisheye reduce
+        // that builds the dict now lives in these closures rather than inline
+        // in `grid()`, so it no longer runs — nor allocates a throwaway dict —
+        // on every pan / zoom frame.
+    }
+
+    /// Build the hit-test rectangle for each visible cell — the projected
+    /// (post-fisheye) icon frame keyed by bundleID. Driven only from
+    /// `grid()`'s `onAppear` / list-change handlers, never per pan frame, so
+    /// the reduce + dict allocation stay off the gesture hot path.
+    private func refreshCellFrames(
+        cells: [PositionedCell],
+        viewCentre: CGPoint,
+        fisheyeRadius: CGFloat,
+        strength: CGFloat
+    ) {
+        cellFrames = cells.reduce(into: [String: CGRect]()) { partial, cell in
+            let projection = HoneycombGeometry.fisheyeOffset(
+                position: cell.position,
+                viewCenter: viewCentre,
+                maxRadius: fisheyeRadius,
+                strength: strength
+            )
+            let center = CGPoint(
+                x: cell.position.x + projection.width,
+                y: cell.position.y + projection.height
+            )
+            partial[cell.id] = CGRect(
+                x: center.x - iconSize / 2,
+                y: center.y - iconSize / 2,
+                width: iconSize,
+                height: iconSize
+            )
+        }
     }
 
     private func searchFocusedPosition(

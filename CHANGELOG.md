@@ -18,6 +18,10 @@ All notable changes to Halo.
 
 - The empty-slot app picker — both the Settings → Apps sheet and the live empty-slot window — is now a single shared **Finder-style** component: single-line rows of icon + name (the technical bundleID no longer clutters every row), alphabetical. Opening it no longer hitches: scanning runs on a detached task and icons load through the shared `AppIconResolver` cache (top-80 prefetched), instead of the previous synchronous main-thread scan + per-row `NSWorkspace.icon`. App coverage now matches the ALL grid — `/Applications`, `/System/Applications`, and `~/Applications` with depth-2 recursion so Utilities surface — by reusing `GridState.scanInstalledApps()`. Collapses two near-identical pickers (and a third copy of app-scanning) into one.
 
+### Performance
+
+- The ALL grid pans and zooms noticeably smoother, especially on large app catalogues. `HoneycombGeometry.spiralLayout` — recomputed every pan / zoom frame for the cluster bounds and inside `adaptiveSpiralLayout` / `filteredSpiralLayout` — is now memoized by `count`, so the `(2·radius+1)²` candidate-grid sort that dominated each frame collapses to a dictionary hit (`adaptiveSpiralLayout` dropped from ~0.12 ms to ~0.00–0.01 ms per frame in `HALO_PERF_LOG`). The per-cell hit-test frame reduce — which allocated a throwaway `[bundleID: CGRect]` every render — was also lifted out of `grid()`'s body into the list-change / appear handlers, so it no longer runs on each gesture frame. Behaviour is unchanged; the cluster layout and hit-testing are byte-identical.
+
 ### Fixes
 
 - ALL grid no longer dismisses when the user releases the summon trigger. Pre-fix, `commitFromHold` called `cancel()` in grid mode — turning ALL into a hold-only affordance and dismissing the page the moment the user's finger lifted off Option. Releasing the trigger in grid mode is now a no-op; ESC, clicking outside, Return, or tapping a cell remain the dismiss paths. The wheel still commits on release.

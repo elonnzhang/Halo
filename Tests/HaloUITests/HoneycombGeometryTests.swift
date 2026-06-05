@@ -429,4 +429,76 @@ final class HoneycombGeometryTests: XCTestCase {
         )
         XCTAssertEqual(layout.count, 10)
     }
+
+    // MARK: - Memoization + size invariants (crash-path guards)
+
+    /// `spiralLayout` must return exactly `count` items for every count —
+    /// the invariant the ALL grid relies on when it does `list[idx]` over
+    /// `layout.enumerated()`. Covers the memoization cache: repeated and
+    /// interleaved counts must each get the right-sized result, never a
+    /// stale neighbour's.
+    func testSpiralLayoutReturnsExactCountAcrossWideRange() {
+        for count in 0...600 {
+            let layout = HoneycombGeometry.spiralLayout(count: count)
+            XCTAssertEqual(layout.count, max(0, count),
+                           "spiralLayout(\(count)) returned \(layout.count) items")
+        }
+    }
+
+    /// The memoized result must equal a freshly computed one element-for-
+    /// element — a corrupt cache would desync layout from `list` and crash
+    /// the grid's `list[idx]`.
+    func testSpiralLayoutMemoizationMatchesFreshAcrossInterleavedCounts() {
+        let counts = [1, 7, 19, 48, 200, 7, 19, 1, 350, 48, 200]
+        var reference: [Int: [(row: Int, col: Int)]] = [:]
+        for c in counts {
+            let layout = HoneycombGeometry.spiralLayout(count: c)
+            if let ref = reference[c] {
+                XCTAssertEqual(layout.count, ref.count, "size drift at count \(c)")
+                for i in layout.indices {
+                    XCTAssertEqual(layout[i].row, ref[i].row, "row drift at \(c)[\(i)]")
+                    XCTAssertEqual(layout[i].col, ref[i].col, "col drift at \(c)[\(i)]")
+                }
+            } else {
+                reference[c] = layout
+            }
+        }
+    }
+
+    /// `adaptiveSpiralLayout` must ALWAYS return exactly `count` items —
+    /// this is what guarantees `grid()`'s `list[idx]` and the internal
+    /// `candidates[idx]` stay in bounds. Sweeps realistic catalogue sizes
+    /// against a TabBar-sized keep-out at the cluster centre.
+    func testAdaptiveSpiralLayoutAlwaysReturnsExactCount() {
+        let keepOut = CGRect(x: -140, y: -28, width: 280, height: 56)
+        for count in 1...300 {
+            let layout = HoneycombGeometry.adaptiveSpiralLayout(
+                count: count,
+                spacing: 100,
+                verticalStretch: 1.18,
+                keepOut: keepOut,
+                originX: 0,
+                originY: 0
+            )
+            XCTAssertEqual(layout.count, count,
+                           "adaptiveSpiralLayout(\(count)) returned \(layout.count)")
+        }
+    }
+
+    /// Same exact-count invariant for `filteredSpiralLayout`.
+    func testFilteredSpiralLayoutAlwaysReturnsExactCount() {
+        let keepOut = CGRect(x: -140, y: -28, width: 280, height: 56)
+        for count in 1...300 {
+            let layout = HoneycombGeometry.filteredSpiralLayout(
+                count: count,
+                spacing: 100,
+                verticalStretch: 1.18,
+                keepOut: keepOut,
+                originX: 0,
+                originY: 0
+            )
+            XCTAssertEqual(layout.count, count,
+                           "filteredSpiralLayout(\(count)) returned \(layout.count)")
+        }
+    }
 }

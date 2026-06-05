@@ -286,14 +286,36 @@ public enum HoneycombGeometry {
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
     }
 
+    // Memoization for `spiralLayout` — see its doc comment. A pure function
+    // of `count`, so the dictionary cache is referentially transparent
+    // (invisible to callers and tests). `nonisolated(unsafe)` + `NSLock`
+    // mirrors `AppIconResolver`'s process-lifetime cache pattern.
+    nonisolated(unsafe) private static var spiralCache: [Int: [(row: Int, col: Int)]] = [:]
+    private static let spiralCacheLock = NSLock()
+
     /// Layout indices from the centre outward in a pointy honeycomb field.
     /// Index 0 is the visual centre; later indices are sorted by their actual
     /// rendered distance from that centre. This mirrors watchOS Grid View
     /// better than row-major placement because high-priority apps can occupy
     /// the centre and lower-priority apps fall naturally toward smaller outer
     /// rings.
+    ///
+    /// The (row, col) sequence depends only on `count` — never on spacing,
+    /// zoom, or pan — so it is memoized. The ALL grid recomputes this on
+    /// every pan / zoom frame (directly for the cluster bounds, and inside
+    /// `adaptiveSpiralLayout` / `filteredSpiralLayout`), and building +
+    /// sorting the `(2·radius+1)²` candidate grid is the dominant per-frame
+    /// cost; the cache collapses every repeat call to a dictionary hit.
     public static func spiralLayout(count: Int) -> [(row: Int, col: Int)] {
         guard count > 0 else { return [] }
+
+        spiralCacheLock.lock()
+        if let cached = spiralCache[count] {
+            spiralCacheLock.unlock()
+            return cached
+        }
+        spiralCacheLock.unlock()
+
         let radius = max(2, Int(ceil(sqrt(Double(count)))) + 2)
         let candidates = (-radius...radius).flatMap { row in
             (-radius...radius).map { col -> (row: Int, col: Int, distance: CGFloat, angle: CGFloat) in
@@ -306,8 +328,7 @@ public enum HoneycombGeometry {
                 )
             }
         }
-
-        return candidates
+        let result = candidates
             .sorted { lhs, rhs in
                 if abs(lhs.distance - rhs.distance) > 0.0001 {
                     return lhs.distance < rhs.distance
@@ -316,6 +337,15 @@ public enum HoneycombGeometry {
             }
             .prefix(count)
             .map { (row: $0.row, col: $0.col) }
+
+        spiralCacheLock.lock()
+        // Distinct counts are few in practice (full count, count + buffer,
+        // and a handful of filtered counts while searching), but clear
+        // wholesale rather than trend unbounded across a long typing session.
+        if spiralCache.count >= 128 { spiralCache.removeAll(keepingCapacity: true) }
+        spiralCache[count] = result
+        spiralCacheLock.unlock()
+        return result
     }
 
     /// Soft-fade alpha for cells that drift under a fixed overlay during
