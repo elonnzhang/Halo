@@ -6,6 +6,9 @@
 
 [English README](README.md) · [CHANGELOG](CHANGELOG.md)
 
+![Halo](./attachment/halo.png)
+![Halo](./attachment/launcher.png)
+
 ## 状态
 
 **v1.1.2**（2026-05-15）—— Action Arc（按 ⇧ 或右键弹出四片 chip：Quit / Fullscreen / Hide / Custom）；多 profile pin 集合（顶部 pill bar 切换）；设置面板重建为 `NavigationSplitView`；白名单标签；面板缩放（0.80–1.50×）；滚轮切换槽位；macOS 26 完整 Liquid Glass。
