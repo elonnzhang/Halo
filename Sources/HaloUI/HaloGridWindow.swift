@@ -44,6 +44,11 @@ public final class HaloGridWindow {
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.ignoresMouseEvents = false
+        // Required for SwiftUI `.onHover` inside a borderless nonactivating
+        // panel to fire as the cursor moves between cells. Without this the
+        // panel never delivers mouseMoved, so `selectedBundleID` only
+        // updates on click and the bottom name badge appears "stuck".
+        panel.acceptsMouseMovedEvents = true
         panel.collectionBehavior = [
             .canJoinAllSpaces,
             .fullScreenAuxiliary,

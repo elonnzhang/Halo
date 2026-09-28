@@ -2,6 +2,7 @@
 "General" = "General";
 "Hotkey" = "Hotkey";
 "Apps" = "Apps";
+"Actions" = "Actions";
 "About" = "About";
 
 /* General tab */
@@ -71,6 +72,15 @@
 /* App picker sheet */
 "Search apps" = "Search apps";
 "Cancel" = "Cancel";
+"Running now" = "Running now";
+"All applications" = "All applications";
+"No matching apps" = "No matching apps";
+"Try a different name or bundle ID." = "Try a different name or bundle ID.";
+"Running" = "Running";
+"Press Return to open" = "Press Return to open";
+"App Center" = "App Center";
+"%d apps" = "%d apps";
+"Pin to slot %d" = "Pin to slot %d";
 
 /* About tab */
 "Radial app launcher for macOS — point a direction, switch apps." = "Radial app launcher for macOS — point a direction, switch apps.";
@@ -82,6 +92,7 @@
 
 /* General — v1.1 sections */
 "Summon position & ranking" = "Summon position & ranking";
+"Summon & triggers" = "Summon & triggers";
 "Trigger" = "Trigger";
 "Hold the chord to summon, release to commit. Or double-tap the auxiliary key — the second press must land within the gap window." = "Hold the chord to summon, release to commit. Or double-tap the auxiliary key — the second press must land within the gap window.";
 "Double-tap trigger" = "Double-tap trigger";
@@ -108,6 +119,8 @@
 "Reset layout" = "Reset layout";
 
 "Startup & diagnostics" = "Startup & diagnostics";
+"Startup" = "Startup";
+"Diagnostics" = "Diagnostics";
 "Welcome guide" = "Welcome guide";
 "Replay" = "Replay";
 "Onboarding overlay" = "Onboarding overlay";
@@ -164,6 +177,8 @@
 
 /* v1.3.0 Profile deepening */
 "Profile settings for %@" = "Profile settings for %@";
+"Scenes" = "Scenes";
+"Active scene" = "Active scene";
 "Slots for this profile" = "Slots for this profile";
 "Tint" = "Tint";
 "No tint" = "No tint";
@@ -174,3 +189,9 @@
 "Click to switch · double-click to rename · drag to reorder" = "Click to switch · double-click to rename · drag to reorder";
 "%@ · drag to swap slots" = "%@ · drag to swap slots";
 "Auto · drop an app here to move it" = "Auto · drop an app here to move it";
+"Summon, triggers, and appearance" = "Summon, triggers, and appearance";
+"Profiles, slots, and app bindings" = "Profiles, slots, and app bindings";
+"Keep Halo out of selected apps" = "Keep Halo out of selected apps";
+"Customize Action Arc chips" = "Customize Action Arc chips";
+"Version, diagnostics, and links" = "Version, diagnostics, and links";
+"Choose which apps should keep Halo out of the way." = "Choose which apps should keep Halo out of the way.";

@@ -128,7 +128,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in self?.applyPreferences() }
         }
         applyPreferences()
-        refreshSlots()
 
         let monitor = DoubleTapMonitor(
             trigger: prefs.doubleTapTrigger,
@@ -1008,6 +1007,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         state.gridState.loadApps(usageRecords: records, runningBundleIDs: runningIDs)
         state.isGridMode = true
         state.activeProfileID = GridProfile.id
+        window.pauseCursorTracking()
         // Bring up the grid panel first so its alpha animation can run
         // alongside the wheel's fade-out.
         gridWindow.summon()
@@ -1055,6 +1055,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         gridWindow.dismiss(animated: true)
         state.gridState.resetViewport()
+        window.resumeCursorTracking()
     }
 
     // MARK: - Action Arc (layer 2 — tap-toggle, not hold)
@@ -1209,34 +1210,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // here — that toggle gates slot cycling; grid pan is a
             // separate affordance.
             if self.state.isGridMode {
-                let dx = event.scrollingDeltaX
-                let dy = event.scrollingDeltaY
-                if dx != 0 || dy != 0 {
-                    guard self.state.gridState.draggingBundleID == nil else { return nil }
-                    let gs = self.state.gridState
-                    let proposed = CGSize(
-                        width:  gs.panOffset.width  + dx,
-                        height: gs.panOffset.height + dy
-                    )
-                    // Clamp inline — same limits the pan gesture uses.
-                    // viewSize comes from the live panel frame so this
-                    // stays correct across screen / zoom changes.
-                    let viewSize = self.gridWindow.panel.contentView?.bounds.size ?? .zero
-                    let zoomLevel = gs.zoomLevel
-                    let panelScale = HaloUI.Geometry.panelScale
-                    let spacing   = HoneycombGridView.baseSpacing * zoomLevel * panelScale
-                    let iconSize  = HoneycombGridView.baseIconSize * zoomLevel * panelScale
-                    let vStretch: CGFloat = 1.18
-                    let count = max(gs.filteredApps.count, 1)
-                    let layout = HoneycombGeometry.spiralLayout(count: count)
-                    let bounds = HoneycombGeometry.layoutBounds(
-                        layout: layout, spacing: spacing, verticalStretch: vStretch)
-                    let maxX = max(0, viewSize.width  / 2 + bounds.width  / 2 - iconSize / 2)
-                    let maxY = max(0, viewSize.height / 2 + bounds.height / 2 - iconSize / 2)
-                    gs.panOffset = CGSize(
-                        width:  max(-maxX, min(maxX,  proposed.width)),
-                        height: max(-maxY, min(maxY, proposed.height))
-                    )
+                guard self.state.gridState.draggingBundleID == nil else { return nil }
+                let gs = self.state.gridState
+                let viewSize = self.gridWindow.panel.contentView?.bounds.size ?? .zero
+
+                // Trackpad vs mouse-wheel: `hasPreciseScrollingDeltas` is
+                // "pixel vs line" — a Magic Mouse reports precise too, so it
+                // can't tell the two apart. `phase`/`momentumPhase` can: a
+                // trackpad emits scroll phases (.began/.changed/.ended) and
+                // momentum; a classic wheel emits neither.
+                let isTrackpad = event.phase != [] || event.momentumPhase != []
+                if isTrackpad {
+                    // Trackpad two-finger scroll → PAN the cluster (spec:
+                    // "触控板双指移动时拖动").
+                    let dx = event.scrollingDeltaX
+                    let dy = event.scrollingDeltaY
+                    if dx != 0 || dy != 0 {
+                        let proposed = CGSize(
+                            width:  gs.panOffset.width  + dx,
+                            height: gs.panOffset.height + dy
+                        )
+                        // Clamp inline — same limits the pan gesture uses.
+                        let zoomLevel = gs.zoomLevel
+                        let panelScale = HaloUI.Geometry.panelScale
+                        let spacing   = HoneycombGridView.baseSpacing * zoomLevel * panelScale
+                        let iconSize  = HoneycombGridView.baseIconSize * zoomLevel * panelScale
+                        let vStretch: CGFloat = 1.18
+                        let count = max(gs.filteredApps.count, 1)
+                        let layout = HoneycombGeometry.spiralLayout(count: count)
+                        let bounds = HoneycombGeometry.layoutBounds(
+                            layout: layout, spacing: spacing, verticalStretch: vStretch)
+                        let maxX = max(0, viewSize.width  / 2 + bounds.width  / 2 - iconSize / 2)
+                        let maxY = max(0, viewSize.height / 2 + bounds.height / 2 - iconSize / 2)
+                        gs.panOffset = CGSize(
+                            width:  max(-maxX, min(maxX,  proposed.width)),
+                            height: max(-maxY, min(maxY, proposed.height))
+                        )
+                    }
+                } else {
+                    // Physical mouse wheel → ZOOM (spec: "鼠标滚轮事件为
+                    // 缩放大小"). Scroll up (dy>0) zooms in. Precise wheels
+                    // (Magic Mouse) send big px deltas, line wheels send
+                    // small counts — normalise each to a gentle step.
+                    let dy = event.scrollingDeltaY
+                    if dy != 0 {
+                        let unit: CGFloat = event.hasPreciseScrollingDeltas ? 0.004 : 0.08
+                        gs.applyWheelZoom(delta: CGFloat(dy) * unit, in: viewSize)
+                    }
                 }
                 return nil
             }

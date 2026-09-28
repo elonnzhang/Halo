@@ -37,7 +37,9 @@ public final class GridState: ObservableObject {
         }
     }
 
-    @Published public var apps: [GridApp] = []
+    @Published public var apps: [GridApp] = [] {
+        didSet { invalidateFilteredAppsCache() }
+    }
     /// 1.0 = canonical layout. The view multiplies hex spacing + icon
     /// size by this. Bounds are enforced in the gesture path so the
     /// state itself stays "whatever you set," matching how `panOffset`
@@ -56,7 +58,9 @@ public final class GridState: ObservableObject {
     @Published public var isLoading: Bool = false
     /// Live search input. Updates filtered list + drives the search
     /// chip's appearance. Cleared on `resetViewport()`.
-    @Published public var searchQuery: String = ""
+    @Published public var searchQuery: String = "" {
+        didSet { invalidateFilteredAppsCache() }
+    }
     /// Latches to true on commit so the view can play the launch
     /// burst before the panel fades. Resets on `resetViewport()`.
     @Published public var committingBundleID: String?
@@ -71,14 +75,32 @@ public final class GridState: ObservableObject {
     /// Apps after the search filter is applied. Empty query → full
     /// list; otherwise case-insensitive substring match against name
     /// then bundleID. Sort order is preserved.
+    private var filteredAppsCache: [GridApp]?
+    private var filteredAppsCacheQuery: String?
+
     public var filteredApps: [GridApp] {
-        let q = searchQuery.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return apps }
-        let needle = q.lowercased()
-        return apps.filter { app in
+        let query = searchQuery.trimmingCharacters(in: .whitespaces)
+        if filteredAppsCacheQuery == query, let cached = filteredAppsCache {
+            return cached
+        }
+        guard !query.isEmpty else {
+            filteredAppsCacheQuery = query
+            filteredAppsCache = apps
+            return apps
+        }
+        let needle = query.lowercased()
+        let filtered = apps.filter { app in
             app.name.lowercased().contains(needle)
                 || app.bundleID.lowercased().contains(needle)
         }
+        filteredAppsCacheQuery = query
+        filteredAppsCache = filtered
+        return filtered
+    }
+
+    private func invalidateFilteredAppsCache() {
+        filteredAppsCache = nil
+        filteredAppsCacheQuery = nil
     }
 
     public init() {}
@@ -252,6 +274,17 @@ public final class GridState: ObservableObject {
         }
     }
 
+    /// Discrete zoom step from the scroll wheel (mouse wheel = zoom in the
+    /// grid). `delta` is a signed increment; the result is clamped to the
+    /// same 0.5–2.5 range the pinch gesture uses. Pan is *not* re-clamped
+    /// here — the view's `onChange(of: zoomLevel)`/pan safety net handles
+    /// that once the new bounds are known.
+    public func applyWheelZoom(delta: CGFloat, in viewSize: CGSize) {
+        let target = max(0.5, min(2.5, zoomLevel + delta))
+        guard target != zoomLevel else { return }
+        zoomLevel = target
+    }
+
     /// Reset transient view state without touching the cached `apps`.
     /// Called when leaving grid mode so the next entry is fresh.
     public func resetViewport() {
@@ -325,6 +358,8 @@ public final class GridState: ObservableObject {
         if let id = selectedBundleID,
            !filteredApps.contains(where: { $0.bundleID == id }) {
             selectedBundleID = filteredApps.first?.bundleID
+        } else if selectedBundleID == nil {
+            selectedBundleID = filteredApps.first?.bundleID
         }
     }
 
@@ -334,6 +369,8 @@ public final class GridState: ObservableObject {
         searchQuery.removeLast()
         if let id = selectedBundleID,
            !filteredApps.contains(where: { $0.bundleID == id }) {
+            selectedBundleID = filteredApps.first?.bundleID
+        } else if selectedBundleID == nil {
             selectedBundleID = filteredApps.first?.bundleID
         }
     }

@@ -2,6 +2,7 @@
 "General" = "通用";
 "Hotkey" = "快捷键";
 "Apps" = "应用";
+"Actions" = "操作";
 "About" = "关于";
 
 /* General tab */
@@ -69,6 +70,15 @@
 /* App picker sheet */
 "Search apps" = "搜索应用";
 "Cancel" = "取消";
+"Running now" = "正在运行";
+"All applications" = "全部应用";
+"No matching apps" = "没有匹配的应用";
+"Try a different name or bundle ID." = "请尝试其他名称或 Bundle ID。";
+"Running" = "运行中";
+"Press Return to open" = "按 Return 打开";
+"App Center" = "应用中心";
+"%d apps" = "%d 个应用";
+"Pin to slot %d" = "选择到槽位 %d";
 
 /* About tab */
 "Radial app launcher for macOS — point a direction, switch apps." = "macOS 环形启动器——指一个方向,切换应用。";
@@ -80,6 +90,7 @@
 
 /* General — v1.1 sections */
 "Summon position & ranking" = "召唤位置与排序";
+"Summon & triggers" = "召唤与触发";
 "Trigger" = "触发键";
 "Hold the chord to summon, release to commit. Or double-tap the auxiliary key — the second press must land within the gap window." = "按住组合键召唤,松开提交。或单独双击辅助键——两次按下需在间隔窗口内完成。";
 "Double-tap trigger" = "双击触发键";
@@ -106,6 +117,8 @@
 "Reset layout" = "重置布局";
 
 "Startup & diagnostics" = "启动与诊断";
+"Startup" = "启动";
+"Diagnostics" = "诊断";
 "Welcome guide" = "欢迎引导";
 "Replay" = "重新播放";
 "Onboarding overlay" = "首次提示蒙层";
@@ -163,6 +176,8 @@
 
 /* v1.3.0 Profile deepening — 多 profile 字段下沉 */
 "Profile settings for %@" = "%@ 的设置";
+"Scenes" = "场景";
+"Active scene" = "当前场景";
 "Slots for this profile" = "本场景的槽位数";
 "Tint" = "环境色";
 "No tint" = "无";
@@ -173,3 +188,9 @@
 "Click to switch · double-click to rename · drag to reorder" = "点击切换 · 双击重命名 · 拖动可重排";
 "%@ · drag to swap slots" = "%@ · 拖到其它槽位可互换";
 "Auto · drop an app here to move it" = "自动 · 把另一个槽位拖到这里完成移动";
+"Summon, triggers, and appearance" = "召唤、触发与外观";
+"Profiles, slots, and app bindings" = "场景、槽位与应用绑定";
+"Keep Halo out of selected apps" = "在选定应用中暂停 Halo";
+"Customize Action Arc chips" = "自定义 Action Arc 操作芯片";
+"Version, diagnostics, and links" = "版本、诊断与链接";
+"Choose which apps should keep Halo out of the way." = "选择需要暂时避开 Halo 的应用。";

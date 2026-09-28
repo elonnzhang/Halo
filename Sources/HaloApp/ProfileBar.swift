@@ -39,6 +39,7 @@ struct ProfileBar: View {
                 pill(profile, index: idx)
             }
             addButton
+            showAllTab
             Spacer(minLength: 8)
             Text(metaText)
                 .font(.system(size: 11))
@@ -62,6 +63,25 @@ struct ProfileBar: View {
         } message: {
             Text("This profile's pins and identity colours will be removed. Global settings are unaffected.")
         }
+    }
+
+    /// "Show ALL" rendered as a left-aligned tab beside the scene pills.
+    /// It belongs in this row because it adds a built-in ALL pill to the
+    /// same switcher; keeping it next to the pills (rather than floating
+    /// on the trailing edge) keeps it visible when the window narrows.
+    private var showAllTab: some View {
+        Toggle(isOn: Binding(
+            get: { prefs.showAllProfile },
+            set: { prefs.showAllProfile = $0 }
+        )) {
+            Text("Show ALL")
+                .font(.system(size: 12, weight: .medium))
+        }
+        .toggleStyle(.switch)
+        .controlSize(.mini)
+        .fixedSize()
+        .help("Adds a built-in profile that opens a watchOS-style grid of every installed app. Tab to switch to it.")
+        .padding(.leading, 4)
     }
 
     // MARK: - Pill

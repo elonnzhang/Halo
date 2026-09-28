@@ -46,6 +46,11 @@ public struct HoneycombGridView: View {
     /// big icons multiply N shadow passes per frame.
     @State private var isInteracting: Bool = false
     @State private var interactionIdleTask: Task<Void, Never>?
+    /// Transient GPU-only zoom applied during a live pinch. The cluster is
+    /// scaled with `.scaleEffect` (cheap) instead of relaying out every
+    /// magnification frame; on gesture end this folds into
+    /// `gridState.zoomLevel` for a single real relayout. 1.0 = no live zoom.
+    @State private var liveZoomScale: CGFloat = 1.0
 
     public init(state: HaloState) {
         self.state = state
@@ -62,7 +67,9 @@ public struct HoneycombGridView: View {
                 } else {
                     grid(in: proxy.size)
                 }
+                appCenterHeader
                 searchChip(in: proxy.size)
+                selectionBadge(in: proxy.size)
                 profileStripOverlay(viewSize: proxy.size)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
@@ -73,6 +80,17 @@ public struct HoneycombGridView: View {
             // from any source (external state, zoom end, etc.).
             .onChange(of: gridState.panOffset) { _ in
                 clampPanOffset(in: proxy.size)
+            }
+            // Wheel zoom mutates zoomLevel directly on GridState (bypassing
+            // the pinch gesture); keep pinchBaseline in sync and re-clamp
+            // pan so the resized cluster can't leave the pan beyond limits.
+            .onChange(of: gridState.zoomLevel) { newValue in
+                pinchBaseline = newValue
+                clampPanOffset(in: proxy.size)
+                // Wheel zoom relayouts per event; drop shadow blur during
+                // the burst so a fast spin stays smooth (auto-clears 120ms
+                // after the last notch).
+                bumpInteraction()
             }
             .onAppear {
                 pinchBaseline = gridState.zoomLevel
@@ -159,6 +177,35 @@ public struct HoneycombGridView: View {
         }
     }
 
+    @ViewBuilder
+    private var appCenterHeader: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "square.grid.3x3.fill")
+                .font(.system(size: 13, weight: .semibold))
+            VStack(alignment: .leading, spacing: 0) {
+                Text("App Center")
+                    .font(.system(size: 12, weight: .semibold))
+                if !gridState.apps.isEmpty {
+                    Text(String.localizedStringWithFormat(
+                        NSLocalizedString("%d apps", comment: "App Center catalogue count"),
+                        gridState.apps.count
+                    ))
+                        .font(.system(size: 10, weight: .medium).monospacedDigit())
+                        .foregroundStyle(Color.white.opacity(0.55))
+                }
+            }
+        }
+        .foregroundStyle(Color.white.opacity(0.88))
+        .padding(.horizontal, 11)
+        .padding(.vertical, 7)
+        .background(Capsule(style: .continuous).fill(.ultraThinMaterial))
+        .overlay(Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.10), lineWidth: 0.6))
+        .padding(.top, 24)
+        .padding(.leading, 24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .allowsHitTesting(false)
+    }
+
     // MARK: - Grid geometry
 
     /// Centre icons land in the high-80s after focus lift; rim icons can
@@ -174,7 +221,9 @@ public struct HoneycombGridView: View {
         Self.baseIconSize * gridState.zoomLevel * HaloUI.Geometry.panelScale
     }
     private var spacing: CGFloat {
-        Self.baseSpacing * gridState.zoomLevel * HaloUI.Geometry.panelScale
+        let base = Self.baseSpacing * gridState.zoomLevel * HaloUI.Geometry.panelScale
+        guard !gridState.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty else { return base }
+        return max(base, (iconSize + 48) * 1.08)
     }
     private var verticalSpacingStretch: CGFloat { 1.18 }
 
@@ -263,7 +312,7 @@ public struct HoneycombGridView: View {
             )
             return PositionedCell(app: app, position: focused, stripFade: stripFade)
         }
-        let frameProjectionStrength: CGFloat = gridState.searchQuery.isEmpty ? 0.14 : 0.08
+        let frameProjectionStrength: CGFloat = gridState.searchQuery.isEmpty ? 0.14 : 0
         let launchAnchor = gridState.committingBundleID.flatMap { committing in
             cells.first(where: { $0.id == committing })?.position
         }
@@ -272,6 +321,7 @@ public struct HoneycombGridView: View {
             ForEach(cells, id: \.id) { cell in
                 iconCell(
                     app: cell.app,
+                    appCount: list.count,
                     position: cell.position,
                     viewCentre: viewCentre,
                     fisheyeRadius: fisheyeRadius,
@@ -289,7 +339,11 @@ public struct HoneycombGridView: View {
         .animation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.78), value: gridState.searchQuery)
         .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.74), value: gridState.apps)
         .opacity(gridState.committingBundleID == nil ? appearProgress : (commitPulse ? 0.96 : 0.12))
-        .scaleEffect(0.78 + 0.22 * appearProgress)
+        // Live pinch multiplies the whole cluster on the GPU; committed
+        // zoom (gridState.zoomLevel) drives the real hex relayout. Keeping
+        // the transient scale here means a pinch is one scaleEffect per
+        // frame instead of an adaptiveSpiralLayout + 100-cell reflow.
+        .scaleEffect((0.78 + 0.22 * appearProgress) * liveZoomScale)
         .onAppear {
             refreshCellFrames(cells: cells, viewCentre: viewCentre,
                               fisheyeRadius: fisheyeRadius, strength: frameProjectionStrength)
@@ -349,17 +403,7 @@ public struct HoneycombGridView: View {
     ) -> CGPoint {
         let q = query.trimmingCharacters(in: .whitespaces)
         guard !q.isEmpty else { return flatPosition }
-        let normalized = q.lowercased()
-        let matchStrength: CGFloat = app.name.lowercased().hasPrefix(normalized)
-            || app.bundleID.lowercased().hasPrefix(normalized)
-            ? 0.82
-            : 0.58
-        return HoneycombGeometry.searchAttractedPosition(
-            flatPosition: flatPosition,
-            viewCenter: viewCentre,
-            index: index,
-            strength: matchStrength
-        )
+        return flatPosition
     }
 
 
@@ -432,6 +476,7 @@ public struct HoneycombGridView: View {
     @ViewBuilder
     private func iconCell(
         app: GridState.GridApp,
+        appCount: Int,
         position: CGPoint,
         viewCentre: CGPoint,
         fisheyeRadius: CGFloat,
@@ -440,12 +485,12 @@ public struct HoneycombGridView: View {
     ) -> some View {
         let focusPoint = focusPoint(viewCentre: viewCentre)
         let distance = distance(from: position, to: focusPoint)
-        let scale = projectedScale(for: position, viewCentre: viewCentre, fisheyeRadius: fisheyeRadius)
+        let scale = projectedScale(for: position, appCount: appCount, viewCentre: viewCentre, fisheyeRadius: fisheyeRadius)
         let baseProjection = HoneycombGeometry.fisheyeOffset(
             position: position,
             viewCenter: focusPoint,
             maxRadius: fisheyeRadius,
-            strength: gridState.searchQuery.isEmpty ? 0.12 : 0.06
+            strength: gridState.searchQuery.isEmpty ? 0.12 : 0
         )
         let isSelected = gridState.selectedBundleID == app.bundleID
         let isCommitting = gridState.committingBundleID == app.bundleID
@@ -556,19 +601,20 @@ public struct HoneycombGridView: View {
 
     private func projectedScale(
         for position: CGPoint,
+        appCount: Int,
         viewCentre: CGPoint,
         fisheyeRadius: CGFloat
     ) -> CGFloat {
         let focus = focusPoint(viewCentre: viewCentre)
         let distance = distance(from: position, to: focus)
-        let dynamicMinScale = minimumScale(for: gridState.filteredApps.count)
+        let dynamicMinScale = minimumScale(for: appCount)
         let baseScale = HoneycombGeometry.fisheyeScale(
             distance: distance,
             maxRadius: fisheyeRadius,
             minScale: gridState.searchQuery.isEmpty ? dynamicMinScale : 0.70,
             curve: 1.16
         )
-        let centreLift = 1 + centerLift(for: gridState.filteredApps.count)
+        let centreLift = 1 + centerLift(for: appCount)
             * pow(max(0, 1 - distance / max(fisheyeRadius, 1)), 1.08)
         return baseScale * centreLift
     }
@@ -726,6 +772,49 @@ public struct HoneycombGridView: View {
         }
     }
 
+    @ViewBuilder
+    private func selectionBadge(in viewSize: CGSize) -> some View {
+        if let selectedID = gridState.selectedBundleID,
+           let selected = gridState.apps.first(where: { $0.bundleID == selectedID }) {
+            let badge = HStack(spacing: 8) {
+                if let icon = AppIconResolver.icon(for: selected.bundleID) {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .frame(width: 22, height: 22)
+                }
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(selected.name)
+                        .font(.system(size: 13, weight: .semibold))
+                        .lineLimit(1)
+                    Text("Press Return to open")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Color.white.opacity(0.55))
+                }
+            }
+            .foregroundStyle(Color.white.opacity(0.95))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .background(Capsule(style: .continuous).fill(.ultraThinMaterial))
+            .overlay(Capsule(style: .continuous).strokeBorder(Color.white.opacity(0.12), lineWidth: 0.6))
+            .shadow(color: .black.opacity(0.36), radius: 8, y: 2)
+            .fixedSize()
+            .allowsHitTesting(false)
+
+            // Fixed bottom-centre position (spec: "应用名称在下面固定
+            // 显示"). The *content* already follows the cursor because
+            // `selectedBundleID` is driven by each cell's `onHover`, so the
+            // badge stays put while its name/icon update as the pointer
+            // moves between apps.
+            badge
+                .padding(.bottom, 28)
+                .frame(maxWidth: .infinity, alignment: .top)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                // Cross-fade the content on selection change instead of the
+                // slide-up, so a moving cursor doesn't make the pill jump.
+                .animation(.easeOut(duration: 0.10), value: selectedID)
+        }
+    }
+
     // MARK: - Profile strip overlay (locked to wheel position)
 
     @ViewBuilder
@@ -855,16 +944,24 @@ public struct HoneycombGridView: View {
         MagnificationGesture()
             .onChanged { mag in
                 bumpInteraction()
-                let next = pinchBaseline * mag
-                gridState.zoomLevel = max(0.5, min(2.5, next))
+                // During the gesture, only touch the cheap transient scale.
+                // Clamp the *effective* zoom so the live preview matches the
+                // committed bounds the user will land on.
+                let effective = max(0.5, min(2.5, pinchBaseline * mag))
+                liveZoomScale = effective / pinchBaseline
             }
             .onEnded { _ in
-                pinchBaseline = gridState.zoomLevel
-                // Zoom changes cluster size → re-clamp so an out-zoomed
-                // cluster doesn't leave panOffset beyond the new limits.
+                // Fold the transient scale into the real zoom once, then
+                // reset the multiplier — a single relayout instead of one
+                // per frame.
+                let target = max(0.5, min(2.5, pinchBaseline * liveZoomScale))
+                gridState.zoomLevel = target
+                pinchBaseline = target
+                liveZoomScale = 1.0
                 clampPanOffset(in: viewSize)
             }
     }
+
 }
 
 // MARK: - Single icon cell

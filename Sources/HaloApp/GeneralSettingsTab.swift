@@ -26,11 +26,13 @@ struct GeneralTab: View {
     @ViewBuilder
     private var nativeForm: some View {
         Form {
-            // Slot count, ambient tint, and ranking strategy all moved
-            // per-profile in v1.3.0 — they live under Apps now. This
-            // section keeps only user-global summon behaviour and
-            // surfaces a pointer for the per-profile knobs.
-            Section("Summon") {
+            // General is user-global behaviour, grouped top-down as
+            // Summon & triggers -> Navigation -> Appearance -> Sound ->
+            // Startup -> Diagnostics -> Language. Slot count, tint, and
+            // ranking are per-profile (Apps tab); this tab only keeps a
+            // pointer to them. "Show ALL profile" also lives under Apps
+            // since it is a profile-scoped switch.
+            Section {
                 Picker("Summon position", selection: Binding(
                     get: { prefs.summonPosition },
                     set: { prefs.summonPosition = $0 }
@@ -41,9 +43,7 @@ struct GeneralTab: View {
                 .pickerStyle(.segmented)
 
                 perProfilePointer
-            }
 
-            Section {
                 LabeledContent {
                     HStack(spacing: 8) {
                         Text("\(prefs.hotkeyModifiers.symbols)\(KeyName.label(for: prefs.hotkeyKeyCode))")
@@ -97,7 +97,7 @@ struct GeneralTab: View {
                     Text("Double-tap gap")
                 }
             } header: {
-                Text("Trigger")
+                Text("Summon & triggers")
             } footer: {
                 Text("Hold the chord to summon, release to commit. Or double-tap the auxiliary key — the second press must land within the gap window.")
             }
@@ -129,37 +129,10 @@ struct GeneralTab: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                Toggle(isOn: Binding(
-                    get: { prefs.showAllProfile },
-                    set: { prefs.showAllProfile = $0 }
-                )) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Show ALL profile")
-                        Text("Adds a built-in profile that opens a watchOS-style grid of every installed app. Tab to switch to it.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
             } header: {
                 Text("Navigation")
             } footer: {
                 Text("Scroll wheel cycles slots with the highlighted one as anchor.")
-            }
-
-            Section {
-                Toggle(isOn: Binding(
-                    get: { prefs.soundEffectsEnabled },
-                    set: { prefs.soundEffectsEnabled = $0 }
-                )) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Enable sound effects")
-                        Text("Plays on summon, slot slide, and commit. Uses system sounds.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            } header: {
-                Text("Sound")
             }
 
             Section {
@@ -210,7 +183,23 @@ struct GeneralTab: View {
                 Text("Theme applies app-wide — Settings, Halo wheel, welcome card, and alerts all follow.")
             }
 
-            Section("Startup & diagnostics") {
+            Section {
+                Toggle(isOn: Binding(
+                    get: { prefs.soundEffectsEnabled },
+                    set: { prefs.soundEffectsEnabled = $0 }
+                )) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Enable sound effects")
+                        Text("Plays on summon, slot slide, and commit. Uses system sounds.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Sound")
+            }
+
+            Section("Startup") {
                 Toggle("Launch Halo at login", isOn: Binding(
                     get: { prefs.autostart },
                     set: {
@@ -218,6 +207,9 @@ struct GeneralTab: View {
                         LaunchAgentManager.apply(enabled: $0)
                     }
                 ))
+            }
+
+            Section("Diagnostics") {
                 LabeledContent("Welcome guide") {
                     Button("Replay") {
                         (NSApp.delegate as? AppDelegate)?.replayWelcome()
@@ -279,7 +271,7 @@ struct GeneralTab: View {
         Form {
             // Slot count, tint, and ranking moved per-profile; legacy
             // form mirrors the native form's pointer.
-            Section("Summon") {
+            Section("Summon & triggers") {
                 Picker("Summon position", selection: Binding(
                     get: { prefs.summonPosition },
                     set: { prefs.summonPosition = $0 }
@@ -289,8 +281,6 @@ struct GeneralTab: View {
                 }
                 .pickerStyle(.segmented)
                 perProfilePointer
-            }
-            Section("Trigger") {
                 HStack {
                     Text("Summon hotkey")
                     Spacer()
@@ -336,16 +326,6 @@ struct GeneralTab: View {
                 Toggle("Highlight frontmost on summon", isOn: Binding(
                     get: { prefs.highlightFrontmostOnSummon },
                     set: { prefs.highlightFrontmostOnSummon = $0 }
-                ))
-                Toggle("Show ALL profile", isOn: Binding(
-                    get: { prefs.showAllProfile },
-                    set: { prefs.showAllProfile = $0 }
-                ))
-            }
-            Section("Sound") {
-                Toggle("Enable sound effects", isOn: Binding(
-                    get: { prefs.soundEffectsEnabled },
-                    set: { prefs.soundEffectsEnabled = $0 }
                 ))
             }
             Section("Appearance & wheel layout") {
@@ -401,7 +381,13 @@ struct GeneralTab: View {
                 }
                 Button("Reset wheel layout") { prefs.resetLayout() }
             }
-            Section("Startup & diagnostics") {
+            Section("Sound") {
+                Toggle("Enable sound effects", isOn: Binding(
+                    get: { prefs.soundEffectsEnabled },
+                    set: { prefs.soundEffectsEnabled = $0 }
+                ))
+            }
+            Section("Startup") {
                 Toggle("Launch Halo at login", isOn: Binding(
                     get: { prefs.autostart },
                     set: {
@@ -409,6 +395,8 @@ struct GeneralTab: View {
                         LaunchAgentManager.apply(enabled: $0)
                     }
                 ))
+            }
+            Section("Diagnostics") {
                 Button("Replay welcome guide") {
                     (NSApp.delegate as? AppDelegate)?.replayWelcome()
                 }

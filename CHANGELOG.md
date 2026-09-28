@@ -4,6 +4,16 @@ All notable changes to Halo.
 
 ## [Unreleased]
 
+### ALL grid interaction
+
+- The ALL grid now separates pointer devices: two-finger **trackpad** scroll pans the cluster, while a **mouse wheel** zooms (detected via scroll `phase`/`momentumPhase` rather than the unreliable `hasPreciseScrollingDeltas`). Pinch-to-zoom now applies a transient GPU `scaleEffect` during the gesture and folds into a single relayout on release, so zooming stays smooth on large catalogues; shadow blur is also suppressed during zoom/pan bursts.
+- The bottom app-name badge is fixed at the bottom-centre and its icon + name follow the hovered app. Enabled `acceptsMouseMovedEvents` on the grid's borderless panel so SwiftUI `.onHover` fires on cursor movement (previously it only updated on click).
+
+### Settings layout
+
+- Reorganized Settings → General into a clearer top-down flow: **Summon & triggers → Navigation → Appearance & wheel layout → Sound → Startup → Diagnostics → Language**. The previously separate "Summon" and "Trigger" sections merged into one "Summon & triggers" group (summon position, hotkey, and double-tap trigger all answer "how do I bring Halo up?"), and the old "Startup & diagnostics" section split into **Startup** (login item only) and **Diagnostics** (replay welcome, reset onboarding, export log) so everyday toggles no longer sit next to troubleshooting entries.
+- Moved the **Show ALL profile** toggle out of General → Navigation and into Settings → Apps, directly under the profile bar. It is a profile-scoped switch, so it now lives beside the other profile controls instead of among the wheel-navigation options.
+
 ### Profile deepening
 
 - Profiles now own **slot count**, **ambient tint**, and **frequency ranking** (MFU / Balanced / MRU) per scene. Switching profile re-sizes the wheel, re-tints the idle glow, and re-ranks Top-N immediately. Reverses the v1.2 split (where ranking was global) — see `docs/superpowers/specs/2026-05-14-multi-profile-design.md` §3.
@@ -21,6 +31,19 @@ All notable changes to Halo.
 ### Performance
 
 - The ALL grid pans and zooms noticeably smoother, especially on large app catalogues. `HoneycombGeometry.spiralLayout` — recomputed every pan / zoom frame for the cluster bounds and inside `adaptiveSpiralLayout` / `filteredSpiralLayout` — is now memoized by `count`, so the `(2·radius+1)²` candidate-grid sort that dominated each frame collapses to a dictionary hit (`adaptiveSpiralLayout` dropped from ~0.12 ms to ~0.00–0.01 ms per frame in `HALO_PERF_LOG`). The per-cell hit-test frame reduce — which allocated a throwaway `[bundleID: CGRect]` every render — was also lifted out of `grid()`'s body into the list-change / appear handlers, so it no longer runs on each gesture frame. Behaviour is unchanged; the cluster layout and hit-testing are byte-identical.
+- Action Arc bindings are now decoded once per `AppPreferences` instance and served from an in-memory cache, avoiding repeated JSON work while Settings rows and arc content are recomputed.
+- Frequency ties now use bundle ID as a deterministic final key, preventing equal-score apps from changing slots across cold launches.
+- ALL grid search results are cached until the app catalogue or query changes, removing repeated full-catalogue filtering during per-cell projection and gesture-driven redraws.
+- Startup no longer runs the initial slot refresh twice; `applyPreferences()` already performs the refresh, removing duplicate usage decoding and identity-colour resolution during launch.
+- `UsageStore` now memoizes its decoded rolling log while preserving serialized UserDefaults writes, avoiding repeated JSON decoding during bursty activation refreshes.
+
+### App center and pinning
+
+- The Pin to Slot picker now promotes currently running apps into a dedicated section, keeps Return aligned with the first visible row, and shows a compact running indicator on each matching row.
+- Empty search results now have a clear Finder-style state instead of leaving a blank list.
+- Pin to Slot is now presented as a spacious adaptive app grid with icon-first tiles, two-line names, and a larger browsing window; the layout surfaces more candidates per viewport while retaining alphabetical grouping and keyboard-first picking.
+- The ALL honeycomb now identifies itself as App Center, shows the catalogue size, and surfaces the selected app with a lightweight bottom action hint. Search selection starts at the first match so Return opens the visible result.
+- Search attraction is gentler so matched icons keep watchOS-like focus without collapsing into an overlapping centre cluster.
 
 ### Fixes
 
