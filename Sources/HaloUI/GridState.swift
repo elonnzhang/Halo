@@ -72,6 +72,33 @@ public final class GridState: ObservableObject {
     /// target, but not committed to storage yet.
     @Published public var dropTargetBundleID: String?
 
+    /// Projected (post-fisheye) hit-test frames for the currently visible
+    /// cells, in SwiftUI view coordinates (top-left origin, y-down). Written
+    /// by the view's layout pass; read by the grid window's cursor-poll timer
+    /// to resolve which app the pointer is over. Plain (not `@Published`) so
+    /// updating it every layout doesn't churn the view.
+    public var cellFrames: [String: CGRect] = [:]
+
+    /// Resolve the hovered app from a cursor point (view coordinates) and set
+    /// it as the selection so the bottom name badge follows the pointer.
+    /// Picks the cell whose frame contains the point, else the nearest within
+    /// a small radius. No-op while dragging.
+    public func hoverSelect(at point: CGPoint, iconSize: CGFloat) {
+        guard draggingBundleID == nil else { return }
+        var best: (id: String, d: CGFloat)?
+        for (id, frame) in cellFrames {
+            if frame.contains(point) { best = (id, 0); break }
+            let dx = frame.midX - point.x
+            let dy = frame.midY - point.y
+            let d = (dx * dx + dy * dy).squareRoot()
+            if d < iconSize * 0.6, best == nil || d < best!.d {
+                best = (id, d)
+            }
+        }
+        let next = best?.id
+        if selectedBundleID != next { selectedBundleID = next }
+    }
+
     /// Apps after the search filter is applied. Empty query → full
     /// list; otherwise case-insensitive substring match against name
     /// then bundleID. Sort order is preserved.

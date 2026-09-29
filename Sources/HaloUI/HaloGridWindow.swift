@@ -24,6 +24,11 @@ public final class HaloGridWindow {
     /// `NSApp.activate(ignoringOtherApps:)` doesn't haul Settings up
     /// with the overlay.
     private var hiddenForSummon: [NSWindow] = []
+    /// 60 fps cursor poll that drives the hovered-app selection while the
+    /// grid is up. SwiftUI `.onHover` inside the borderless panel is
+    /// shadowed by the full-frame pan gesture, so we resolve hover the same
+    /// way the wheel does — poll `NSEvent.mouseLocation` and hit-test.
+    private var hoverTimer: Timer?
 
     public init(state: HaloState) {
         self.state = state
@@ -108,6 +113,8 @@ public final class HaloGridWindow {
         }
         panel.makeKey()
 
+        startHoverTimer()
+
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.16
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
@@ -115,10 +122,49 @@ public final class HaloGridWindow {
         }
     }
 
+    private func startHoverTimer() {
+        hoverTimer?.invalidate()
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.updateHover() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        hoverTimer = timer
+    }
+
+    private func stopHoverTimer() {
+        hoverTimer?.invalidate()
+        hoverTimer = nil
+    }
+
+    /// Convert the global cursor to the hosting view's coordinates (top-left
+    /// origin, y-down to match SwiftUI) and let `GridState` resolve which
+    /// app is under it. `HoneycombGridView` writes its projected cell frames
+    /// into `gridState.cellFrames` in the same coordinate space.
+    private func updateHover() {
+        guard panel.isVisible, state.isGridMode else { return }
+        let mouse = NSEvent.mouseLocation                 // screen, y-up
+        let f = panel.frame
+        guard f.contains(mouse) else {
+            if state.gridState.selectedBundleID != nil {
+                state.gridState.selectedBundleID = nil
+            }
+            return
+        }
+        // Panel origin is bottom-left (y-up). SwiftUI view space is
+        // top-left (y-down): flip y within the panel height.
+        let localX = mouse.x - f.minX
+        let localY = f.maxY - mouse.y
+        let iconSize = HoneycombGridView.baseIconSize
+            * state.gridState.zoomLevel
+            * HaloUI.Geometry.panelScale
+        state.gridState.hoverSelect(at: CGPoint(x: localX, y: localY), iconSize: iconSize)
+    }
+
     /// Hide the grid, optionally with a fade-out. The fade matches the
     /// wheel's dismiss timing (0.18s ease-in) so a Tab off-and-on of
     /// the ALL profile feels like a single coherent transition.
     public func dismiss(animated: Bool = true) {
+        stopHoverTimer()
         if animated {
             let panel = self.panel
             NSAnimationContext.runAnimationGroup({ ctx in

@@ -352,6 +352,17 @@ public struct HoneycombGridView: View {
             refreshCellFrames(cells: cells, viewCentre: viewCentre,
                               fisheyeRadius: fisheyeRadius, strength: frameProjectionStrength)
         }
+        // Hover hit-test reads `cellFrames`, so it must track pan / zoom.
+        // The reduce is a light pass over the culled (visible) cells; the
+        // heavy shadow-blur cost is separately gated by `isInteracting`.
+        .onChange(of: gridState.panOffset) { _ in
+            refreshCellFrames(cells: cells, viewCentre: viewCentre,
+                              fisheyeRadius: fisheyeRadius, strength: frameProjectionStrength)
+        }
+        .onChange(of: gridState.zoomLevel) { _ in
+            refreshCellFrames(cells: cells, viewCentre: viewCentre,
+                              fisheyeRadius: fisheyeRadius, strength: frameProjectionStrength)
+        }
         // cellFrames (consumed by hover-repel + drag drop-target lookup) is
         // refreshed only when the app list changes or on first appear — never
         // on panOffset / zoomLevel. (a) hover-repel reads a relative offset
@@ -374,7 +385,7 @@ public struct HoneycombGridView: View {
         fisheyeRadius: CGFloat,
         strength: CGFloat
     ) {
-        cellFrames = cells.reduce(into: [String: CGRect]()) { partial, cell in
+        let frames = cells.reduce(into: [String: CGRect]()) { partial, cell in
             let projection = HoneycombGeometry.fisheyeOffset(
                 position: cell.position,
                 viewCenter: viewCentre,
@@ -392,6 +403,11 @@ public struct HoneycombGridView: View {
                 height: iconSize
             )
         }
+        cellFrames = frames
+        // Mirror to GridState so the grid window's cursor-poll timer can
+        // hit-test hover against the same projected frames (SwiftUI
+        // `.onHover` is shadowed by the full-frame pan gesture).
+        gridState.cellFrames = frames
     }
 
     private func searchFocusedPosition(

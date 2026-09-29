@@ -17,6 +17,11 @@ public final class HaloWindow {
     public let panel: NSPanel
     private let state: HaloState
     private var cursorTimer: Timer?
+    /// Invalidates cursor tasks already queued on the main actor when a
+    /// summon ends. Invalidating a Timer alone does not cancel its enqueued
+    /// `Task`, so the old task could still perform one hover transition after
+    /// the target app had become frontmost.
+    private var cursorGeneration: UInt = 0
     private var previousFrontApp: NSRunningApplication?
     private var rippleWindow: NSWindow?
     /// Halo windows other than the Halo panel that were visible at summon
@@ -68,6 +73,7 @@ public final class HaloWindow {
     // MARK: - Summon / dismiss
 
     public func summon(at origin: CGPoint? = nil) {
+        cursorGeneration &+= 1
         // Recompute scaled size each summon — `panelScale` can change at
         // runtime via Settings without an app restart.
         let scaledSize = HaloUI.Geometry.scaledTotalDiameter
@@ -170,6 +176,7 @@ public final class HaloWindow {
     }
 
     public func dismiss(animated: Bool = true, restorePreviousFront: Bool = false) {
+        cursorGeneration &+= 1
         uninstallCursorTimer()
         state.phase = .hidden
         state.summonOriginBundleID = nil
@@ -255,11 +262,17 @@ public final class HaloWindow {
 
     private func installCursorTimer() {
         cursorTimer?.invalidate()
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.updateHoverFromCursor() }
+        let generation = cursorGeneration
+        // The callback remains tiny and the generation check prevents a task
+        // queued immediately before dismiss from touching the old session.
+        let guardedTimer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.cursorGeneration == generation else { return }
+                self.updateHoverFromCursor()
+            }
         }
-        RunLoop.main.add(timer, forMode: .common)
-        cursorTimer = timer
+        RunLoop.main.add(guardedTimer, forMode: .common)
+        cursorTimer = guardedTimer
     }
 
     private func uninstallCursorTimer() {
@@ -267,7 +280,23 @@ public final class HaloWindow {
         cursorTimer = nil
     }
 
+    /// Stop hover tracking while the full-screen ALL grid owns the cursor.
+    /// The wheel panel is kept alive for the cross-fade, so merely ordering it
+    /// out is not enough to prevent stale hit-tests against its old frame.
+    public func pauseCursorTracking() {
+        cursorGeneration &+= 1
+        uninstallCursorTimer()
+    }
+
+    /// Resume hover tracking after returning from the ALL grid.
+    public func resumeCursorTracking() {
+        guard state.phase != .hidden, !state.isGridMode else { return }
+        cursorGeneration &+= 1
+        installCursorTimer()
+    }
+
     private func updateHoverFromCursor() {
+        guard state.phase != .hidden, !state.isGridMode, panel.isVisible else { return }
         let mouse = NSEvent.mouseLocation
         // Panel frame is screen coords, y-up. The SwiftUI root inside the
         // panel is `scaleEffect(panelScale)`-ed, so the unscaled view
