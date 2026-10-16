@@ -855,6 +855,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         columns: cols
                     )
                     self.state.gridState.selectedBundleID = next
+                    // Keyboard selection pans the lens to the app; pointer
+                    // hover selects in place.
+                    if let next, self.state.gridState.style == .lens {
+                        self.state.gridState.lens.centre(on: next)
+                    }
                     return nil
                 }
                 // Cmd-anything stays a shortcut; don't capture as
@@ -1220,6 +1225,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard self.state.gridState.draggingBundleID == nil else { return nil }
                 let gs = self.state.gridState
                 let viewSize = self.gridWindow.panel.contentView?.bounds.size ?? .zero
+                // The lens renderer has no zoom: every scroll pans it,
+                // then it settles on the nearest app.
+                if gs.style == .lens {
+                    let lines: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 8
+                    gs.lens.scroll(by: CGSize(width: event.scrollingDeltaX * lines,
+                                              height: event.scrollingDeltaY * lines))
+                    return nil
+                }
 
                 // Trackpad vs mouse-wheel: `hasPreciseScrollingDeltas` is
                 // "pixel vs line" — a Magic Mouse reports precise too, so it

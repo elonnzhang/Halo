@@ -135,6 +135,30 @@ final class AppPreferencesTests: XCTestCase {
         XCTAssertEqual(prefs.panelScale, 1.25, accuracy: 0.001)
     }
 
+    func test_lensSettings_defaultsClampAndReset() {
+        let prefs = AppPreferences(defaults: freshDefaults())
+        XCTAssertEqual(prefs.lensTilt, 27, accuracy: 0.001)
+        XCTAssertTrue(prefs.lensEllipseAuto)
+        XCTAssertEqual(prefs.lensEllipseRatio, 1.6, accuracy: 0.001)
+        XCTAssertEqual(prefs.lensRimFade, 0.36, accuracy: 0.001)
+        prefs.lensRimFade = 2
+        XCTAssertEqual(prefs.lensRimFade, 0.8, accuracy: 0.001)
+        prefs.lensTilt = 90
+        XCTAssertEqual(prefs.lensTilt, 60, accuracy: 0.001)
+        prefs.lensTilt = -5
+        XCTAssertEqual(prefs.lensTilt, 0, accuracy: 0.001)
+        prefs.lensEllipseRatio = 0.5
+        XCTAssertEqual(prefs.lensEllipseRatio, 1, accuracy: 0.001)
+        prefs.lensEllipseRatio = 3
+        XCTAssertEqual(prefs.lensEllipseRatio, 2.2, accuracy: 0.001)
+        prefs.lensEllipseAuto = false
+        prefs.resetLens()
+        XCTAssertEqual(prefs.lensRimFade, 0.36, accuracy: 0.001)
+        XCTAssertEqual(prefs.lensTilt, 27, accuracy: 0.001)
+        XCTAssertTrue(prefs.lensEllipseAuto)
+        XCTAssertEqual(prefs.lensEllipseRatio, 1.6, accuracy: 0.001)
+    }
+
     func test_resetLayout_clearsPanelScale() {
         let prefs = AppPreferences(defaults: freshDefaults())
         prefs.panelScale = 1.40

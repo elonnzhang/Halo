@@ -152,8 +152,10 @@ public final class HaloGridWindow {
         lastHoverLocation = mouse
         let f = panel.frame
         guard f.contains(mouse) else {
-            if state.gridState.selectedBundleID != nil {
-                state.gridState.selectedBundleID = nil
+            // The lens keeps its centred app selected; the flat sheet clears.
+            let fallback = state.gridState.style == .lens ? state.gridState.lens.centredID : nil
+            if state.gridState.selectedBundleID != fallback {
+                state.gridState.selectedBundleID = fallback
             }
             return
         }

@@ -78,6 +78,13 @@
 "Try a different name or bundle ID." = "Try a different name or bundle ID.";
 "Running" = "Running";
 "Press Return to open" = "Press Return to open";
+"Edge tilt" = "Edge tilt";
+"Match screen proportions" = "Match screen proportions";
+"Ellipse ratio" = "Ellipse ratio";
+"Edge fade" = "Edge fade";
+"Reset ALL grid" = "Reset ALL grid";
+"ALL grid" = "ALL grid";
+"Edge tilt is how far icons turn away at the screen edge. The ellipse ratio stretches the lens along the screen's long side; 1 : 1 is a circle. Edge fade dims icons away from the middle." = "Edge tilt is how far icons turn away at the screen edge. The ellipse ratio stretches the lens along the screen's long side; 1 : 1 is a circle. Edge fade dims icons away from the middle.";
 "App Center" = "App Center";
 "%d apps" = "%d apps";
 "Pin to slot %d" = "Pin to slot %d";

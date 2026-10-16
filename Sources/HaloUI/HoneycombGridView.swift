@@ -71,6 +71,11 @@ public struct HoneycombGridView: View {
                 gridAtmosphere(in: proxy.size)
                 if gridState.isLoading && gridState.apps.isEmpty {
                     loadingHint
+                } else if gridState.style == .lens {
+                    HoneycombLensView(
+                        gridState: gridState, active: state.isGridMode, appear: appearProgress,
+                        strip: stripExclusionRect(viewSize: proxy.size),
+                        onCommit: { state.onCommit?() })
                 } else {
                     grid(in: proxy.size)
                 }
@@ -527,19 +532,13 @@ public struct HoneycombGridView: View {
     }
 
     private func focusRadiusFactor(for count: Int) -> CGFloat {
-        switch count {
-        case 0...34: return 0.52
-        case 35...64: return 0.48
-        case 65...104: return 0.44
-        default: return 0.40
-        }
+        HoneycombGeometry.focusRadiusFactor(count: count)
     }
 
     private func cellOpacity(distance: CGFloat, radius: CGFloat, isSelected: Bool, isDragging: Bool) -> Double {
         if isSelected || isDragging { return 1 }
-        let t = min(max(distance / radius, 0), 1)
-        let rim = 1 - 0.36 * Double(t * t)
-        return max(0.52, rim)
+        return HoneycombGeometry.rimOpacity(distance: distance, radius: radius,
+                                            depth: HoneycombGeometry.rimDepthDefault)
     }
 
     private func iconDragGesture(for app: GridState.GridApp, from startPosition: CGPoint) -> some Gesture {
@@ -817,7 +816,7 @@ public struct HoneycombGridView: View {
     private func panGesture(in viewSize: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 3)
             .onChanged { value in
-                guard gridState.draggingBundleID == nil else { return }
+                guard gridState.style == .constellation, gridState.draggingBundleID == nil else { return }
                 if !isPanning {
                     gridState.beginViewportGesture()
                     dragBaseline = gridState.panOffset
@@ -843,6 +842,7 @@ public struct HoneycombGridView: View {
     private func zoomGesture(in viewSize: CGSize) -> some Gesture {
         MagnificationGesture()
             .onChanged { mag in
+                guard gridState.style == .constellation else { return }
                 if !isPinching {
                     gridState.beginViewportGesture()
                     pinchBaseline = gridState.zoomLevel

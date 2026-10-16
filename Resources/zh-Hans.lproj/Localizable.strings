@@ -76,6 +76,13 @@
 "Try a different name or bundle ID." = "请尝试其他名称或 Bundle ID。";
 "Running" = "运行中";
 "Press Return to open" = "按 Return 打开";
+"Edge tilt" = "边缘倾角";
+"Match screen proportions" = "匹配屏幕比例";
+"Ellipse ratio" = "椭圆比例";
+"Edge fade" = "边缘透明度";
+"Reset ALL grid" = "重置 ALL 网格";
+"ALL grid" = "ALL 网格";
+"Edge tilt is how far icons turn away at the screen edge. The ellipse ratio stretches the lens along the screen's long side; 1 : 1 is a circle. Edge fade dims icons away from the middle." = "边缘倾角是图标在屏幕边缘转离视线的角度。椭圆比例沿屏幕长边拉伸透镜，1 : 1 为正圆。边缘透明度让离中心越远的图标越淡。";
 "App Center" = "应用中心";
 "%d apps" = "%d 个应用";
 "Pin to slot %d" = "选择到槽位 %d";

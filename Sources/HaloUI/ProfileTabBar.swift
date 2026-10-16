@@ -56,10 +56,10 @@ struct ProfileTabBar: View {
         } label: {
             Group {
                 if isAll {
-                    // Built-in ALL profile renders as a 3×3 grid SF
-                    // Symbol — visually distinct from named profile
-                    // pills so the user reads it as a different mode.
-                    Image(systemName: "circle.grid.3x3.fill")
+                    // Built-in ALL profile renders as a honeycomb SF
+                    // Symbol, matching the lens honeycomb it opens and
+                    // distinct from named profile pills.
+                    Image(systemName: "circle.hexagongrid.fill")
                         .font(.system(size: 12, weight: .medium))
                 } else {
                     Text(pill.name)

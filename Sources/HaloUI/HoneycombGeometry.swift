@@ -348,6 +348,27 @@ public enum HoneycombGeometry {
         return result
     }
 
+    /// The flat sheet's rim dimming: icons at the focus radius sit at 64 % opacity.
+    public static let rimDepthDefault: CGFloat = 0.36
+
+    /// Rim dimming shared by both ALL renderers: full opacity at the focus,
+    /// easing quadratically to `1 - depth` at `radius` and beyond.
+    public static func rimOpacity(distance: CGFloat, radius: CGFloat, depth: CGFloat) -> Double {
+        let t = radius > 0 ? min(max(distance / radius, 0), 1) : 1
+        return 1 - Double(min(max(depth, 0), 1) * t * t)
+    }
+
+    /// Fraction of the shorter screen side over which the focus lens and
+    /// rim dimming fall off. Denser catalogues use a tighter focus.
+    public static func focusRadiusFactor(count: Int) -> CGFloat {
+        switch count {
+        case 0...34: return 0.52
+        case 35...64: return 0.48
+        case 65...104: return 0.44
+        default: return 0.40
+        }
+    }
+
     /// Soft-fade alpha for cells that drift under a fixed overlay during
     /// a pan. Returns 1 when the cell centre is well outside the strip
     /// rect, 0 when it's fully inside, and a linear ramp across a

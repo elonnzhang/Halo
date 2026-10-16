@@ -92,6 +92,10 @@ public final class AppPreferences: ObservableObject {
         static let appearanceMode  = "halo.prefs.appearanceMode"
         static let onboardingShown = "halo.onboarding.shown"
         static let showAllProfile  = "halo.prefs.showAllProfile"
+        static let lensTilt        = "halo.prefs.allNew.tilt"
+        static let lensEllipseAuto = "halo.prefs.allNew.ellipseAuto"
+        static let lensEllipse     = "halo.prefs.allNew.ellipseRatio"
+        static let lensRimFade     = "halo.prefs.allNew.rimFade"
         // Multi-profile — owns pins / overflow / identity overrides.
         // As of v1.3.0 the three legacy keys above are only touched
         // by `migrateLegacyKeysIntoDefaultProfile()`, which exists
@@ -416,6 +420,10 @@ public final class AppPreferences: ObservableObject {
             Keys.soundEffects: true,
             Keys.appearanceMode: AppearanceMode.system.rawValue,
             Keys.showAllProfile: false,
+            Keys.lensTilt: Double(Self.lensTiltDefault),
+            Keys.lensEllipseAuto: true,
+            Keys.lensEllipse: Double(Self.lensEllipseDefault),
+            Keys.lensRimFade: Double(Self.lensRimFadeDefault),
         ])
     }
 
@@ -675,6 +683,66 @@ public final class AppPreferences: ObservableObject {
             objectWillChange.send()
             defaults.set(newValue, forKey: Keys.showAllProfile)
         }
+    }
+
+    // MARK: - ALL grid lens
+
+    public static let lensTiltDefault: CGFloat = 27
+    public static let lensTiltRange: ClosedRange<CGFloat> = 0...60
+    public static let lensEllipseDefault: CGFloat = 1.6
+    public static let lensEllipseRange: ClosedRange<CGFloat> = 1...2.2
+    /// Matches the flat sheet's rim dimming (edge icons at 64 % opacity).
+    public static let lensRimFadeDefault: CGFloat = 0.36
+    public static let lensRimFadeRange: ClosedRange<CGFloat> = 0...0.8
+
+    /// How much the ALL lens dims icons away from the middle: 0 keeps every icon
+    /// opaque, 0.36 matches the flat sheet.
+    public var lensRimFade: CGFloat {
+        get { Self.clamp(CGFloat(defaults.double(forKey: Keys.lensRimFade)), Self.lensRimFadeRange) }
+        set {
+            objectWillChange.send()
+            defaults.set(Double(Self.clamp(newValue, Self.lensRimFadeRange)), forKey: Keys.lensRimFade)
+        }
+    }
+
+    /// Degrees an ALL icon turns away from the viewer at the screen edge.
+    public var lensTilt: CGFloat {
+        get { Self.clamp(CGFloat(defaults.double(forKey: Keys.lensTilt)), Self.lensTiltRange) }
+        set {
+            objectWillChange.send()
+            defaults.set(Double(Self.clamp(newValue, Self.lensTiltRange)), forKey: Keys.lensTilt)
+        }
+    }
+
+    /// When true, the ALL lens takes the screen's aspect ratio.
+    public var lensEllipseAuto: Bool {
+        get { defaults.bool(forKey: Keys.lensEllipseAuto) }
+        set {
+            objectWillChange.send()
+            defaults.set(newValue, forKey: Keys.lensEllipseAuto)
+        }
+    }
+
+    /// Long-axis : short-axis ratio of the ALL lens when not automatic.
+    public var lensEllipseRatio: CGFloat {
+        get { Self.clamp(CGFloat(defaults.double(forKey: Keys.lensEllipse)), Self.lensEllipseRange) }
+        set {
+            objectWillChange.send()
+            defaults.set(Double(Self.clamp(newValue, Self.lensEllipseRange)), forKey: Keys.lensEllipse)
+        }
+    }
+
+    /// Restore the ALL lens to its default tilt, ellipse and rim fade.
+    public func resetLens() {
+        objectWillChange.send()
+        defaults.removeObject(forKey: Keys.lensTilt)
+        defaults.removeObject(forKey: Keys.lensEllipseAuto)
+        defaults.removeObject(forKey: Keys.lensEllipse)
+        defaults.removeObject(forKey: Keys.lensRimFade)
+    }
+
+    private static func clamp(_ value: CGFloat, _ range: ClosedRange<CGFloat>) -> CGFloat {
+        min(max(value, range.lowerBound), range.upperBound)
     }
 
     /// User-facing appearance choice: follow the system, force light, or

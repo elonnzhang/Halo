@@ -81,6 +81,15 @@ public final class GridState: ObservableObject {
     /// target, but not committed to storage yet.
     @Published public var dropTargetBundleID: String?
 
+    /// Which renderer the grid panel shows. `.lens` (the onevra-style lens
+    /// honeycomb) is ALL's renderer; `.constellation` is the earlier flat
+    /// sheet under a fixed fisheye, kept selectable in code only.
+    public enum Style: Sendable { case constellation, lens }
+    @Published public var style: Style = .lens
+    /// Pan state for the lens renderer. Lives here so AppDelegate's scroll
+    /// monitor and the view drive the same model.
+    public private(set) lazy var lens = HoneycombLensModel(state: self)
+
     /// Projected (post-fisheye) hit-test frames for the currently visible
     /// cells, in SwiftUI view coordinates (top-left origin, y-down). Written
     /// by the view's layout pass; read by the grid window's cursor-poll timer
@@ -93,7 +102,8 @@ public final class GridState: ObservableObject {
     /// Picks the cell whose frame contains the point, else the nearest within
     /// a small radius. No-op while dragging.
     public func hoverSelect(at point: CGPoint, iconSize: CGFloat) {
-        guard draggingBundleID == nil, !isViewportMoving, !pointerSelectionSuppressed else { return }
+        guard draggingBundleID == nil, !isViewportMoving, !pointerSelectionSuppressed,
+              !(style == .lens && lens.isMoving) else { return }
         var best: (id: String, d: CGFloat)?
         for app in filteredApps {
             let id = app.bundleID
@@ -105,7 +115,9 @@ public final class GridState: ObservableObject {
                 best = (id, d)
             }
         }
-        let next = best?.id
+        // The lens always has a focal app: off an icon, selection returns
+        // to the centred app so Return still opens what sits in the middle.
+        let next = best?.id ?? (style == .lens ? lens.centredID : nil)
         if selectedBundleID != next { selectedBundleID = next }
     }
 
@@ -338,6 +350,7 @@ public final class GridState: ObservableObject {
     /// Called when leaving grid mode so the next entry is fresh.
     public func resetViewport() {
         viewportMotion.stop()
+        lens.reset()
         pointerSelectionSuppressed = false
         cellFrames = [:]
         panOffset = .zero
@@ -370,24 +383,25 @@ public final class GridState: ObservableObject {
         else {
             return delta >= 0 ? list.first?.bundleID : list.last?.bundleID
         }
-        let layout = HoneycombGeometry.spiralLayout(count: list.count)
-        guard idx < layout.count else { return list[idx].bundleID }
-        let currentPoint = HoneycombGeometry.center(
-            row: layout[idx].row,
-            col: layout[idx].col,
-            spacing: 1
-        )
+        // Step through the slots the user sees: the lens's (strip-aware)
+        // cells, or the flat sheet's spiral.
+        let points: [CGPoint]
+        if style == .lens, lens.cells.count == list.count {
+            points = lens.cells
+        } else {
+            points = HoneycombGeometry.spiralLayout(count: list.count).map {
+                HoneycombGeometry.center(row: $0.row, col: $0.col, spacing: 1)
+            }
+        }
+        guard idx < points.count else { return list[idx].bundleID }
+        let currentPoint = points[idx]
         let axis: CGPoint = abs(delta) == 1
             ? CGPoint(x: delta > 0 ? 1 : -1, y: 0)
             : CGPoint(x: 0, y: delta > 0 ? 1 : -1)
 
         var best: (index: Int, score: CGFloat)?
         for candidateIndex in list.indices where candidateIndex != idx {
-            let point = HoneycombGeometry.center(
-                row: layout[candidateIndex].row,
-                col: layout[candidateIndex].col,
-                spacing: 1
-            )
+            let point = points[candidateIndex]
             let vx = point.x - currentPoint.x
             let vy = point.y - currentPoint.y
             let directional = vx * axis.x + vy * axis.y

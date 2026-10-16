@@ -208,6 +208,44 @@ struct GeneralTab: View {
                 }
 
                 Section {
+                    geometryRow("Edge tilt",
+                                value: Binding(
+                                    get: { Double(prefs.lensTilt) },
+                                    set: { prefs.lensTilt = CGFloat($0) }),
+                                range: Self.lensTiltRange,
+                                step: 1,
+                                formatter: { "\(Int($0))°" })
+                    Toggle("Match screen proportions", isOn: Binding(
+                        get: { prefs.lensEllipseAuto },
+                        set: { prefs.lensEllipseAuto = $0 }
+                    ))
+                    if !prefs.lensEllipseAuto {
+                        geometryRow("Ellipse ratio",
+                                    value: Binding(
+                                        get: { Double(prefs.lensEllipseRatio) },
+                                        set: { prefs.lensEllipseRatio = CGFloat($0) }),
+                                    range: Self.lensEllipseRange,
+                                    step: 0.05,
+                                    formatter: { String(format: "%.2f : 1", $0) })
+                    }
+                    geometryRow("Edge fade",
+                                value: Binding(
+                                    get: { Double(prefs.lensRimFade) },
+                                    set: { prefs.lensRimFade = CGFloat($0) }),
+                                range: Self.lensRimFadeRange,
+                                step: 0.02,
+                                formatter: { "\(Int(($0 * 100).rounded()))%" })
+                    HStack {
+                        Spacer()
+                        Button("Reset ALL grid") { prefs.resetLens() }
+                    }
+                } header: {
+                    Text("ALL grid")
+                } footer: {
+                    Text("Edge tilt is how far icons turn away at the screen edge. The ellipse ratio stretches the lens along the screen's long side; 1 : 1 is a circle. Edge fade dims icons away from the middle.")
+                }
+
+                Section {
                     Toggle(isOn: Binding(
                         get: { prefs.soundEffectsEnabled },
                         set: { prefs.soundEffectsEnabled = $0 }
@@ -268,6 +306,13 @@ struct GeneralTab: View {
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
     }
+
+    private static let lensTiltRange = Double(AppPreferences.lensTiltRange.lowerBound)
+        ... Double(AppPreferences.lensTiltRange.upperBound)
+    private static let lensEllipseRange = Double(AppPreferences.lensEllipseRange.lowerBound)
+        ... Double(AppPreferences.lensEllipseRange.upperBound)
+    private static let lensRimFadeRange = Double(AppPreferences.lensRimFadeRange.lowerBound)
+        ... Double(AppPreferences.lensRimFadeRange.upperBound)
 
     @available(macOS 13.0, *)
     @ViewBuilder
@@ -414,6 +459,45 @@ struct GeneralTab: View {
                             .frame(width: 54)
                     }
                     Button("Reset wheel layout") { prefs.resetLayout() }
+                }
+                Section("ALL grid") {
+                    HStack {
+                        Text("Edge tilt")
+                        Slider(value: Binding(
+                            get: { Double(prefs.lensTilt) },
+                            set: { prefs.lensTilt = CGFloat($0) }
+                        ), in: Self.lensTiltRange, step: 1)
+                        Text("\(Int(prefs.lensTilt))°")
+                            .font(.system(.body, design: .monospaced))
+                            .frame(width: 54)
+                    }
+                    Toggle("Match screen proportions", isOn: Binding(
+                        get: { prefs.lensEllipseAuto },
+                        set: { prefs.lensEllipseAuto = $0 }
+                    ))
+                    if !prefs.lensEllipseAuto {
+                        HStack {
+                            Text("Ellipse ratio")
+                            Slider(value: Binding(
+                                get: { Double(prefs.lensEllipseRatio) },
+                                set: { prefs.lensEllipseRatio = CGFloat($0) }
+                            ), in: Self.lensEllipseRange, step: 0.05)
+                            Text(String(format: "%.2f : 1", prefs.lensEllipseRatio))
+                                .font(.system(.body, design: .monospaced))
+                                .frame(width: 54)
+                        }
+                    }
+                    HStack {
+                        Text("Edge fade")
+                        Slider(value: Binding(
+                            get: { Double(prefs.lensRimFade) },
+                            set: { prefs.lensRimFade = CGFloat($0) }
+                        ), in: Self.lensRimFadeRange, step: 0.02)
+                        Text("\(Int((prefs.lensRimFade * 100).rounded()))%")
+                            .font(.system(.body, design: .monospaced))
+                            .frame(width: 54)
+                    }
+                    Button("Reset ALL grid") { prefs.resetLens() }
                 }
                 Section("Sound") {
                     Toggle("Enable sound effects", isOn: Binding(
