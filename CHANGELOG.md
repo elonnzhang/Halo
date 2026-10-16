@@ -9,6 +9,10 @@ All notable changes to Halo.
 - Granting Accessibility now goes through [PermissionFlow](https://github.com/jaywcjlove/PermissionFlow) (MIT, pinned at 2.11.3) instead of the bare system trust dialog. Committing the dimmed Fullscreen chip opens System Settings → Privacy & Security → Accessibility with a floating panel that follows the window; drag Halo from the panel into the list. The panel follows Halo's language setting, and its close button hands focus back to the app you came from.
 - Minimum macOS is now **13 (Ventura)**, the floor PermissionFlow requires (`Package.swift`, `LSMinimumSystemVersion`). `make app` bundles PermissionFlow's strings and license into `Halo.app/Contents/Resources`.
 
+### Profile strip
+
+- Fixed the wheel's profile strip ignoring clicks on its outer pills. The wheel's hit area was a circle inscribed in the panel, so on a wide strip (ALL plus several profiles) the pills beyond that circle — ALL and the last profiles — never received taps. The whole panel now takes part in hit-testing; a regression test clicks every pill's centre.
+
 ### ALL grid interaction
 
 - The ALL grid separates pointer devices: two-finger **trackpad** scroll pans the cluster, while a **mouse wheel** zooms (detected via scroll `phase`/`momentumPhase` rather than `hasPreciseScrollingDeltas`). A fixed honeycomb layout and continuous focus projection keep icons in their slots during pan/zoom and eliminate the projection change at pinch release. Icons crossing the profile strip fade instead of moving into another slot; once pan/zoom settles, the reserved strip area follows the strip's current position, so the area it vacated refills. Shadow blur is suppressed during motion.

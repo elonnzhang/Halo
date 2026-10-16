@@ -71,7 +71,8 @@ public struct RadialView: View {
         .scaleEffect(HaloUI.Geometry.panelScale)
         .frame(width: HaloUI.Geometry.scaledTotalDiameter,
                height: HaloUI.Geometry.scaledTotalDiameter)
-        .contentShape(Circle())
+        // Not a Circle: that would clip the profile strip's outer pills out of hit-testing.
+        .contentShape(Rectangle())
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text(accessibilityRootLabel))
         .gesture(hoverGesture)
