@@ -13,13 +13,13 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var localizedTitle: LocalizedStringKey {
+    var localizedTitle: String {
         switch self {
-        case .general:   return "General"
-        case .apps:      return "Apps"
-        case .whitelist: return "Whitelist"
-        case .actions:   return "Actions"
-        case .about:     return "About"
+        case .general:   return NSLocalizedString("General", comment: "Settings sidebar label")
+        case .apps:      return NSLocalizedString("Apps", comment: "Settings sidebar label")
+        case .whitelist: return NSLocalizedString("Whitelist", comment: "Settings sidebar label")
+        case .actions:   return NSLocalizedString("Actions", comment: "Settings sidebar label")
+        case .about:     return NSLocalizedString("About", comment: "Settings sidebar label")
         }
     }
 
@@ -33,33 +33,27 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         }
     }
 
-    /// Tile gradient per the mockup. Uses `LinearGradient(gradient:…)` to
-    /// stay within macOS 12's API surface (the `init(colors:…)` shorthand
-    /// is iOS 15 / macOS 12 too, but explicit `Gradient` reads cleanly).
-    var tileGradient: LinearGradient {
-        let colors: [Color]
+    var subtitle: String {
         switch self {
-        case .general:
-            colors = [Color(red: 0.56, green: 0.56, blue: 0.58),
-                      Color(red: 0.39, green: 0.39, blue: 0.40)]
-        case .apps:
-            colors = [Color(red: 0.04, green: 0.52, blue: 1.00),
-                      Color(red: 0.37, green: 0.36, blue: 0.90)]
-        case .whitelist:
-            colors = [Color(red: 0.19, green: 0.82, blue: 0.35),
-                      Color(red: 0.20, green: 0.78, blue: 0.35)]
-        case .actions:
-            colors = [Color(red: 1.00, green: 0.58, blue: 0.18),
-                      Color(red: 0.92, green: 0.32, blue: 0.46)]
-        case .about:
-            colors = [Color(red: 0.39, green: 0.82, blue: 1.00),
-                      Color(red: 0.04, green: 0.52, blue: 1.00)]
+        case .general: return NSLocalizedString("Summon, triggers, and appearance", comment: "Settings page subtitle")
+        case .apps: return NSLocalizedString("Profiles, slots, and app bindings", comment: "Settings page subtitle")
+        case .whitelist: return NSLocalizedString("Keep Halo out of selected apps", comment: "Settings page subtitle")
+        case .actions: return NSLocalizedString("Customize Action Arc chips", comment: "Settings page subtitle")
+        case .about: return NSLocalizedString("Version, diagnostics, and links", comment: "Settings page subtitle")
         }
-        return LinearGradient(
-            gradient: Gradient(colors: colors),
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    }
+
+}
+
+enum GeneralSettingsPane: String, CaseIterable, Identifiable {
+    case controls, appearance, system
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .controls: return NSLocalizedString("Controls", comment: "General settings group")
+        case .appearance: return NSLocalizedString("Appearance", comment: "General settings group")
+        case .system: return NSLocalizedString("System settings", comment: "General settings group")
+        }
     }
 }
 
@@ -68,22 +62,42 @@ struct SettingsSidebar: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach([SettingsSection.general, .apps, .whitelist, .actions], id: \.id) { section in
-                row(section)
-            }
-            Divider().padding(.vertical, 6).padding(.horizontal, 6)
-            row(.about)
-            Spacer(minLength: 0)
+            sidebarList
             Text("Halo v\(Halo.version)")
                 .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 6)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 14)
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 6)
+        // Native traffic lights sit over the full-size content view. Keep
+        // navigation beneath them; the background remains a drag surface.
+        .padding(.top, 34)
         .frame(width: 200, alignment: .leading)
         .background(sidebarBackground)
+    }
+
+    private var navigationList: some View {
+        List(selection: Binding<SettingsSection?>(
+            get: { selection },
+            set: { if let section = $0 { selection = section } }
+        )) {
+            Section {
+                ForEach([SettingsSection.general, .apps, .whitelist, .actions]) { section in
+                    row(section)
+                }
+            }
+            Section { row(.about) }
+        }
+        .listStyle(.sidebar)
+    }
+
+    @ViewBuilder
+    private var sidebarList: some View {
+        if #available(macOS 13.0, *) {
+            navigationList.scrollContentBackground(.hidden)
+        } else {
+            navigationList
+        }
     }
 
     @ViewBuilder
@@ -97,33 +111,10 @@ struct SettingsSidebar: View {
 
     @ViewBuilder
     private func row(_ section: SettingsSection) -> some View {
-        let isActive = selection == section
-        Button {
-            selection = section
-        } label: {
-            HStack(spacing: 9) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .fill(section.tileGradient)
-                    Image(systemName: section.systemImage)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-                .frame(width: 20, height: 20)
-
-                Text(section.localizedTitle)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(isActive ? Color.white : Color.primary)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 8)
+        Label(section.localizedTitle, systemImage: section.systemImage)
+            .font(.system(size: 13, weight: .medium))
             .padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(isActive ? Color.accentColor : Color.clear)
-            )
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+            .tag(section)
+            .accessibilityHint(Text(section.subtitle))
     }
 }

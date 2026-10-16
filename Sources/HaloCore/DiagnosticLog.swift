@@ -87,6 +87,7 @@ public enum DiagnosticLog {
         sysctlbyname("hw.model", nil, &size, nil, 0)
         var buf = [CChar](repeating: 0, count: size)
         sysctlbyname("hw.model", &buf, &size, nil, 0)
-        return String(cString: buf)
+        let bytes = buf.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+        return String(decoding: bytes, as: UTF8.self)
     }
 }

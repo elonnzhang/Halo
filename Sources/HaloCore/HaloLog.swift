@@ -66,7 +66,7 @@ public enum HaloLog {
 
         if FileManager.default.fileExists(atPath: logFileURL.path) {
             if let handle = try? FileHandle(forWritingTo: logFileURL) {
-                try? handle.seekToEnd()
+                _ = try? handle.seekToEnd()
                 try? handle.write(contentsOf: data)
                 try? handle.close()
             }

@@ -34,19 +34,33 @@ struct ProfileBar: View {
     ]
 
     var body: some View {
-        HStack(spacing: 6) {
-            ForEach(Array(prefs.profiles.enumerated()), id: \.element.id) { idx, profile in
-                pill(profile, index: idx)
+        VStack(spacing: 0) {
+            SettingsTabsHeader {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    profileTabs
+                        .frame(width: max(360, CGFloat(prefs.profiles.count) * 90), height: 28)
+                }
             }
-            addButton
-            showAllTab
-            Spacer(minLength: 8)
-            Text(metaText)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                addButton
+                Menu {
+                    pillMenu(prefs.activeProfile, isActive: true)
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .menuStyle(.borderlessButton)
+                .fixedSize()
+                .help("Manage profile")
+                .accessibilityLabel(Text("Manage profile"))
+                showAllTab
+                Spacer(minLength: 8)
+                Text(metaText)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 8)
         }
-        .padding(.horizontal, 2)
-        .padding(.bottom, 10)
         .sheet(isPresented: $showingNewSheet) { newProfileSheet }
         .alert(
             "Delete profile?",
@@ -86,6 +100,30 @@ struct ProfileBar: View {
 
     // MARK: - Pill
 
+    private var profileTabs: some View {
+        SettingsSegmentedTabs(
+            labels: prefs.profiles.map { renamingID == $0.id ? "" : "  \($0.name)" },
+            selectedIndex: prefs.profiles.firstIndex(where: { $0.id == prefs.activeProfileID }) ?? 0,
+            accessibilityLabel: NSLocalizedString("Profiles", comment: ""),
+            onSelect: { index in
+                guard prefs.profiles.indices.contains(index) else { return }
+                prefs.switchToProfile(prefs.profiles[index].id)
+            }
+        )
+        // Native control owns its appearance and keyboard/accessibility
+        // selection. Transparent per-segment targets retain the existing
+        // profile double-click, context menu and drag/drop interactions.
+        .allowsHitTesting(false)
+        .overlay {
+            HStack(spacing: 0) {
+                ForEach(Array(prefs.profiles.enumerated()), id: \.element.id) { index, profile in
+                    pill(profile, index: index)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private func pill(_ profile: BindingProfile, index: Int) -> some View {
         let isActive = profile.id == prefs.activeProfileID
@@ -94,16 +132,14 @@ struct ProfileBar: View {
         Group {
             if isRenaming {
                 renameField(for: profile)
+                    .background(Color(nsColor: .textBackgroundColor))
             } else {
-                HStack(spacing: 6) {
+                HStack {
                     colorDot(for: profile, index: index)
-                    Text(profile.name)
-                        .font(.system(size: 12, weight: isActive ? .semibold : .medium))
-                        .lineLimit(1)
-                        .foregroundStyle(.primary)
+                    Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 10)
-                .padding(.vertical, 4)
+                .frame(height: 28)
                 .contentShape(Rectangle())
                 // Double-click first so SwiftUI gives it priority; single
                 // click then handles plain switching.
@@ -113,8 +149,7 @@ struct ProfileBar: View {
                 }
             }
         }
-        .background(pillBackground(isActive: isActive, isRenaming: isRenaming))
-        .overlay(pillBorder(isActive: isActive, isRenaming: isRenaming))
+        .accessibilityHidden(!isRenaming)
         .opacity(draggedID == profile.id ? 0.45 : 1.0)
         .contextMenu { pillMenu(profile, isActive: isActive) }
         .help(isActive ? "Active profile · double-click to rename · drag to reorder"
@@ -158,46 +193,15 @@ struct ProfileBar: View {
             .padding(.vertical, 4)
             .frame(minWidth: 70, maxWidth: 160)
             .onAppear {
-                renameFieldFocused = true
                 // Select the existing name so the user can type to
                 // replace it (Finder-style rename UX).
                 DispatchQueue.main.async {
+                    renameFieldFocused = true
                     NSApp.sendAction(#selector(NSText.selectAll(_:)), to: nil, from: nil)
                 }
             }
             .onSubmit { commitRename(for: profile.id) }
             .onExitCommand { cancelRename() }
-    }
-
-    @ViewBuilder
-    private func pillBackground(isActive: Bool, isRenaming: Bool) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
-        if isRenaming {
-            shape.fill(Color(nsColor: .textBackgroundColor))
-        } else if isActive {
-            shape
-                .fill(.regularMaterial)
-                .shadow(color: .black.opacity(0.06), radius: 1, x: 0, y: 1)
-        } else {
-            shape.fill(Color(nsColor: .controlBackgroundColor))
-        }
-    }
-
-    private func pillBorder(isActive: Bool, isRenaming: Bool) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 7, style: .continuous)
-        let color: Color
-        let width: CGFloat
-        if isRenaming {
-            color = Color.accentColor
-            width = 1.5
-        } else if isActive {
-            color = Color.accentColor.opacity(0.55)
-            width = 0.5
-        } else {
-            color = Color.primary.opacity(0.10)
-            width = 0.5
-        }
-        return shape.strokeBorder(color, lineWidth: width)
     }
 
     @ViewBuilder

@@ -11,6 +11,10 @@ public final class UsageStore: @unchecked Sendable {
     private let defaults: UserDefaults
     private let clock: () -> Date
     private let queue = DispatchQueue(label: "halo.usage-store", qos: .utility)
+    /// All storage access is serialized by `queue`; memoizing the decoded
+    /// blob avoids repeating UserDefaults reads and JSON decoding when slot
+    /// refreshes arrive in quick succession.
+    private var cachedBlob: Blob?
 
     public init(defaults: UserDefaults = .standard, clock: @escaping () -> Date = Date.init) {
         self.defaults = defaults
@@ -76,7 +80,10 @@ public final class UsageStore: @unchecked Sendable {
     }
 
     public func reset() {
-        queue.sync { defaults.removeObject(forKey: Self.storageKey) }
+        queue.sync {
+            defaults.removeObject(forKey: Self.storageKey)
+            cachedBlob = nil
+        }
     }
 
     // MARK: - Storage
@@ -111,14 +118,21 @@ public final class UsageStore: @unchecked Sendable {
     }
 
     private func loadBlob() -> Blob {
+        if let cachedBlob { return cachedBlob }
         guard let data = defaults.data(forKey: Self.storageKey),
               let blob = try? JSONDecoder().decode(Blob.self, from: data)
-        else { return Blob() }
+        else {
+            let empty = Blob()
+            cachedBlob = empty
+            return empty
+        }
+        cachedBlob = blob
         return blob
     }
 
     private func saveBlob(_ blob: Blob) {
         guard let data = try? JSONEncoder().encode(blob) else { return }
         defaults.set(data, forKey: Self.storageKey)
+        cachedBlob = blob
     }
 }

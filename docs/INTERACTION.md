@@ -205,6 +205,10 @@
 | Failed 抖动 | 40ms × 4 帧 | linear |
 | Action Arc chip pop-in | spring（response 0.30 / damping 0.72） | 22ms × index stagger |
 | 空槽 dashed 呼吸 | 2.4s ease-in-out（仅 wheel hover 时） | autoreverses |
+| ALL 蜂窝展开 | spring（response 0.38 / damping 0.86） | 0.92 → 1；中心向外，最大 65ms 延迟 |
+| ALL 搜索重排 | spring（response 0.28 / damping 0.88） | 短促收敛 |
+
+ALL 的蜂窝槽位在平移与缩放中保持不变，投影随视口连续变化。鼠标拖动松手后按预测方向短促惯性滑行，触控板使用系统惯性；滚轮使用可中断并保留速度的临界阻尼缩放。Reduce Motion 下只保留入场淡入与直接操控。参数及参考见 [ALL 动效设计](superpowers/specs/2026-10-13-all-watch-motion.md)。
 
 > 所有时长统一通过 `Animation.Halo.snap / echo / surface / chipPop` 在 `Sources/HaloUI/Animation+Halo.swift` 集中维护；调参一键改，无需在 RadialView / ActionArcView / WelcomeWindow 间扫描。Reduce Motion 开启时全部 ease 时长收窄到 0.05s。
 

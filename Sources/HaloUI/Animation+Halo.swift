@@ -102,6 +102,22 @@ extension Animation {
                 : .spring(response: 0.18, dampingFraction: 0.62)
         }
 
+        // MARK: - ALL constellation
+
+        /// A restrained centre-out bloom. Delay is capped at 65ms across
+        /// the entire cluster, so the outside never feels left behind.
+        static func gridEnter(delay: Double = 0, reduceMotion: Bool = false) -> Animation {
+            reduceMotion
+                ? .easeOut(duration: 0.05)
+                : .spring(response: 0.38, dampingFraction: 0.86).delay(delay)
+        }
+
+        static func gridReflow(reduceMotion: Bool = false) -> Animation {
+            reduceMotion
+                ? .easeOut(duration: 0.05)
+                : .spring(response: 0.28, dampingFraction: 0.88)
+        }
+
         // MARK: - Stagger constants
         //
         // Per-index delay multipliers for staggered entries. Living

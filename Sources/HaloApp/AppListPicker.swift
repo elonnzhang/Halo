@@ -13,6 +13,7 @@ import HaloUI
 @MainActor
 private final class AppCatalogLoader: ObservableObject {
     @Published var apps: [GridState.GridApp] = []
+    @Published var runningBundleIDs: Set<String> = []
     @Published var isLoading = true
 
     func load() {
@@ -26,6 +27,7 @@ private final class AppCatalogLoader: ObservableObject {
             await MainActor.run {
                 guard let self else { return }
                 self.apps = scanned
+                self.runningBundleIDs = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
                 self.isLoading = false
                 // Warm the icon cache so the first visible rows hit memory
                 // instead of NSWorkspace.icon on the main thread.
@@ -68,13 +70,66 @@ struct AppListPicker: View {
                 .controlSize(.small)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
-            List(filtered, id: \.bundleID) { app in
-                Button {
-                    onPick(app.bundleID)
-                } label: {
-                    AppListRow(bundleID: app.bundleID, name: app.name)
+            let running = filtered.filter { loader.runningBundleIDs.contains($0.bundleID) }
+            let installed = filtered.filter { !loader.runningBundleIDs.contains($0.bundleID) }
+            if filtered.isEmpty {
+                VStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 24, weight: .light))
+                        .foregroundStyle(.secondary)
+                    Text(NSLocalizedString("No matching apps", comment: "App picker empty state"))
+                        .font(.headline)
+                    Text(NSLocalizedString("Try a different name or bundle ID.", comment: "App picker empty state"))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 18) {
+                        if !running.isEmpty {
+                            appSection(
+                                title: NSLocalizedString("Running now", comment: "App picker section"),
+                                apps: running,
+                                isRunning: true
+                            )
+                        }
+                        if !installed.isEmpty {
+                            appSection(
+                                title: NSLocalizedString("All applications", comment: "App picker section"),
+                                apps: installed,
+                                isRunning: false
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                }
+            }
+        }
+    }
+
+    private func appSection(title: String, apps: [GridState.GridApp], isRunning: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("\(apps.count)")
+                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.tertiary)
+            }
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 82, maximum: 112), spacing: 10)],
+                spacing: 10
+            ) {
+                ForEach(apps, id: \.bundleID) { app in
+                    Button { onPick(app.bundleID) } label: {
+                        AppGridTile(bundleID: app.bundleID, name: app.name, isRunning: isRunning)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
     }
@@ -86,7 +141,7 @@ struct AppListPicker: View {
                 .textFieldStyle(.plain)
                 .focused($searchFocused)
                 // Return commits the first filtered match — fast keyboard pin.
-                .onSubmit { if let first = filtered.first { onPick(first.bundleID) } }
+                .onSubmit { if let first = displayedApps.first { onPick(first.bundleID) } }
             if !search.isEmpty {
                 Button {
                     search = ""
@@ -107,30 +162,69 @@ struct AppListPicker: View {
             $0.name.lowercased().contains(q) || $0.bundleID.lowercased().contains(q)
         }
     }
+
+    /// Mirrors the visual order: running applications are promoted above
+    /// the full installed catalogue so Return always chooses the first row
+    /// the user is looking at.
+    private var displayedApps: [GridState.GridApp] {
+        filtered.filter { loader.runningBundleIDs.contains($0.bundleID) }
+            + filtered.filter { !loader.runningBundleIDs.contains($0.bundleID) }
+    }
 }
 
-/// One Finder-minimal row: app icon + name. The icon loads through the shared
+/// One Finder-minimal tile: app icon + name. The icon loads through the shared
 /// `AppIconResolver` cache via `.task(id:)` — the same pattern the ALL grid's
-/// `IconCell` uses, so a recycled row re-fetches when its bundleID changes.
-private struct AppListRow: View {
+/// `IconCell` uses, so a recycled tile re-fetches when its bundleID changes.
+private struct AppGridTile: View {
     let bundleID: String
     let name: String
+    let isRunning: Bool
     @State private var icon: NSImage?
 
     var body: some View {
-        HStack(spacing: 8) {
+        VStack(spacing: 7) {
             Group {
                 if let icon {
-                    Image(nsImage: icon).resizable()
+                    Image(nsImage: icon)
+                        .resizable()
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fit)
                 } else {
-                    Color.clear
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .fill(Color.secondary.opacity(0.12))
                 }
             }
-            .frame(width: 20, height: 20)
+            .frame(width: 48, height: 48)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(alignment: .bottomTrailing) {
+                if isRunning {
+                    Circle()
+                        .fill(Color.green)
+                        .frame(width: 10, height: 10)
+                        .overlay(Circle().stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 2))
+                        .accessibilityHidden(true)
+                }
+            }
             Text(name)
-            Spacer()
+                .font(.system(size: 11.5, weight: .medium))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, minHeight: 28, alignment: .top)
         }
-        .contentShape(Rectangle())
+        .padding(.vertical, 9)
+        .padding(.horizontal, 5)
+        .frame(maxWidth: .infinity, minHeight: 101)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.primary.opacity(0.045))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 0.6)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityLabel(Text(isRunning ? "\(name), \(NSLocalizedString("Running", comment: "App picker status"))" : name))
         .task(id: bundleID) {
             icon = AppIconResolver.icon(for: bundleID)
         }

@@ -51,12 +51,12 @@ struct WhitelistTab: View {
 
     @ViewBuilder
     private var header: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("Whitelist").font(.system(size: 20, weight: .semibold))
-            Spacer()
-            Text("halo.prefs.whitelist.v1")
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.tertiary)
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Whitelist")
+                .font(.system(size: 24, weight: .semibold))
+            Text("Choose which apps should keep Halo out of the way.")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -88,7 +88,7 @@ struct WhitelistTab: View {
                 .strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5)
                 .background(
                     RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color(NSColor.controlBackgroundColor))
+                        .fill(.regularMaterial)
                 )
             if prefs.whitelistedBundleIDs.isEmpty {
                 emptyState

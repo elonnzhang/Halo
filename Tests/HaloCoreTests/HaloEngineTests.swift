@@ -135,4 +135,18 @@ final class HaloEngineTests: XCTestCase {
         XCTAssertEqual(result.first?.bundleID, "com.apple.iCal")
         XCTAssertEqual(result.last?.bundleID,  "com.apple.Safari")
     }
+
+    func test_tiedRecords_haveDeterministicBundleIDOrder() {
+        let instant = Date(timeIntervalSince1970: 10_000)
+        let records = [
+            UsageRecord(app: AppRef(bundleID: "com.example.z", name: "Z"), activations: 3, lastUsed: instant),
+            UsageRecord(app: AppRef(bundleID: "com.example.a", name: "A"), activations: 3, lastUsed: instant),
+            UsageRecord(app: AppRef(bundleID: "com.example.m", name: "M"), activations: 3, lastUsed: instant),
+        ]
+        let engine = HaloEngine(profile: .mfuOnly)
+
+        let result = engine.top(n: 4, from: records)
+
+        XCTAssertEqual(result.map(\.bundleID), ["com.example.a", "com.example.m", "com.example.z"])
+    }
 }

@@ -128,6 +128,10 @@ public final class AppPreferences: ObservableObject {
     private var _profiles: [BindingProfile] = []
     private var _activeProfileID: UUID = UUID()
     private var _profilesLoaded = false
+    /// In-memory action bindings cache. Action settings views query bindings
+    /// during frequent SwiftUI body recomputations; decoding the same
+    /// UserDefaults blob for every row adds avoidable main-actor work.
+    private var _actionMapCache: [String: [HaloAction]]?
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -938,19 +942,28 @@ public final class AppPreferences: ObservableObject {
     }
 
     private func loadActionMap() -> [String: [HaloAction]] {
+        if let cached = _actionMapCache {
+            return cached
+        }
         guard let data = defaults.data(forKey: Keys.actionBindings),
               let decoded = try? JSONDecoder().decode([String: [HaloAction]].self, from: data)
-        else { return [:] }
+        else {
+            _actionMapCache = [:]
+            return [:]
+        }
+        _actionMapCache = decoded
         return decoded
     }
 
     private func saveActionMap(_ map: [String: [HaloAction]]) {
         if map.isEmpty {
             defaults.removeObject(forKey: Keys.actionBindings)
+            _actionMapCache = [:]
             return
         }
         if let data = try? JSONEncoder().encode(map) {
             defaults.set(data, forKey: Keys.actionBindings)
+            _actionMapCache = map
         }
     }
 

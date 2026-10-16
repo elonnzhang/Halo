@@ -29,6 +29,7 @@ public final class HaloGridWindow {
     /// shadowed by the full-frame pan gesture, so we resolve hover the same
     /// way the wheel does — poll `NSEvent.mouseLocation` and hit-test.
     private var hoverTimer: Timer?
+    private var lastHoverLocation: CGPoint?
 
     public init(state: HaloState) {
         self.state = state
@@ -124,6 +125,7 @@ public final class HaloGridWindow {
 
     private func startHoverTimer() {
         hoverTimer?.invalidate()
+        lastHoverLocation = NSEvent.mouseLocation
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.updateHover() }
         }
@@ -134,6 +136,7 @@ public final class HaloGridWindow {
     private func stopHoverTimer() {
         hoverTimer?.invalidate()
         hoverTimer = nil
+        lastHoverLocation = nil
     }
 
     /// Convert the global cursor to the hosting view's coordinates (top-left
@@ -143,6 +146,10 @@ public final class HaloGridWindow {
     private func updateHover() {
         guard panel.isVisible, state.isGridMode else { return }
         let mouse = NSEvent.mouseLocation                 // screen, y-up
+        // A stationary cursor must not overwrite keyboard/search selection,
+        // nor continually select different icons as the constellation coasts.
+        guard mouse != lastHoverLocation else { return }
+        lastHoverLocation = mouse
         let f = panel.frame
         guard f.contains(mouse) else {
             if state.gridState.selectedBundleID != nil {

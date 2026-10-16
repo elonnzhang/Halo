@@ -47,14 +47,16 @@ public struct HaloEngine: Sendable {
         let mfuSorted = canonicalRecords
             .sorted { lhs, rhs in
                 if lhs.activations != rhs.activations { return lhs.activations > rhs.activations }
-                return lhs.lastUsed > rhs.lastUsed
+                if lhs.lastUsed != rhs.lastUsed { return lhs.lastUsed > rhs.lastUsed }
+                return lhs.app.bundleID < rhs.app.bundleID
             }
             .map(\.app)
 
         let mruSorted = canonicalRecords
             .sorted { lhs, rhs in
                 if lhs.lastUsed != rhs.lastUsed { return lhs.lastUsed > rhs.lastUsed }
-                return lhs.activations > rhs.activations
+                if lhs.activations != rhs.activations { return lhs.activations > rhs.activations }
+                return lhs.app.bundleID < rhs.app.bundleID
             }
             .map(\.app)
 

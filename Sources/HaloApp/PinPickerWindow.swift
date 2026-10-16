@@ -15,12 +15,15 @@ final class PinPickerWindowController {
             self?.close()
         })
         let w = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 480, height: 520),
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 640),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
-        w.title = "Pin to slot \(slot)"
+        w.title = String.localizedStringWithFormat(
+            NSLocalizedString("Pin to slot %d", comment: "Pin picker window title"),
+            slot
+        )
         w.contentViewController = host
         w.isReleasedWhenClosed = false
 
@@ -61,10 +64,10 @@ private struct PinPickerView: View {
     let onPick: (String?) -> Void
 
     var body: some View {
-        AppListPicker(onPick: onPick)
+            AppListPicker(onPick: onPick)
             // Explicit frame: the NSHostingController would otherwise collapse
             // to the content's intrinsic size and the window would show only
             // chrome + the search row.
-            .frame(width: 480, height: 520)
+            .frame(width: 560, height: 640)
     }
 }

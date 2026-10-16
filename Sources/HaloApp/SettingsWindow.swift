@@ -16,20 +16,26 @@ final class SettingsWindowController {
 
     init(prefs: AppPreferences) {
         self.prefs = prefs
-        let host = NSHostingController(rootView: SettingsRootView(prefs: prefs))
         let w = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 960, height: 760),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        w.title = "Halo Settings"
-        w.titleVisibility = .visible
-        w.titlebarAppearsTransparent = false
+        let host = NSHostingController(rootView: SettingsRootView(prefs: prefs) { [weak w] section in
+            w?.title = "\(section.localizedTitle) — Halo"
+        })
+        w.title = "\(SettingsSection.general.localizedTitle) — Halo"
+        // Keep the native window controls and logical title, while letting
+        // the settings surfaces reach the top edge without a title strip.
+        w.titleVisibility = .hidden
+        w.titlebarAppearsTransparent = true
+        w.titlebarSeparatorStyle = .none
+        w.isMovableByWindowBackground = true
         w.contentViewController = host
         w.isReleasedWhenClosed = false
-        // Let SwiftUI's NavigationSplitView own the min size — its
-        // `.frame(minWidth: 760, minHeight: 600)` is the source of truth.
+        // Match the SwiftUI split's minimum; the 340pt binding preview and
+        // profile controls remain usable at the narrowest supported width.
         w.contentMinSize = NSSize(width: 900, height: 640)
         // SwiftUI may report an unconstrained intrinsic size after the
         // NavigationSplitView lays out. Keep the utility window compact and
@@ -42,20 +48,12 @@ final class SettingsWindowController {
 
     func show() {
         NSApp.setActivationPolicy(.regular)
-        // Reapply the intended content size on every presentation. This also
-        // corrects a frame that was previously dragged or expanded before
-        // the next open.
-        window.setContentSize(NSSize(width: 960, height: 760))
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        // Centre after the window is on screen so SwiftUI has had a
-        // run-loop tick to finalise NSHostingController's intrinsic
-        // content size; otherwise `window.frame.size` still reflects
-        // the init `contentRect` (880 × 720 + titlebar) and the
-        // post-layout shrink/grow would offset the window from centre.
+        // Keep the user's resized dimensions when reopening; only placement
+        // follows the cursor's screen, after the hosting view has laid out.
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.window.setContentSize(NSSize(width: 960, height: 760))
             self.centerOnCurrentScreen()
         }
         WindowCloseObserver.attach(window: window) {
@@ -95,6 +93,7 @@ private final class WindowCloseObserver {
     let handler: () -> Void
 
     static func attach(window: NSWindow, handler: @escaping () -> Void) {
+        guard observers[ObjectIdentifier(window)] == nil else { return }
         let observer = WindowCloseObserver(window: window, handler: handler)
         observers[ObjectIdentifier(window)] = observer
     }
@@ -114,6 +113,7 @@ private final class WindowCloseObserver {
             Task { @MainActor in
                 let observer = Self.observers[id]
                 observer?.handler()
+                if let observer { NotificationCenter.default.removeObserver(observer.token) }
                 Self.observers.removeValue(forKey: id)
             }
         }
@@ -122,14 +122,15 @@ private final class WindowCloseObserver {
 
 // MARK: - SwiftUI root
 
-/// Sidebar + content split. On macOS 13+ uses the native
-/// `NavigationSplitView` so the panel inherits the system Settings look —
-/// translucent sidebar, accent-tinted selection pill, collapsible chrome,
-/// Liquid Glass on macOS 26. macOS 12 falls back to a hand-built `HStack`.
+/// A stable manual split with native source-list navigation and grouped
+/// controls. Keeping the split explicit prevents utility-window toolbar
+/// overlays from placing content underneath the titlebar.
 struct SettingsRootView: View {
     @ObservedObject var prefs: AppPreferences
     @StateObject private var focus = SettingsFocusCoordinator.shared
     @State private var selection: SettingsSection = .general
+    @State private var generalPane: GeneralSettingsPane = .controls
+    let onSectionChange: (SettingsSection) -> Void
     /// BundleID forwarded from `AppDelegate.openActionEditor` when the
     /// user commits an empty action slot. Cleared once consumed by
     /// `ActionsTab`.
@@ -141,8 +142,10 @@ struct SettingsRootView: View {
         // place detail content under the titlebar on macOS, which creates
         // the clipped header and the large blank band seen in Settings.
         legacySplit
-        .onAppear { applyPendingFocus() }
+        .ignoresSafeArea(.container, edges: .top)
+        .onAppear { applyPendingFocus(); onSectionChange(selection) }
         .onChange(of: focus.tick) { _ in applyPendingFocus() }
+        .onChange(of: selection) { onSectionChange($0) }
     }
 
     private func applyPendingFocus() {
@@ -216,7 +219,7 @@ struct SettingsRootView: View {
     @ViewBuilder
     private var content: some View {
         switch selection {
-        case .general:   GeneralTab(prefs: prefs)
+        case .general:   GeneralTab(prefs: prefs, pane: $generalPane)
         case .apps:      AppsTab(prefs: prefs)
         case .whitelist: WhitelistTab(prefs: prefs)
         case .actions:   ActionsTab(prefs: prefs, focusBundleID: $pendingActionsBundleID)
@@ -254,17 +257,19 @@ struct AppsTab: View {
     @State private var confirmingClear = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                sceneChipRow
-                heroCard
-                if !prefs.overflowPinnedBundleIDs.isEmpty {
-                    hiddenPinsCard
+        VStack(spacing: 0) {
+            sceneChipRow
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    heroCard
+                    if !prefs.overflowPinnedBundleIDs.isEmpty {
+                        hiddenPinsCard
+                    }
                 }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .alert("Clear all pinned apps?", isPresented: $confirmingClear) {
             Button("Cancel", role: .cancel) {}
@@ -295,12 +300,22 @@ struct AppsTab: View {
     /// knobs here read as one unit instead of stacked, disconnected rows.
     private var heroCard: some View {
         VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                profileHeading
+                Spacer(minLength: 12)
+                Button("Clear all", role: .destructive) { confirmingClear = true }
+                    .buttonStyle(.borderless)
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 20)
+
             HStack(alignment: .top, spacing: 22) {
                 heroControls
                     .frame(maxWidth: .infinity, alignment: .leading)
                 heroWheel
             }
-            .padding(22)
+            .padding(.horizontal, 22)
+            .padding(.vertical, 12)
 
             Text("Tap a slot on the wheel to pin an app or adjust its identity colour. Empty slots are filled by frequency at summon time.")
                 .font(.callout)
@@ -337,23 +352,6 @@ struct AppsTab: View {
     /// knobs, each under its own uppercase caption.
     private var heroControls: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(alignment: .center, spacing: 10) {
-                ZStack {
-                    Circle().fill(profileColor.opacity(0.18))
-                    Image(systemName: "circle.dashed.inset.filled")
-                        .font(.system(size: 18, weight: .regular))
-                        .foregroundStyle(profileColor)
-                }
-                .frame(width: 34, height: 34)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(prefs.activeProfile.name)
-                        .font(.system(size: 19, weight: .bold))
-                    Text(bindingSummary)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
             controlGroup("Slot count") {
                 Picker("", selection: Binding(
                     get: { prefs.slotCount },
@@ -386,16 +384,27 @@ struct AppsTab: View {
         }
     }
 
-    /// Right column of the hero: the live binding wheel + a destructive
-    /// "Clear all" beneath it.
-    private var heroWheel: some View {
-        VStack(spacing: 12) {
-            BindingWheelView(prefs: prefs)
-            Button("Clear all", role: .destructive) {
-                confirmingClear = true
+    private var profileHeading: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "circle.dashed.inset.filled")
+                .font(.system(size: 18))
+                .foregroundStyle(profileColor)
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(profileColor.opacity(0.18)))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(prefs.activeProfile.name)
+                    .font(.system(size: 19, weight: .semibold))
+                    .lineLimit(1)
+                Text(bindingSummary)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
-            .controlSize(.regular)
         }
+    }
+
+    /// Preview stays independent of profile-wide destructive actions.
+    private var heroWheel: some View {
+        BindingWheelView(prefs: prefs)
     }
 
     /// A labelled control block used across the hero's left column: an
@@ -464,9 +473,9 @@ struct AppsTab: View {
     private var tintSwatchRow: some View {
         // Swatches only — the enclosing controlGroup supplies the "Tint"
         // caption, so this row is left-aligned with no leading label.
-        HStack(spacing: 8) {
+        HStack(spacing: 5) {
             ForEach(Array(Self.tintSwatches.enumerated()), id: \.offset) { _, swatch in
-                swatchButton(swatch)
+                swatchButton(swatch.color, name: swatch.name)
             }
             Button {
                 prefs.setTint(nil, for: prefs.activeProfileID)
@@ -480,13 +489,17 @@ struct AppsTab: View {
                 }
                 .frame(width: 18, height: 18)
                 .overlay(selectionRing(isSelected: prefs.activeProfile.tint == nil))
+                .frame(width: 22, height: 22)
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .help("No tint")
+            .accessibilityLabel(Text("No tint"))
+            .accessibilityAddTraits(prefs.activeProfile.tint == nil ? .isSelected : [])
         }
     }
 
-    private func swatchButton(_ color: IdentityColor) -> some View {
+    private func swatchButton(_ color: IdentityColor, name: LocalizedStringKey) -> some View {
         let selected = matchesActiveTint(color)
         return Button {
             prefs.setTint(color, for: prefs.activeProfileID)
@@ -495,8 +508,13 @@ struct AppsTab: View {
                 .fill(color.swiftUIColor)
                 .frame(width: 18, height: 18)
                 .overlay(selectionRing(isSelected: selected))
+                .frame(width: 22, height: 22)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .help(name)
+        .accessibilityLabel(Text(name))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private func selectionRing(isSelected: Bool) -> some View {
@@ -519,15 +537,15 @@ struct AppsTab: View {
     /// hue. Wide enough to give the user a recognisable "scene colour"
     /// without offering the full OKLCH gamut here (the wheel's per-app
     /// override popover is where finer control lives).
-    private static let tintSwatches: [IdentityColor] = [
-        IdentityColor(lightness: 0.65, chroma: 0.18, hue: 25),   // red
-        IdentityColor(lightness: 0.72, chroma: 0.17, hue: 55),   // orange
-        IdentityColor(lightness: 0.78, chroma: 0.16, hue: 90),   // amber
-        IdentityColor(lightness: 0.72, chroma: 0.17, hue: 140),  // green
-        IdentityColor(lightness: 0.68, chroma: 0.14, hue: 190),  // teal
-        IdentityColor(lightness: 0.62, chroma: 0.18, hue: 230),  // blue
-        IdentityColor(lightness: 0.60, chroma: 0.20, hue: 285),  // violet
-        IdentityColor(lightness: 0.65, chroma: 0.18, hue: 325),  // magenta
+    private static let tintSwatches: [(name: LocalizedStringKey, color: IdentityColor)] = [
+        ("Red tint", IdentityColor(lightness: 0.65, chroma: 0.18, hue: 25)),
+        ("Orange tint", IdentityColor(lightness: 0.72, chroma: 0.17, hue: 55)),
+        ("Amber tint", IdentityColor(lightness: 0.78, chroma: 0.16, hue: 90)),
+        ("Green tint", IdentityColor(lightness: 0.72, chroma: 0.17, hue: 140)),
+        ("Teal tint", IdentityColor(lightness: 0.68, chroma: 0.14, hue: 190)),
+        ("Blue tint", IdentityColor(lightness: 0.62, chroma: 0.18, hue: 230)),
+        ("Violet tint", IdentityColor(lightness: 0.60, chroma: 0.20, hue: 285)),
+        ("Magenta tint", IdentityColor(lightness: 0.65, chroma: 0.18, hue: 325)),
     ]
 
     private var bindingSummary: String {

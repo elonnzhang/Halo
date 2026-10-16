@@ -48,6 +48,15 @@ public final class GridState: ObservableObject {
     /// Cumulative drag offset since the grid became visible. Reset on
     /// `resetViewport()` when leaving grid mode.
     @Published public var panOffset: CGSize = .zero
+    /// Presentation motion is transient and scoped to this grid. Pointer
+    /// selection pauses while icons move, so hovering cannot retarget springs
+    /// underneath a drag, pinch, or wheel-zoom burst.
+    @Published public internal(set) var isViewportMoving: Bool = false
+    public var pointerSelectionSuppressed = false
+    /// Updated by the renderer from its cached layout; native scroll and
+    /// mouse drag share the same bounds instead of rebuilding the lattice.
+    public var viewportPanLimits: CGSize = .zero
+    private lazy var viewportMotion = GridViewportMotion(state: self)
     /// Bundle ID currently under the cursor (or selected via keyboard).
     /// `nil` while the user is between cells. `commitSelection()` reads
     /// this to decide what to launch.
@@ -84,14 +93,15 @@ public final class GridState: ObservableObject {
     /// Picks the cell whose frame contains the point, else the nearest within
     /// a small radius. No-op while dragging.
     public func hoverSelect(at point: CGPoint, iconSize: CGFloat) {
-        guard draggingBundleID == nil else { return }
+        guard draggingBundleID == nil, !isViewportMoving, !pointerSelectionSuppressed else { return }
         var best: (id: String, d: CGFloat)?
-        for (id, frame) in cellFrames {
-            if frame.contains(point) { best = (id, 0); break }
+        for app in filteredApps {
+            let id = app.bundleID
+            guard let frame = cellFrames[id] else { continue }
             let dx = frame.midX - point.x
             let dy = frame.midY - point.y
             let d = (dx * dx + dy * dy).squareRoot()
-            if d < iconSize * 0.6, best == nil || d < best!.d {
+            if (frame.contains(point) || d < frame.width * 0.6), best == nil || d < best!.d {
                 best = (id, d)
             }
         }
@@ -155,13 +165,7 @@ public final class GridState: ObservableObject {
         isLoading = true
         // Reset transient view state on every reload so the user sees
         // the grid from a known origin.
-        panOffset = .zero
-        zoomLevel = 1.0
-        selectedBundleID = nil
-        searchQuery = ""
-        committingBundleID = nil
-        draggingBundleID = nil
-        dropTargetBundleID = nil
+        resetViewport()
 
         Task.detached(priority: .userInitiated) {
             let scanned = PerfSignpost.measure("GridState.scanInstalledApps") {
@@ -301,20 +305,41 @@ public final class GridState: ObservableObject {
         }
     }
 
-    /// Discrete zoom step from the scroll wheel (mouse wheel = zoom in the
-    /// grid). `delta` is a signed increment; the result is clamped to the
-    /// same 0.5–2.5 range the pinch gesture uses. Pan is *not* re-clamped
-    /// here — the view's `onChange(of: zoomLevel)`/pan safety net handles
-    /// that once the new bounds are known.
+    /// Wheel notches retarget a velocity-preserving presentation spring.
+    /// Trackpad pinch stays direct; both use the same 0.5–2.5 zoom bounds.
     public func applyWheelZoom(delta: CGFloat, in viewSize: CGSize) {
-        let target = max(0.5, min(2.5, zoomLevel + delta))
-        guard target != zoomLevel else { return }
-        zoomLevel = target
+        viewportMotion.zoom(by: delta, reduceMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion)
+    }
+
+    public func beginViewportGesture() {
+        viewportMotion.beginGesture()
+        selectedBundleID = nil
+    }
+
+    public func endViewportGesture() { viewportMotion.stop() }
+
+    public func coastViewport(by predictedTravel: CGSize, reduceMotion: Bool) {
+        viewportMotion.coast(by: predictedTravel, reduceMotion: reduceMotion)
+    }
+
+    /// NSEvent already supplies trackpad momentum. Apply it one-to-one and
+    /// cancel synthetic mouse/zoom motion rather than adding a second coast.
+    public func panViewport(by delta: CGSize) {
+        viewportMotion.stop()
+        let next = HoneycombViewportGeometry.clamp(
+            CGSize(width: panOffset.width + delta.width,
+                   height: panOffset.height + delta.height), limits: viewportPanLimits)
+        guard next != panOffset else { return }
+        pointerSelectionSuppressed = true
+        panOffset = next
     }
 
     /// Reset transient view state without touching the cached `apps`.
     /// Called when leaving grid mode so the next entry is fresh.
     public func resetViewport() {
+        viewportMotion.stop()
+        pointerSelectionSuppressed = false
+        cellFrames = [:]
         panOffset = .zero
         zoomLevel = 1.0
         selectedBundleID = nil
@@ -406,12 +431,12 @@ public final class GridState: ObservableObject {
     /// persisted yet; this gives the drag interaction a concrete,
     /// reversible macOS-grid behaviour without pretending folders are
     /// fully modelled.
-    public func moveApp(bundleID: String, near targetBundleID: String) {
+    public func moveApp(bundleID: String, near targetBundleID: String, reduceMotion: Bool = false) {
         guard bundleID != targetBundleID,
               let from = apps.firstIndex(where: { $0.bundleID == bundleID }),
               let to = apps.firstIndex(where: { $0.bundleID == targetBundleID })
         else { return }
-        withAnimation(.spring(response: 0.22, dampingFraction: 0.78)) {
+        withAnimation(.Halo.gridReflow(reduceMotion: reduceMotion)) {
             apps.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
         }
         selectedBundleID = bundleID

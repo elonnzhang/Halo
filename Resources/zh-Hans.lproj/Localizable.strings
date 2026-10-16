@@ -181,7 +181,7 @@
 "Slots for this profile" = "本场景的槽位数";
 "Tint" = "环境色";
 "No tint" = "无";
-"Slots, tint, and ranking are per profile — set under Apps" = "槽位数、环境色和排序方式按场景独立，请到「Apps」标签内调整";
+"Slots, tint, and ranking are per profile — set under Apps" = "槽位数、环境色和排序方式按场景独立，请到「应用」页调整";
 "Switch to the Apps tab" = "切换到「Apps」标签";
 "Each profile remembers its own slot count, tint, and ranking. Tab / ⇧Tab during summon switches profiles." = "每个场景独立记忆槽位数、环境色和排序方式。Halo 召出时按 Tab / ⇧Tab 切换场景。";
 "Active profile · double-click to rename · drag to reorder" = "当前场景 · 双击重命名 · 拖动可重排";
@@ -194,3 +194,27 @@
 "Customize Action Arc chips" = "自定义 Action Arc 操作芯片";
 "Version, diagnostics, and links" = "版本、诊断与链接";
 "Choose which apps should keep Halo out of the way." = "选择需要暂时避开 Halo 的应用。";
+
+/* Settings navigation and readability */
+"General settings" = "通用设置";
+"Controls" = "召唤与切换";
+"Appearance" = "外观";
+"System settings" = "系统";
+"Red tint" = "红色";
+"Orange tint" = "橙色";
+"Amber tint" = "琥珀色";
+"Green tint" = "绿色";
+"Teal tint" = "青色";
+"Blue tint" = "蓝色";
+"Violet tint" = "紫色";
+"Magenta tint" = "品红色";
+"1 2 3 … 9 0 - = jump directly to the matching slot." = "按 1–9、0、-、= 直接选中并启动对应槽位的应用。";
+"Falls back to 12 o'clock when the frontmost app isn't pinned." = "当前应用未固定到槽位时，默认选中正上方的槽位。";
+"Scroll wheel cycles slots with the highlighted one as anchor." = "以当前选中的槽位为起点，用滚轮依次切换轮盘中的应用。";
+"Show ALL" = "显示 ALL";
+"Adds a built-in profile that opens a watchOS-style grid of every installed app. Tab to switch to it." = "显示包含所有已安装应用的蜂窝面板，可用 Tab 切换进入。";
+"Tap a slot on the wheel to pin an app or adjust its identity colour. Empty slots are filled by frequency at summon time." = "点击轮盘槽位固定应用或调整应用配色。空槽会在召唤时按使用频率自动填充。";
+
+"Profiles" = "场景";
+
+"Manage profile" = "管理场景";

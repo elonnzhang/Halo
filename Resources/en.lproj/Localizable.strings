@@ -195,3 +195,27 @@
 "Customize Action Arc chips" = "Customize Action Arc chips";
 "Version, diagnostics, and links" = "Version, diagnostics, and links";
 "Choose which apps should keep Halo out of the way." = "Choose which apps should keep Halo out of the way.";
+
+/* Settings navigation and readability */
+"General settings" = "General settings";
+"Controls" = "Controls";
+"Appearance" = "Appearance";
+"System settings" = "System settings";
+"Red tint" = "Red tint";
+"Orange tint" = "Orange tint";
+"Amber tint" = "Amber tint";
+"Green tint" = "Green tint";
+"Teal tint" = "Teal tint";
+"Blue tint" = "Blue tint";
+"Violet tint" = "Violet tint";
+"Magenta tint" = "Magenta tint";
+"1 2 3 … 9 0 - = jump directly to the matching slot." = "1 2 3 … 9 0 - = jump directly to the matching slot.";
+"Falls back to 12 o'clock when the frontmost app isn't pinned." = "Falls back to 12 o'clock when the frontmost app isn't pinned.";
+"Scroll wheel cycles slots with the highlighted one as anchor." = "Scroll wheel cycles slots with the highlighted one as anchor.";
+"Show ALL" = "Show ALL";
+"Adds a built-in profile that opens a watchOS-style grid of every installed app. Tab to switch to it." = "Adds a built-in profile that opens a watchOS-style grid of every installed app. Tab to switch to it.";
+"Tap a slot on the wheel to pin an app or adjust its identity colour. Empty slots are filled by frequency at summon time." = "Tap a slot on the wheel to pin an app or adjust its identity colour. Empty slots are filled by frequency at summon time.";
+
+"Profiles" = "Profiles";
+
+"Manage profile" = "Manage profile";

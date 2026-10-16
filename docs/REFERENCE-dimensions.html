@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<title>Halo · 尺寸参考</title>
+<style>
+  :root {
+    --bg: #0e0f12;
+    --panel: #16181d;
+    --panel-2: #1c1f26;
+    --line: #2a2e38;
+    --text: #e7e9ee;
+    --dim: #9aa0ad;
+    --accent: #79c0ff;
+    --warn: #f0a458;
+    --code: #1a1d24;
+    --tunable: #5eead4;
+    --derived: #c4b5fd;
+    --fixed: #9aa0ad;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); color: var(--text); margin: 0; padding: 0; }
+  body {
+    font: 13.5px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue",
+          "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .wrap { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+  nav {
+    position: sticky; top: 0; align-self: start;
+    padding: 22px 18px; height: 100vh; overflow-y: auto;
+    border-right: 1px solid var(--line); background: #0b0c0f;
+  }
+  nav h1 { font-size: 14px; margin: 0 0 6px; letter-spacing: 0.02em; }
+  nav .ver { font-size: 11px; color: var(--dim); margin-bottom: 18px; }
+  nav ol { list-style: none; padding: 0; margin: 0; counter-reset: sec; }
+  nav li { counter-increment: sec; margin: 6px 0; }
+  nav li::before { content: "§" counter(sec) " "; color: var(--dim); }
+  nav a { color: var(--text); text-decoration: none; }
+  nav a:hover { color: var(--accent); }
+  main { padding: 28px 36px 96px; max-width: 980px; }
+  h2 {
+    font-size: 18px; margin: 36px 0 12px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--line);
+  }
+  h2:first-child { margin-top: 0; }
+  h3 { font-size: 14px; margin: 22px 0 8px; color: var(--text); }
+  p { color: var(--dim); margin: 6px 0 12px; }
+  p.note { font-size: 12.5px; }
+  code, .mono {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 12px;
+  }
+  code { background: var(--code); padding: 1px 5px; border-radius: 4px; color: #d4d7df; }
+  .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 880px) { .layout { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 16px; overflow: hidden;
+  }
+  .diagram { background: var(--panel-2); padding: 8px; }
+  svg { display: block; width: 100%; height: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td {
+    text-align: left; padding: 7px 8px; vertical-align: top;
+    border-bottom: 1px solid var(--line);
+  }
+  th {
+    font-weight: 600; color: var(--dim); font-size: 11.5px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.num { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: #f5d76e; white-space: nowrap; }
+  td.path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--dim); }
+  .tag {
+    display: inline-block; padding: 1px 6px; border-radius: 4px;
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.02em; margin-right: 4px;
+  }
+  .tag.tunable { background: rgba(94,234,212,0.12); color: var(--tunable); }
+  .tag.derived { background: rgba(196,181,253,0.12); color: var(--derived); }
+  .tag.fixed   { background: rgba(154,160,173,0.14); color: var(--fixed); }
+  .legend { display: flex; gap: 10px; margin: 4px 0 14px; font-size: 11.5px; color: var(--dim); }
+  .legend span.tag { margin: 0; }
+  .svg-label { font: 10.5px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #d4d7df; }
+  .svg-label.dim { fill: #7c8290; }
+  .svg-label.accent { fill: #79c0ff; }
+  .svg-axis { stroke: #3b3f4a; stroke-dasharray: 3 3; stroke-width: 1; fill: none; }
+  .svg-fill-disc { fill: #2a2e38; opacity: 0.55; }
+  .svg-fill-hub  { fill: #0e0f12; }
+  .svg-ring      { fill: none; stroke: #5b6271; stroke-width: 1; }
+  .svg-ring.glow { stroke: #79c0ff; }
+  .svg-ring.reach { stroke: #f0a458; stroke-dasharray: 4 3; }
+  .svg-ring.icon  { stroke: #5eead4; stroke-dasharray: 2 3; }
+  .svg-ring.label { stroke: #c4b5fd; stroke-dasharray: 5 3; }
+  .svg-arrow      { stroke: #d4d7df; stroke-width: 1; fill: none; marker-end: url(#arrow); }
+  .badge {
+    display: inline-block; background: var(--code); padding: 1px 6px; border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+    color: #d4d7df;
+  }
+  .meta { font-size: 11.5px; color: var(--dim); margin-top: 14px; }
+  hr.sep { border: 0; border-top: 1px dashed var(--line); margin: 20px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav>
+  <h1>Halo · 尺寸参考</h1>
+  <div class="ver">单位均为 macOS pt（点）；以仓库当前代码为准</div>
+  <ol>
+    <li><a href="#tunable">用户可调（Settings）</a></li>
+    <li><a href="#wheel">Wheel · 圆盘</a></li>
+    <li><a href="#hub">中心 Hub</a></li>
+    <li><a href="#slot">Slot · 扇区内容</a></li>
+    <li><a href="#label">Label Chip · 标签</a></li>
+    <li><a href="#arc">Action Arc</a></li>
+    <li><a href="#strip">Profile 标签条</a></li>
+    <li><a href="#grid">ALL · Honeycomb 网格</a></li>
+    <li><a href="#windows">窗口 / 面板</a></li>
+    <li><a href="#shadow">阴影 · 圆角 · 描边</a></li>
+    <li><a href="#animation">动画位移</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<h2>说明</h2>
+<p>
+所有尺寸/长度/直径常量按使用场景分类，并标注：
+</p>
+<div class="legend">
+  <span class="tag tunable">tunable</span>用户可在 Settings 调整
+  <span class="tag derived">derived</span>由其他值推导，无法单独修改
+  <span class="tag fixed">fixed</span>代码里写死的几何/视觉常量
+</div>
+<p class="note">
+SVG 示意图按真实比例绘制（基于默认值）。当用户改了 Wheel 滑杆，所有 <span class="tag derived">derived</span> 值都会跟着变。
+所有派生公式都注明了来源文件 + 行号。
+</p>
+
+<!-- ───────────────── §1 Tunable ───────────────── -->
+<h2 id="tunable">用户可调（Settings → Wheel layout）</h2>
+<p>这四个值是其余几何的根。改动一个，整盘视觉随之缩放/重排。</p>
+<table>
+  <thead>
+    <tr><th>名称</th><th>默认</th><th>范围</th><th>含义</th><th>定义</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="tag tunable">tunable</span><code>haloDiameter</code></td>
+      <td class="num">380</td>
+      <td class="num">280–440</td>
+      <td>圆盘外直径，整盘的"根"</td>
+      <td class="path">AppPreferences.swift:767</td>
+    </tr>
+    <tr>
+      <td><span class="tag tunable">tunable</span><code>iconSize</code></td>
+      <td class="num">48</td>
+      <td class="num">36–64</td>
+      <td>扇区内 app 图标边长</td>
+      <td class="path">AppPreferences.swift:781</td>
+    </tr>
+    <tr>
+      <td><span class="tag tunable">tunable</span><code>iconRadius</code></td>
+      <td class="num">auto</td>
+      <td class="num">hubR+iconR+4 … visibleOuter−iconR−4</td>
+      <td>图标中心相对盘心的半径；默认置于 hub 边与 visibleOuter 中点</td>
+      <td class="path">AppPreferences.swift:800</td>
+    </tr>
+    <tr>
+      <td><span class="tag tunable">tunable</span><code>panelScale</code></td>
+      <td class="num">1.00</td>
+      <td class="num">0.80–1.50</td>
+      <td>整盘 renderer-time 缩放（不重排，纯放大）</td>
+      <td class="path">AppPreferences.swift:842</td>
+    </tr>
+    <tr>
+      <td><span class="tag tunable">tunable</span><code>slotCount</code></td>
+      <td class="num">8</td>
+      <td class="num">4–12</td>
+      <td>扇区数（数字键热键 1–9 0 − = 最多绑 12 个）</td>
+      <td class="path">AppPreferences.swift:428</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- ───────────────── §2 Wheel ───────────────── -->
+<h2 id="wheel">§ Wheel · 圆盘几何</h2>
+
+<div class="layout">
+<div class="card diagram">
+<svg viewBox="-260 -260 520 520" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 z" fill="#d4d7df"/>
+    </marker>
+  </defs>
+  <!-- totalDiameter outer halo -->
+  <circle r="330" class="svg-ring" stroke-dasharray="6 4" stroke="#3b3f4a"/>
+  <!-- reachDiameter / 2 = 285 -->
+  <circle r="285" class="svg-ring reach"/>
+  <!-- haloDiameter / 2 = 190 -->
+  <circle r="190" class="svg-fill-disc"/>
+  <circle r="190" class="svg-ring glow"/>
+  <!-- visibleOuter = 190 * 0.84 = 159.6 -->
+  <circle r="159.6" class="svg-ring" stroke="#79c0ff" stroke-dasharray="3 3"/>
+  <!-- iconRadius default = (159.6 + 56) / 2 = 107.8 -->
+  <circle r="107.8" class="svg-ring icon"/>
+  <!-- hub deadzone = 112 / 2 = 56 -->
+  <circle r="56" class="svg-fill-hub"/>
+  <circle r="56" class="svg-ring"/>
+  <!-- label radius = 190 + 36 = 226 -->
+  <circle r="226" class="svg-ring label"/>
+
+  <!-- center crosshairs -->
+  <line x1="-330" y1="0" x2="330" y2="0" class="svg-axis"/>
+  <line x1="0" y1="-330" x2="0" y2="330" class="svg-axis"/>
+
+  <!-- radius callouts -->
+  <line x1="0" y1="0" x2="56" y2="0" class="svg-arrow"/>
+  <text x="20" y="-4" class="svg-label">hub r=56</text>
+  <line x1="0" y1="0" x2="76" y2="-76" class="svg-arrow"/>
+  <text x="60" y="-58" class="svg-label">icon r≈108</text>
+  <line x1="0" y1="0" x2="190" y2="0" class="svg-arrow"/>
+  <text x="115" y="-4" class="svg-label">halo r=190</text>
+  <line x1="0" y1="0" x2="0" y2="-159.6" class="svg-arrow"/>
+  <text x="6" y="-100" class="svg-label accent">visible r≈160</text>
+  <line x1="0" y1="0" x2="0" y2="285" class="svg-arrow"/>
+  <text x="6" y="200" class="svg-label" fill="#f0a458">reach r=285</text>
+  <text x="6" y="-220" class="svg-label" fill="#c4b5fd">label r=226</text>
+  <text x="-250" y="-235" class="svg-label dim">panel total Ø=660 (haloD + 280)</text>
+</svg>
+</div>
+
+<div class="card">
+<h3>主要半径</h3>
+<table>
+<thead><tr><th>名称</th><th>值（基于默认）</th><th>公式 / 出处</th></tr></thead>
+<tbody>
+<tr>
+  <td><span class="tag derived">derived</span><code>visibleOuterRadius</code></td>
+  <td class="num">≈159.6</td>
+  <td class="path">haloDiameter/2 × 0.84 · HaloUI.swift:44</td>
+</tr>
+<tr>
+  <td><span class="tag derived">derived</span><code>reachDiameter</code></td>
+  <td class="num">570</td>
+  <td class="path">haloDiameter × 1.5 · HaloUI.swift:38</td>
+</tr>
+<tr>
+  <td><span class="tag derived">derived</span><code>labelRadius</code></td>
+  <td class="num">226</td>
+  <td class="path">haloDiameter/2 + 36 · HaloUI.swift:63</td>
+</tr>
+<tr>
+  <td><span class="tag fixed">fixed</span><code>deadzoneDiameter</code></td>
+  <td class="num">112</td>
+  <td class="path">AppPreferences.swift:118</td>
+</tr>
+<tr>
+  <td><span class="tag fixed">fixed</span><code>visibleOuterFactor</code></td>
+  <td class="num">0.84</td>
+  <td class="path">AppPreferences.swift:122</td>
+</tr>
+<tr>
+  <td><span class="tag fixed">fixed</span><code>softEdgeStart</code></td>
+  <td class="num">0.80</td>
+  <td class="path">HaloUI.swift:101（盘面 alpha 渐变起点）</td>
+</tr>
+<tr>
+  <td><span class="tag fixed">fixed</span><code>slotGapDegrees</code></td>
+  <td class="num">1.0°</td>
+  <td class="path">HaloUI.swift:88（相邻扇区角隙）</td>
+</tr>
+<tr>
+  <td><span class="tag fixed">fixed</span><code>labelMaxWidth</code></td>
+  <td class="num">220</td>
+  <td class="path">HaloUI.swift:66</td>
+</tr>
+<tr>
+  <td><span class="tag derived">derived</span><code>totalDiameter</code></td>
+  <td class="num">660</td>
+  <td class="path">haloDiameter + 280 · HaloUI.swift:72（panel 总尺寸）</td>
+</tr>
+<tr>
+  <td><span class="tag derived">derived</span><code>scaledTotalDiameter</code></td>
+  <td class="num">660 × panelScale</td>
+  <td class="path">HaloUI.swift:84（NSPanel 真实占地）</td>
+</tr>
+</tbody>
+</table>
+
+<h3>命中区 vs 视觉区</h3>
+<p class="note">
+扇区命中半径 = <code>reachDiameter/2</code>（默认 285，比可见盘大 ~78pt 缓冲）。Action Arc 激活时收缩到 <code>visibleOuterRadius</code>（约 160），避免鼠标移向 chip 时同时拉动底层扇区高亮。死区为 <code>deadzoneDiameter/2</code>（56），落在 hub 内的点返回 nil。
+</p>
+</div>
+</div>
+
+<!-- ───────────────── §3 Hub ───────────────── -->
+<h2 id="hub">§ Hub · 中央透镜</h2>
+<table>
+<thead><tr><th>项目</th><th>值</th><th>出处</th></tr></thead>
+<tbody>
+<tr><td>外圈直径</td><td class="num">112</td><td class="path">AppPreferences.layoutDeadzoneDiameter</td></tr>
+<tr><td>内嵌 app 图标边长</td><td class="num">deadzoneDiameter × 0.62 ≈ 69.4</td><td class="path">RadialView.swift:636</td></tr>
+<tr><td>透镜边缘描边</td><td class="num">0.8 pt</td><td class="path">RadialView.swift:617</td></tr>
+<tr><td>顶部内阴影</td><td class="num">stroke 3 pt + blur 2.6</td><td class="path">RadialView.swift:601–603</td></tr>
+<tr><td>外投阴影</td><td class="num">y:3, blur:6, alpha:0.42</td><td class="path">RadialView.swift:630</td></tr>
+<tr><td>fallback 图标（circle.dotted）</td><td class="num">font 28pt</td><td class="path">RadialView.swift:671</td></tr>
+</tbody>
+</table>
+
+<!-- ───────────────── §4 Slot ───────────────── -->
+<h2 id="slot">§ Slot · 扇区内容</h2>
+<div class="card">
+<table>
+<thead><tr><th>项目</th><th>值</th><th>说明 / 出处</th></tr></thead>
+<tbody>
+<tr><td>扇区填充半径</td><td class="num">deadzone/2 → haloDiameter/2</td><td class="path">RadialView.swift:428</td></tr>
+<tr><td>active 扇区内发光描边</td><td class="num">width 6, blur 8</td><td class="path">RadialView.swift:440</td></tr>
+<tr><td>slot icon 视觉边长</td><td class="num">iconSize − 6</td><td class="path">RadialView.swift:861（"iconCanvas"）</td></tr>
+<tr><td>slot icon 圆角</td><td class="num">11</td><td class="path">RadialView.swift:839</td></tr>
+<tr><td>active 选中描边</td><td class="num">1.4 pt</td><td class="path">RadialView.swift:840</td></tr>
+<tr><td>active 缩放</td><td class="num">×1.08</td><td class="path">RadialView.swift:830</td></tr>
+<tr><td>commit 离开缩放</td><td class="num">×1.18</td><td class="path">RadialView.swift:479</td></tr>
+<tr><td>状态点（绿/红）</td><td class="num">Ø 8, stroke 0.6</td><td class="path">RadialView.swift:954</td></tr>
+<tr><td>状态点半径</td><td class="num">iconRadius − iconSize/2 − 7（下限 deadzone/2 + 8）</td><td class="path">RadialView.swift:520–524</td></tr>
+<tr><td>数字键 hint 半径</td><td class="num">visibleOuterRadius − 10（下限 iconRadius + iconSize/2 + 10）</td><td class="path">RadialView.swift:505–509</td></tr>
+<tr><td>数字键 hint 字号</td><td class="num">10pt（active 时 ×1.18）</td><td class="path">RadialView.swift:932</td></tr>
+<tr><td>空 slot 占位虚框</td><td class="num">corner 11, dash [3,3], stroke 1</td><td class="path">RadialView.swift:984</td></tr>
+<tr><td>空 slot "+" 字号</td><td class="num">20pt light</td><td class="path">RadialView.swift:987</td></tr>
+</tbody>
+</table>
+</div>
+
+<!-- ───────────────── §5 Label ───────────────── -->
+<h2 id="label">§ Label Chip · 浮动标签</h2>
+<p>每个 slot 上方的 app 名称 glass chip。chip 半径会按扇区方向自适应，避免横向 chip 撞到 9/3 点位的盘边。</p>
+<table>
+<thead><tr><th>项目</th><th>值</th><th>出处</th></tr></thead>
+<tbody>
+<tr><td>基线 label 半径</td><td class="num">haloDiameter/2 + 36 = 226</td><td class="path">HaloUI.swift:63</td></tr>
+<tr><td>chip 半宽估算（动态投影）</td><td class="num">50</td><td class="path">RadialView.swift:693</td></tr>
+<tr><td>chip 半高估算</td><td class="num">14</td><td class="path">RadialView.swift:694</td></tr>
+<tr><td>chip 与盘缘最小间距</td><td class="num">8 pt</td><td class="path">RadialView.swift:695</td></tr>
+<tr><td>chip 内文字</td><td class="num">font 13pt bold, 最多 2 行</td><td class="path">RadialView.swift:707–709</td></tr>
+<tr><td>chip 内 padding</td><td class="num">h 14 / v 7</td><td class="path">RadialView.swift:719–720</td></tr>
+<tr><td>chip 外投阴影</td><td class="num">radius 10, y 5, alpha 0.38</td><td class="path">RadialView.swift:722</td></tr>
+<tr><td>最大宽度</td><td class="num">220 (labelMaxWidth)</td><td class="path">HaloUI.swift:66</td></tr>
+</tbody>
+</table>
+
+<!-- ───────────────── §6 Action Arc ───────────────── -->
+<h2 id="arc">§ Action Arc · 单 slot 的四个动作 chip</h2>
+
+<div class="layout">
+<div class="card diagram">
+<svg viewBox="-260 -260 520 520">
+  <!-- wheel ref -->
+  <circle r="190" class="svg-fill-disc"/>
+  <circle r="190" class="svg-ring glow"/>
+  <circle r="56" class="svg-fill-hub"/>
+  <circle r="159.6" class="svg-ring" stroke="#79c0ff" stroke-dasharray="3 3"/>
+  <!-- arc radius = visibleOuterRadius + 80 = 239.6 -->
+  <circle r="239.6" class="svg-ring" stroke="#f0a458" stroke-dasharray="4 3"/>
+  <!-- chip ring at slot 0 (12 o'clock), span 48° -->
+  <g transform="rotate(0)">
+    <!-- 4 chips at +24°, +8°, -8°, -24° from slot bearing (12 o'clock = -90 in svg) -->
+    <g transform="translate(0,-239.6)">
+      <circle r="21" fill="#1c1f26" stroke="#f0a458" stroke-width="1.2"/>
+      <text x="0" y="3" text-anchor="middle" class="svg-label">Quit</text>
+    </g>
+    <g transform="rotate(8) translate(0,-239.6) rotate(-8)">
+      <circle r="21" fill="#1c1f26" stroke="#f0a458" stroke-width="1.2"/>
+      <text x="0" y="3" text-anchor="middle" class="svg-label">F.S.</text>
+    </g>
+    <g transform="rotate(-8) translate(0,-239.6) rotate(8)">
+      <circle r="21" fill="#1c1f26" stroke="#f0a458" stroke-width="1.2"/>
+      <text x="0" y="3" text-anchor="middle" class="svg-label">Hide</text>
+    </g>
+    <g transform="rotate(24) translate(0,-239.6) rotate(-24)">
+      <circle r="21" fill="#1c1f26" stroke="#f0a458" stroke-width="1.2"/>
+      <text x="0" y="3" text-anchor="middle" class="svg-label">+</text>
+    </g>
+  </g>
+  <!-- span markers -->
+  <line x1="0" y1="-239.6" x2="0" y2="-280" class="svg-arrow"/>
+  <text x="-110" y="-256" class="svg-label accent">arc r ≈ 240 = visibleR + 80</text>
+  <text x="-110" y="-238" class="svg-label dim">span 48°  ·  4 chips  ·  Ø 42</text>
+</svg>
+</div>
+
+<div class="card">
+<table>
+<thead><tr><th>名称</th><th>值</th><th>出处</th></tr></thead>
+<tbody>
+<tr>
+  <td><span class="tag derived">derived</span><code>arcRadius</code></td>
+  <td class="num">visibleOuterRadius + 80<br><span class="badge">≈ 239.6</span></td>
+  <td class="path">ActionArcGeometry.swift:13</td>
+</tr>
+<tr><td><span class="tag fixed">fixed</span><code>arcSpanDegrees</code></td><td class="num">48°</td><td class="path">ActionArcGeometry.swift:17</td></tr>
+<tr><td><span class="tag fixed">fixed</span><code>chipDiameter</code></td><td class="num">42</td><td class="path">ActionArcGeometry.swift:19</td></tr>
+<tr><td><span class="tag fixed">fixed</span><code>hitPadding</code></td><td class="num">10</td><td class="path">ActionArcGeometry.swift:22（命中半径 = Ø/2 + 10）</td></tr>
+<tr><td>chip glyph 字号</td><td class="num">17 pt（hover 时 semibold）</td><td class="path">ActionArcView.swift:85</td></tr>
+<tr><td>chip 描边</td><td class="num">idle 0.8 / hover 1.6 pt</td><td class="path">ActionArcView.swift:73</td></tr>
+<tr><td>chip 投影</td><td class="num">y 4, blur 9</td><td class="path">ActionArcView.swift:76</td></tr>
+<tr><td>chip hover 光晕</td><td class="num">blur 18</td><td class="path">ActionArcView.swift:79</td></tr>
+<tr><td>AX 需要点（黄）</td><td class="num">Ø 7, 偏移 chipØ × ±0.30</td><td class="path">ActionArcView.swift:99–100</td></tr>
+<tr><td>chip 下方文字</td><td class="num">font 10.5 pt, offset chipØ/2 + 11</td><td class="path">ActionArcView.swift:105/111</td></tr>
+<tr><td>chip hover 缩放</td><td class="num">×1.06 整体 / ×1.10 glyph</td><td class="path">ActionArcView.swift:92/113</td></tr>
+<tr><td>chip 入场动画 stagger</td><td class="num">0.022 s × idx</td><td class="path">Animation+Halo.swift:114</td></tr>
+</tbody>
+</table>
+<p class="note">
+代码当前实现为 <code>visibleOuterRadius + 80</code>，注释里旧版本提到的 +60/+90 已被覆盖。
+</p>
+</div>
+</div>
+
+<!-- ───────────────── §7 Profile strip ───────────────── -->
+<h2 id="strip">§ Profile 标签条（Wheel 模式）</h2>
+<p>Wheel 顶部（或底部，看 <code>edgeAnchor</code>）的胶囊条。≤1 个 profile 时整条 hidden。</p>
+<table>
+<thead><tr><th>项目</th><th>值</th><th>出处</th></tr></thead>
+<tbody>
+<tr><td>pill 间距</td><td class="num">4 pt</td><td class="path">ProfileTabBar.swift:28</td></tr>
+<tr><td>条带内 padding</td><td class="num">4 pt</td><td class="path">ProfileTabBar.swift:33</td></tr>
+<tr><td>条带描边</td><td class="num">0.6 pt</td><td class="path">ProfileTabBar.swift:37</td></tr>
+<tr><td>pill 文字</td><td class="num">font 12 pt</td><td class="path">ProfileTabBar.swift:66</td></tr>
+<tr><td>pill 内 padding</td><td class="num">h 12 / v 5</td><td class="path">ProfileTabBar.swift:70</td></tr>
+<tr><td>ALL pill SF 图标</td><td class="num">circle.grid.3x3.fill, 12 pt</td><td class="path">ProfileTabBar.swift:62</td></tr>
+<tr><td>strip 在 wheel 内的垂直偏移</td><td class="num">totalDiameter/2 − 18 − 16<br><span class="badge">默认 ≈ 296 pt（panel 中线到 strip 中线）</span></td><td class="path">HoneycombGridView.swift:736–738</td></tr>
+<tr><td>strip 上/下 padding（wheel 内）</td><td class="num">18</td><td class="path">RadialView.swift:154–155</td></tr>
+<tr><td>grid 模式下估算宽度</td><td class="num">pillCount × 58 + 8</td><td class="path">HoneycombGridView.swift:391</td></tr>
+<tr><td>grid 模式下估算高度</td><td class="num">32</td><td class="path">HoneycombGridView.swift:392</td></tr>
+</tbody>
+</table>
+
+<h3>Settings → Apps 里的 ProfileBar（独立组件）</h3>
+<table>
+<thead><tr><th>项目</th><th>值</th><th>出处</th></tr></thead>
+<tbody>
+<tr><td>pill 间距</td><td class="num">6 pt</td><td class="path">ProfileBar.swift:37</td></tr>
+<tr><td>颜色点</td><td class="num">Ø 6</td><td class="path">ProfileBar.swift:129</td></tr>
+<tr><td>pill 内 padding</td><td class="num">h 10 / v 4，圆角 7</td><td class="path">ProfileBar.swift:85/154</td></tr>
+<tr><td>"+" 按钮</td><td class="num">22 × 22, 圆角 6, dash [3,3]</td><td class="path">ProfileBar.swift:230–233</td></tr>
+<tr><td>新建 sheet 宽度</td><td class="num">340</td><td class="path">ProfileBar.swift:269</td></tr>
+</tbody>
+</table>
+
+<!-- ───────────────── §8 ALL grid ───────────────── -->
+<h2 id="grid">§ ALL · Honeycomb 网格</h2>
+
+<div class="layout">
+<div class="card diagram">
+<svg viewBox="-220 -160 440 320">
+  <!-- hex centers: row * 100*0.866*1.18 ≈ 102.2, even rows aligned, odd rows +50 -->
+  <g fill="#1c1f26" stroke="#5b6271" stroke-width="1">
+    <!-- row 0 -->
+    <circle cx="-100" cy="-102" r="38"/>
+    <circle cx="0" cy="-102" r="38"/>
+    <circle cx="100" cy="-102" r="38"/>
+    <!-- row 1 (shifted right by spacing/2) -->
+    <circle cx="-150" cy="0" r="38"/>
+    <circle cx="-50" cy="0" r="38"/>
+    <circle cx="50" cy="0" r="38"/>
+    <circle cx="150" cy="0" r="38"/>
+    <!-- row 2 -->
+    <circle cx="-100" cy="102" r="38"/>
+    <circle cx="0" cy="102" r="38"/>
+    <circle cx="100" cy="102" r="38"/>
+  </g>
+  <!-- spacing arrow between two adjacent same-row centers -->
+  <line x1="-50" y1="0" x2="50" y2="0" class="svg-arrow"/>
+  <text x="-12" y="-6" class="svg-label accent">spacing 100</text>
+  <!-- icon size arrow -->
+  <line x1="0" y1="-102" x2="38" y2="-102" class="svg-arrow"/>
+  <text x="4" y="-110" class="svg-label">r = iconSize/2 = 38</text>
+  <text x="42" y="-88" class="svg-label dim">baseIconSize 76</text>
+  <!-- vertical pitch -->
+  <line x1="-180" y1="-102" x2="-180" y2="0" class="svg-arrow"/>
+  <text x="-200" y="-50" class="svg-label" transform="rotate(-90 -200 -50)">row pitch ≈ 102 (spacing × 0.866 × 1.18)</text>
+</svg>
+</div>
+
+<div class="card">
+<h3>基础常量</h3>
+<table>
+<thead><tr><th>名称</th><th>值</th><th>出处</th></tr></thead>
+<tbody>
+<tr><td><span class="tag fixed">fixed</span><code>baseIconSize</code></td><td class="num">76</td><td class="path">HoneycombGridView.swift:168</td></tr>
+<tr><td><span class="tag fixed">fixed</span><code>baseSpacing</code></td><td class="num">100（相邻 hex 圆心水平距）</td><td class="path">HoneycombGridView.swift:171</td></tr>
+<tr><td><span class="tag fixed">fixed</span><code>verticalStretch</code></td><td class="num">1.18</td><td class="path">HoneycombGridView.swift:179</td></tr>
+<tr><td>row 垂直步距</td><td class="num">spacing × 0.866 × 1.18 ≈ 102.2</td><td class="path">HoneycombGeometry.swift:26 + 31</td></tr>
+<tr><td>奇数 row 水平偏移</td><td class="num">spacing / 2</td><td class="path">HoneycombGeometry.swift:24</td></tr>
+<tr><td>实际 iconSize</td><td class="num">baseIconSize × zoom × panelScale</td><td class="path">HoneycombGridView.swift:174</td></tr>
+<tr><td>实际 spacing</td><td class="num">baseSpacing × zoom × panelScale</td><td class="path">HoneycombGridView.swift:177</td></tr>
+<tr><td>zoom 范围</td><td class="num">0.5 – 2.5</td><td class="path">HoneycombGridView.swift:844</td></tr>
+</tbody>
+</table>
+
+<h3>Fisheye / 焦点</h3>
+<table>
+<thead><tr><th>app 数量</th><th>minScale</th><th>centerLift</th><th>focusRadiusFactor</th></tr></thead>
+<tbody>
+<tr><td>0–34</td><td class="num">0.72</td><td class="num">+0.20</td><td class="num">0.52</td></tr>
+<tr><td>35–64</td><td class="num">0.62</td><td class="num">+0.24</td><td class="num">0.48</td></tr>
+<tr><td>65–104</td><td class="num">0.54</td><td class="num">+0.28</td><td class="num">0.44</td></tr>
+<tr><td>105+</td><td class="num">0.48</td><td class="num">+0.31</td><td class="num">0.40</td></tr>
+</tbody>
+</table>
+<p class="note">焦半径 = min(视口宽, 视口高) × focusRadiusFactor。fisheye curve = 1.16（搜索时 minScale 强制为 0.70）。HoneycombGridView.swift:576–601</p>
+
+<h3>交互距离</h3>
+<table>
+<thead><tr><th>项目</th><th>值</th><th>出处</th></tr></thead>
+<tbody>
+<tr><td>hover 排斥半径</td><td class="num">iconSize × 1.05, strength 1.6</td><td class="path">HoneycombGridView.swift:460</td></tr>
+<tr><td>cull 边距</td><td class="num">spacing × 1.6</td><td class="path">HoneycombGridView.swift:228</td></tr>
+<tr><td>strip fade band</td><td class="num">iconSize × 0.18</td><td class="path">HoneycombGridView.swift:240</td></tr>
+<tr><td>drop 命中阈值</td><td class="num">max(38, iconSize × 0.68)</td><td class="path">HoneycombGridView.swift:650</td></tr>
+<tr><td>drag 启动距离</td><td class="num">9 pt</td><td class="path">HoneycombGridView.swift:611</td></tr>
+<tr><td>pan 启动距离</td><td class="num">1 pt</td><td class="path">HoneycombGridView.swift:817</td></tr>
+<tr><td>cell label 高</td><td class="num">14 pt（font 11 pt）</td><td class="path">HoneycombGridView.swift:933/937</td></tr>
+<tr><td>cell 整体 footprint</td><td class="num">baseSize+34 × baseSize+24</td><td class="path">HoneycombGridView.swift:886</td></tr>
+</tbody>
+</table>
+
+<h3>背景层</h3>
+<table>
+<thead><tr><th>项目</th><th>值</th><th>出处</th></tr></thead>
+<tbody>
+<tr><td>vignette RadialGradient</td><td class="num">start r=260, end r=1040</td><td class="path">HoneycombGridView.swift:142–144</td></tr>
+<tr><td>中心 atmosphere 光晕</td><td class="num">end r = min(W,H) × 0.38；圆直径 = min × 0.82</td><td class="path">HoneycombGridView.swift:365/368</td></tr>
+<tr><td>搜索 chip 投影</td><td class="num">y 3, blur 10</td><td class="path">HoneycombGridView.swift:703</td></tr>
+<tr><td>搜索 chip top padding</td><td class="num">24</td><td class="path">HoneycombGridView.swift:704</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+
+<!-- ───────────────── §9 Windows ───────────────── -->
+<h2 id="windows">§ 窗口 / 面板</h2>
+<table>
+<thead><tr><th>面板</th><th>尺寸</th><th>说明</th><th>出处</th></tr></thead>
+<tbody>
+<tr><td>HaloWindow（Wheel）</td><td class="num">scaledTotalDiameter × scaledTotalDiameter<br><span class="badge">默认 660 × 660</span></td><td>承载 RadialView 的 NSPanel，圆形可见盘居中</td><td class="path">HaloWindow.swift:30</td></tr>
+<tr><td>HaloGridWindow（ALL）</td><td class="num">screen.frame.width × (visible.maxY − frame.minY)</td><td>覆盖 Dock 但避开顶部菜单栏</td><td class="path">HaloGridWindow.swift:84–89</td></tr>
+<tr><td>Ripple panel</td><td class="num">1200 × 1200</td><td>commit 涟漪；endRadius 300（缩放 280/600→1.0）</td><td class="path">HaloWindow.swift:228 / RippleView.swift:9,25</td></tr>
+<tr><td>Settings 窗口</td><td class="num">880 × 720<br>最小 760 × 600</td><td>NavigationSplitView</td><td class="path">SettingsWindow.swift:21,33</td></tr>
+<tr><td>PinPicker 窗口</td><td class="num">480 × 520</td><td>commit 到空 slot 时弹出</td><td class="path">PinPickerWindow.swift:18</td></tr>
+<tr><td>WelcomeOverlay 面板</td><td class="num">screen.frame（全屏）</td><td>首次启动引导</td><td class="path">WelcomeWindow.swift:53</td></tr>
+<tr><td>OnboardingChip</td><td class="num">chip 320 × 76<br>外 panel 420 × 176（chip + 50 margin × 2）</td><td>首次 summon 后的浮动提示</td><td class="path">OnboardingOverlay.swift:44–49</td></tr>
+<tr><td>BindingWheelView（Settings 内）</td><td class="num">diameter 280, hub 78, frame 340 × 340</td><td>Settings 里的 mini wheel，等比缩小但同公式</td><td class="path">BindingWheelView.swift:29–32,54</td></tr>
+</tbody>
+</table>
+
+<p class="note">Wheel panel 边缘到可见盘鼓的距离 = <code>(totalDiameter − haloDiameter) / 2 = 140 pt</code>，用来容纳 halo glow、label chip、profile strip、Action Arc chip 的最大投影。</p>
+
+<!-- ───────────────── §10 Shadow / corner / stroke ───────────────── -->
+<h2 id="shadow">§ 阴影 · 圆角 · 描边</h2>
+<table>
+<thead><tr><th>位置</th><th>规格</th><th>出处</th></tr></thead>
+<tbody>
+<tr><td>Wheel 主投影</td><td class="num">black α0.34, blur 28, y 14</td><td class="path">RadialView.swift:347</td></tr>
+<tr><td>Halo glow（hover）</td><td class="num">RadialGradient start r=halo/2−24, end r=halo/2+20；blur 18；frame halo+40</td><td class="path">RadialView.swift:188–199</td></tr>
+<tr><td>Wheel 顶部高光弧</td><td class="num">−135°…−45°，stroke 1.1pt，blur 0.35，padding 1.2</td><td class="path">RadialView.swift:289–303</td></tr>
+<tr><td>Slot icon 圆角</td><td class="num">11 pt</td><td class="path">RadialView.swift:839/874/981</td></tr>
+<tr><td>Slot icon active 描边</td><td class="num">1.4 pt</td><td class="path">RadialView.swift:840</td></tr>
+<tr><td>Hub 内阴影</td><td class="num">stroke 3, blur 2.6（仅顶部渐变）</td><td class="path">RadialView.swift:601–603</td></tr>
+<tr><td>Hub 外投影</td><td class="num">α0.42, blur 6, y 3</td><td class="path">RadialView.swift:630</td></tr>
+<tr><td>Label chip 投影</td><td class="num">α0.38, blur 10, y 5</td><td class="path">RadialView.swift:722</td></tr>
+<tr><td>Arc chip 投影</td><td class="num">blur 9, y 4 (dark α0.55 / light α0.20)</td><td class="path">ActionArcView.swift:76/241</td></tr>
+<tr><td>Arc chip hover 光晕</td><td class="num">accent α0.55, blur 18</td><td class="path">ActionArcView.swift:78–79</td></tr>
+<tr><td>Profile pill（Settings）圆角</td><td class="num">7 pt</td><td class="path">ProfileBar.swift:154</td></tr>
+<tr><td>Grid 搜索 chip</td><td class="num">stroke 0.6, blur 10, y 3</td><td class="path">HoneycombGridView.swift:701/703</td></tr>
+<tr><td>Grid icon shadow</td><td class="num">α0.24, blur 5, y 2 (idle) / α0.32, blur 12, y 7 (drag)</td><td class="path">HoneycombGridView.swift:904–908</td></tr>
+<tr><td>BindingWheelView 投影</td><td class="num">α0.20, blur 16, y 6</td><td class="path">BindingWheelView.swift:106</td></tr>
+</tbody>
+</table>
+
+<!-- ───────────────── §11 Animation distance ───────────────── -->
+<h2 id="animation">§ 动画里出现的位移 / 缩放（仅长度部分）</h2>
+<p>动画时长见 <code>Animation+Halo.swift</code>，本表只列与几何相关的位移/缩放因子。</p>
+<table>
+<thead><tr><th>动画</th><th>长度参数</th><th>出处</th></tr></thead>
+<tbody>
+<tr><td>Wheel 召唤（motion ①）</td><td class="num">scale 0.40 → 1.00, opacity 0→1, 320 ms</td><td class="path">RadialView.swift:84 / Animation+Halo:78</td></tr>
+<tr><td>Wheel 收起（motion ⑤）</td><td class="num">scale 1.00 → 1.55, opacity 1→0, 180 ms</td><td class="path">RadialView.swift:85 / Animation+Halo:87</td></tr>
+<tr><td>Slot commit 缩放</td><td class="num">×1.18（落地前）</td><td class="path">RadialView.swift:479</td></tr>
+<tr><td>Slot hover 缩放</td><td class="num">×1.08</td><td class="path">RadialView.swift:830</td></tr>
+<tr><td>数字键 hint hover 缩放</td><td class="num">×1.18</td><td class="path">RadialView.swift:942</td></tr>
+<tr><td>Arc chip 入场</td><td class="num">scale 0.40→1.0, opacity 0→1；stagger 22 ms × idx</td><td class="path">ActionArcView.swift:270 / Animation+Halo:114</td></tr>
+<tr><td>Grid 召唤缩放</td><td class="num">scale 0.78 + 0.22 × progress</td><td class="path">HoneycombGridView.swift:310</td></tr>
+<tr><td>Grid commit 脉冲</td><td class="num">cell ×1.16 → ×0.92；周围 cell 拉向 anchor 最多 28 pt</td><td class="path">HoneycombGridView.swift:531 / HoneycombGeometry.swift:120</td></tr>
+<tr><td>Ripple</td><td class="num">scale 0.467 → 1.0（半径 280 → 600），endRadius 300 pt gradient</td><td class="path">RippleView.swift:8/25</td></tr>
+</tbody>
+</table>
+
+<hr class="sep">
+<p class="meta">
+  生成日期 2026-05-22 · 数据基于仓库当前 <code>main</code> 分支代码 · 单位 pt（macOS 点）。<br>
+  改 <code>haloDiameter</code> / <code>iconSize</code> / <code>iconRadius</code> / <code>panelScale</code> / <code>slotCount</code> 任一项时，<span class="tag derived">derived</span> 行会跟着变；其余值是几何/视觉硬常量。
+</p>
+
+</main>
+</div>
+</body>
+</html>

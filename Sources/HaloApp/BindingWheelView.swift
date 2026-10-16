@@ -23,7 +23,7 @@ struct BindingWheelView: View {
     @State private var draggedSlot: Int? = nil
     @State private var hoverSlot: Int? = nil
 
-    // Geometry tuned for the Settings 560×540 window. Smaller than the
+    // Geometry tuned for the resizable Settings detail pane. Smaller than the
     // live Halo (which is 380 pt) so it doesn't dominate the panel, but
     // proportionally identical.
     private let diameter: CGFloat = 280

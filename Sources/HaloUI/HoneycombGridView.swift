@@ -32,13 +32,18 @@ public struct HoneycombGridView: View {
     @ObservedObject var gridState: GridState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    @StateObject private var layoutCache = HoneycombLayoutCache()
     @State private var pinchBaseline: CGFloat = 1.0
     @State private var dragBaseline: CGSize = .zero
+    @State private var isPanning = false
+    @State private var isPinching = false
     @State private var commitPulse: Bool = false
     @State private var dragOffsets: [String: CGSize] = [:]
     @State private var cellFrames: [String: CGRect] = [:]
     /// Drives the cascade-in animation. 0 = pre-summon, 1 = settled.
     @State private var appearProgress: Double = 0
+    @State private var isEntering = false
+    @State private var entryTask: Task<Void, Never>?
     /// True while a pan / pinch gesture is in flight (or just settled).
     /// Heavy SwiftUI modifiers (shadow blur, label shadow) are degraded
     /// to zero-radius while this is true so each IconCell render skips
@@ -46,11 +51,13 @@ public struct HoneycombGridView: View {
     /// big icons multiply N shadow passes per frame.
     @State private var isInteracting: Bool = false
     @State private var interactionIdleTask: Task<Void, Never>?
-    /// Transient GPU-only zoom applied during a live pinch. The cluster is
-    /// scaled with `.scaleEffect` (cheap) instead of relaying out every
-    /// magnification frame; on gesture end this folds into
-    /// `gridState.zoomLevel` for a single real relayout. 1.0 = no live zoom.
-    @State private var liveZoomScale: CGFloat = 1.0
+    /// Viewport (pan, zoom) at which the profile-strip hole was last
+    /// reserved. It stays fixed during motion so slots never teleport, then
+    /// catches up once the viewport settles: the vacated hole refills and
+    /// icons now under the strip move aside.
+    @State private var stripAnchorPan: CGSize = .zero
+    @State private var stripAnchorZoom: CGFloat = 1
+    @State private var stripSettleTask: Task<Void, Never>?
 
     public init(state: HaloState) {
         self.state = state
@@ -80,31 +87,61 @@ public struct HoneycombGridView: View {
             // from any source (external state, zoom end, etc.).
             .onChange(of: gridState.panOffset) { _ in
                 clampPanOffset(in: proxy.size)
+                bumpInteraction()
             }
             // Wheel zoom mutates zoomLevel directly on GridState (bypassing
             // the pinch gesture); keep pinchBaseline in sync and re-clamp
             // pan so the resized cluster can't leave the pan beyond limits.
             .onChange(of: gridState.zoomLevel) { newValue in
-                pinchBaseline = newValue
+                if !isPinching { pinchBaseline = newValue }
                 clampPanOffset(in: proxy.size)
                 // Wheel zoom relayouts per event; drop shadow blur during
                 // the burst so a fast spin stays smooth (auto-clears 120ms
                 // after the last notch).
                 bumpInteraction()
             }
+            .onChange(of: gridState.isViewportMoving) { moving in
+                // A spring may remain active after its visible value reaches
+                // a zoom bound. Its final tick need not change zoomLevel.
+                if !moving, !isEntering, !isInteracting {
+                    gridState.pointerSelectionSuppressed = false
+                }
+                if !moving { scheduleStripSettle() }
+            }
+            .onChange(of: isInteracting) { interacting in
+                if !interacting { scheduleStripSettle() }
+            }
             .onAppear {
                 pinchBaseline = gridState.zoomLevel
                 dragBaseline = gridState.panOffset
-                appearProgress = 0
-                // Spring lets the cluster settle with a hint of bounce
-                // — purposeful but brief, per Apple Motion guidelines.
-                withAnimation(reduceMotion
-                    ? .linear(duration: 0.001)
-                    : .spring(response: 0.48, dampingFraction: 0.70)
-                ) {
+                if state.isGridMode { animateEntry() }
+            }
+            .onChange(of: state.isGridMode) { visible in
+                if visible { animateEntry() }
+                else {
+                    stopInteraction()
+                    stripAnchorPan = .zero
+                    stripAnchorZoom = 1
+                }
+            }
+            .onChange(of: gridState.apps.isEmpty) { empty in
+                if !empty, state.isGridMode { animateEntry() }
+            }
+            .onChange(of: gridState.searchQuery) { _ in
+                gridState.endViewportGesture()
+                isPanning = false
+                isPinching = false
+                gridState.panOffset = .zero
+                dragBaseline = .zero
+                bumpInteraction()
+            }
+            .onChange(of: reduceMotion) { enabled in
+                if enabled {
+                    stopInteraction()
                     appearProgress = 1
                 }
             }
+            .onDisappear { stopInteraction() }
             .onChange(of: gridState.committingBundleID) { id in
                 guard id != nil else { commitPulse = false; return }
                 if reduceMotion {
@@ -212,216 +249,108 @@ public struct HoneycombGridView: View {
     /// fall into the mid-40s on large catalogues. That contrast is the
     /// watchOS read: a clear focal constellation instead of an even macOS
     /// icon sheet.
-    public static let baseIconSize: CGFloat = 76
-    /// Slightly roomy pitch so the enlarged centre can breathe while outer
-    /// icons still feel clustered after fisheye pull-in.
-    public static let baseSpacing: CGFloat = 100
+    public static let baseIconSize = HoneycombViewportGeometry.baseIconSize
+    public static let baseSpacing = HoneycombViewportGeometry.baseSpacing
 
-    private var iconSize: CGFloat {
-        Self.baseIconSize * gridState.zoomLevel * HaloUI.Geometry.panelScale
+    private var canonicalIconSize: CGFloat { Self.baseIconSize * HaloUI.Geometry.panelScale }
+    private var iconSize: CGFloat { canonicalIconSize * gridState.zoomLevel }
+    private var canonicalSpacing: CGFloat {
+        let base = Self.baseSpacing * HaloUI.Geometry.panelScale
+        return gridState.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty
+            ? base : max(base, (canonicalIconSize + 48) * 1.08)
     }
-    private var spacing: CGFloat {
-        let base = Self.baseSpacing * gridState.zoomLevel * HaloUI.Geometry.panelScale
-        guard !gridState.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty else { return base }
-        return max(base, (iconSize + 48) * 1.08)
+
+    private func layout(in viewSize: CGSize) -> HoneycombViewportGeometry.Layout {
+        let exclusion = HoneycombViewportGeometry.layoutExclusion(
+            stripExclusionRect(viewSize: viewSize), viewSize: viewSize,
+            pan: stripAnchorPan, zoom: stripAnchorZoom)
+        return layoutCache.resolve(count: gridState.filteredApps.count,
+                            spacing: canonicalSpacing, iconSize: canonicalIconSize,
+                            viewSize: viewSize, exclusion: exclusion)
     }
-    private var verticalSpacingStretch: CGFloat { 1.18 }
 
     @ViewBuilder
     private func grid(in viewSize: CGSize) -> some View {
         let list = gridState.filteredApps
+        let layout = layout(in: viewSize)
         let viewCentre = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2)
+        let focus = focusPoint(viewCentre: viewCentre)
         let stripExclusion = stripExclusionRect(viewSize: viewSize)
+        let radius = min(viewSize.width, viewSize.height) * focusRadiusFactor(for: list.count)
+        let searching = !gridState.searchQuery.trimmingCharacters(in: .whitespaces).isEmpty
+        let cullPad = canonicalSpacing * gridState.zoomLevel * 1.5
+        let cullRect = CGRect(origin: .zero, size: viewSize).insetBy(dx: -cullPad, dy: -cullPad)
 
-        // Single origin shared by filter and render. Includes panOffset
-        // so the lattice keep-out follows the TabBar through a pan —
-        // the cluster's hex hole always sits under the strip rather
-        // than drifting away with the pan.
-        let estLayout = HoneycombGeometry.spiralLayout(count: list.count)
-        let estBounds = HoneycombGeometry.layoutBounds(
-            layout: estLayout,
-            spacing: spacing,
-            verticalStretch: verticalSpacingStretch
-        )
-        let originX = viewCentre.x - estBounds.midX + gridState.panOffset.width
-        let originY = viewCentre.y - estBounds.midY + gridState.panOffset.height
-
-        // Adaptive layout: apps whose natural spiral slot doesn't fall
-        // in the keep-out stay there. Only the few apps right at the
-        // boundary relocate to the nearest unused outer slot. So pan
-        // moves the hole along with the TabBar while leaving 95%+ of
-        // the cluster untouched, instead of cascading through every
-        // app.
-        let keepOut = stripExclusion?.insetBy(
-            dx: -iconSize * 0.42,
-            dy: -iconSize * 0.42
-        )
-        let layout = PerfSignpost.measure("adaptiveSpiralLayout") {
-            HoneycombGeometry.adaptiveSpiralLayout(
-                count: list.count,
-                spacing: spacing,
-                verticalStretch: verticalSpacingStretch,
-                keepOut: keepOut,
-                originX: originX,
-                originY: originY
-            )
+        // Only this O(n) projection runs during gestures. Hex slot assignment,
+        // bounds and the strip keep-out are cached at canonical zoom.
+        let cells: [PositionedCell] = PerfSignpost.measure("watchViewportProject") {
+            layout.offsets.enumerated().compactMap { index, offset in
+                let projection = HoneycombViewportGeometry.project(
+                    offset: offset, viewCenter: viewCentre, focus: focus,
+                    pan: gridState.panOffset, zoom: gridState.zoomLevel, radius: radius,
+                    minimumScale: searching ? 0.70 : minimumScale(for: list.count),
+                    maximumScale: 1 + centerLift(for: list.count), pull: searching ? 0 : 0.12)
+                // Cull after projection: a rim cell can be pulled into view.
+                guard cullRect.contains(projection.center) else { return nil }
+                let halfIcon = iconSize * projection.scale * 0.5
+                let fade = HoneycombGeometry.stripFadeOpacity(
+                    cellCenter: projection.center,
+                    strip: stripExclusion?.insetBy(dx: -halfIcon, dy: -halfIcon),
+                    band: max(12, halfIcon * 0.7))
+                return PositionedCell(app: list[index], projection: projection, stripFade: fade)
+            }
         }
-
-        // Stronger fisheye than a normal desktop grid: the focused core is
-        // visibly larger, while dense catalogues compress the outer rings.
-        let fisheyeRadius = min(viewSize.width, viewSize.height) * focusRadiusFactor(for: list.count)
-
-        // One-cell padding cull. Cells whose centre lands well outside
-        // the viewport aren't rendered. Generous so cells crossing in
-        // / out of the cull rim during pan don't pop.
-        let cullPad = spacing * 1.6
-        let cullRect = CGRect(
-            x: -cullPad,
-            y: -cullPad,
-            width: viewSize.width + 2 * cullPad,
-            height: viewSize.height + 2 * cullPad
-        )
-
-        // Safety-net fade: adaptive layout already keeps cells out of
-        // the keep-out rect, but fisheye projection can pull a cell a
-        // few pt back toward focus. A small fade band along the strip
-        // edges keeps any drift visually clean.
-        let stripFadeBand: CGFloat = iconSize * 0.18
-
-        let cells: [PositionedCell] = layout.enumerated().compactMap { idx, rc in
-            let app = list[idx]
-            let flat = HoneycombGeometry.center(
-                row: rc.row,
-                col: rc.col,
-                spacing: spacing,
-                verticalStretch: verticalSpacingStretch
-            )
-            let absolute = CGPoint(x: flat.x + originX, y: flat.y + originY)
-            let focused = searchFocusedPosition(
-                for: app,
-                flatPosition: absolute,
-                index: idx,
-                viewCentre: viewCentre,
-                query: gridState.searchQuery
-            )
-            guard cullRect.contains(focused) else { return nil }
-            let stripFade = HoneycombGeometry.stripFadeOpacity(
-                cellCenter: focused,
-                strip: stripExclusion,
-                band: stripFadeBand
-            )
-            return PositionedCell(app: app, position: focused, stripFade: stripFade)
-        }
-        let frameProjectionStrength: CGFloat = gridState.searchQuery.isEmpty ? 0.14 : 0
         let launchAnchor = gridState.committingBundleID.flatMap { committing in
             cells.first(where: { $0.id == committing })?.position
         }
 
         ZStack {
-            ForEach(cells, id: \.id) { cell in
-                iconCell(
-                    app: cell.app,
-                    appCount: list.count,
-                    position: cell.position,
-                    viewCentre: viewCentre,
-                    fisheyeRadius: fisheyeRadius,
-                    launchAnchor: launchAnchor,
-                    stripFade: cell.stripFade
-                )
-                .transition(
-                    .asymmetric(
-                        insertion: .scale(scale: 0.88).combined(with: .opacity),
-                        removal: .scale(scale: 0.92).combined(with: .opacity)
-                    )
-                )
+            ForEach(cells) { cell in
+                iconCell(app: cell.app, projection: cell.projection, viewCentre: viewCentre,
+                         fisheyeRadius: radius, launchAnchor: launchAnchor, stripFade: cell.stripFade)
+                    .transition(reduceMotion ? .opacity : .scale(scale: 0.94).combined(with: .opacity))
             }
         }
-        .animation(reduceMotion ? nil : .spring(response: 0.26, dampingFraction: 0.78), value: gridState.searchQuery)
-        .animation(reduceMotion ? nil : .spring(response: 0.24, dampingFraction: 0.74), value: gridState.apps)
-        .opacity(gridState.committingBundleID == nil ? appearProgress : (commitPulse ? 0.96 : 0.12))
-        // Live pinch multiplies the whole cluster on the GPU; committed
-        // zoom (gridState.zoomLevel) drives the real hex relayout. Keeping
-        // the transient scale here means a pinch is one scaleEffect per
-        // frame instead of an adaptiveSpiralLayout + 100-cell reflow.
-        .scaleEffect((0.78 + 0.22 * appearProgress) * liveZoomScale)
-        .onAppear {
-            refreshCellFrames(cells: cells, viewCentre: viewCentre,
-                              fisheyeRadius: fisheyeRadius, strength: frameProjectionStrength)
-        }
+        .frame(width: viewSize.width, height: viewSize.height)
+        .animation(.Halo.gridReflow(reduceMotion: reduceMotion), value: gridState.searchQuery)
+        .animation(.Halo.gridReflow(reduceMotion: reduceMotion), value: gridState.apps)
+        .opacity(gridState.committingBundleID == nil ? 1 : (commitPulse ? 0.96 : 0.12))
+        .onAppear { refreshCellFrames(cells: cells, layout: layout, viewSize: viewSize) }
         .onChange(of: gridState.filteredApps.map(\.bundleID)) { _ in
-            refreshCellFrames(cells: cells, viewCentre: viewCentre,
-                              fisheyeRadius: fisheyeRadius, strength: frameProjectionStrength)
+            refreshCellFrames(cells: cells, layout: layout, viewSize: viewSize)
         }
-        // Hover hit-test reads `cellFrames`, so it must track pan / zoom.
-        // The reduce is a light pass over the culled (visible) cells; the
-        // heavy shadow-blur cost is separately gated by `isInteracting`.
         .onChange(of: gridState.panOffset) { _ in
-            refreshCellFrames(cells: cells, viewCentre: viewCentre,
-                              fisheyeRadius: fisheyeRadius, strength: frameProjectionStrength)
+            refreshCellFrames(cells: cells, layout: layout, viewSize: viewSize)
         }
         .onChange(of: gridState.zoomLevel) { _ in
-            refreshCellFrames(cells: cells, viewCentre: viewCentre,
-                              fisheyeRadius: fisheyeRadius, strength: frameProjectionStrength)
+            refreshCellFrames(cells: cells, layout: layout, viewSize: viewSize)
         }
-        // cellFrames (consumed by hover-repel + drag drop-target lookup) is
-        // refreshed only when the app list changes or on first appear — never
-        // on panOffset / zoomLevel. (a) hover-repel reads a relative offset
-        // between two cell centres that translate / scale together, so a stale
-        // dict is invariant under pure pan or pure zoom; (b) drag drop-target
-        // lookup is gated by panGesture's `draggingBundleID == nil` guard, so
-        // no drag is in flight during pan/pinch. The per-cell fisheye reduce
-        // that builds the dict now lives in these closures rather than inline
-        // in `grid()`, so it no longer runs — nor allocates a throwaway dict —
-        // on every pan / zoom frame.
-    }
-
-    /// Build the hit-test rectangle for each visible cell — the projected
-    /// (post-fisheye) icon frame keyed by bundleID. Driven only from
-    /// `grid()`'s `onAppear` / list-change handlers, never per pan frame, so
-    /// the reduce + dict allocation stay off the gesture hot path.
-    private func refreshCellFrames(
-        cells: [PositionedCell],
-        viewCentre: CGPoint,
-        fisheyeRadius: CGFloat,
-        strength: CGFloat
-    ) {
-        let frames = cells.reduce(into: [String: CGRect]()) { partial, cell in
-            let projection = HoneycombGeometry.fisheyeOffset(
-                position: cell.position,
-                viewCenter: viewCentre,
-                maxRadius: fisheyeRadius,
-                strength: strength
-            )
-            let center = CGPoint(
-                x: cell.position.x + projection.width,
-                y: cell.position.y + projection.height
-            )
-            partial[cell.id] = CGRect(
-                x: center.x - iconSize / 2,
-                y: center.y - iconSize / 2,
-                width: iconSize,
-                height: iconSize
-            )
+        .onChange(of: stripExclusion) { _ in
+            refreshCellFrames(cells: cells, layout: layout, viewSize: viewSize)
         }
-        cellFrames = frames
-        // Mirror to GridState so the grid window's cursor-poll timer can
-        // hit-test hover against the same projected frames (SwiftUI
-        // `.onHover` is shadowed by the full-frame pan gesture).
-        gridState.cellFrames = frames
+        .onChange(of: stripAnchorPan) { _ in
+            refreshCellFrames(cells: cells, layout: layout, viewSize: viewSize)
+        }
+        .onChange(of: stripAnchorZoom) { _ in
+            refreshCellFrames(cells: cells, layout: layout, viewSize: viewSize)
+        }
+        .onChange(of: viewSize) { _ in
+            refreshCellFrames(cells: cells, layout: layout, viewSize: viewSize)
+        }
     }
 
-    private func searchFocusedPosition(
-        for app: GridState.GridApp,
-        flatPosition: CGPoint,
-        index: Int,
-        viewCentre: CGPoint,
-        query: String
-    ) -> CGPoint {
-        let q = query.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return flatPosition }
-        return flatPosition
+    /// Hover, drag targets and rendering share the exact same lens projection
+    /// and scaled icon footprint. Hidden strip cells are never hit-testable.
+    private func refreshCellFrames(cells: [PositionedCell],
+                                   layout: HoneycombViewportGeometry.Layout, viewSize: CGSize) {
+        cellFrames = cells.reduce(into: [String: CGRect]()) { frames, cell in
+            guard cell.stripFade > 0.5 else { return }
+            frames[cell.id] = cell.projection.iconFrame(size: iconSize)
+        }
+        gridState.cellFrames = cellFrames
+        gridState.viewportPanLimits = HoneycombViewportGeometry.panLimits(
+            bounds: layout.bounds, viewSize: viewSize, zoom: gridState.zoomLevel, iconSize: iconSize)
     }
-
 
     @ViewBuilder
     private func gridAtmosphere(in viewSize: CGSize) -> some View {
@@ -481,33 +410,22 @@ public struct HoneycombGridView: View {
     /// while still rendering the precomputed honeycomb position.
     private struct PositionedCell: Identifiable {
         let app: GridState.GridApp
-        let position: CGPoint
-        /// Multiplier applied on top of the cell's normal opacity. 0
-        /// when the cell has drifted under the TabBar during a pan, 1
-        /// when it's safely outside the strip rect.
+        let projection: HoneycombViewportGeometry.Projection
         let stripFade: Double
+        var position: CGPoint { projection.center }
         var id: String { app.bundleID }
     }
 
     @ViewBuilder
     private func iconCell(
         app: GridState.GridApp,
-        appCount: Int,
-        position: CGPoint,
+        projection: HoneycombViewportGeometry.Projection,
         viewCentre: CGPoint,
         fisheyeRadius: CGFloat,
         launchAnchor: CGPoint?,
         stripFade: Double
     ) -> some View {
-        let focusPoint = focusPoint(viewCentre: viewCentre)
-        let distance = distance(from: position, to: focusPoint)
-        let scale = projectedScale(for: position, appCount: appCount, viewCentre: viewCentre, fisheyeRadius: fisheyeRadius)
-        let baseProjection = HoneycombGeometry.fisheyeOffset(
-            position: position,
-            viewCenter: focusPoint,
-            maxRadius: fisheyeRadius,
-            strength: gridState.searchQuery.isEmpty ? 0.12 : 0
-        )
+        let position = projection.center
         let isSelected = gridState.selectedBundleID == app.bundleID
         let isCommitting = gridState.committingBundleID == app.bundleID
         let isDragging = gridState.draggingBundleID == app.bundleID
@@ -516,74 +434,48 @@ public struct HoneycombGridView: View {
         let commitPull: CGSize = {
             guard let launchAnchor, isCommitDimming else { return .zero }
             return HoneycombGeometry.commitCollapseOffset(
-                position: position,
-                anchor: launchAnchor,
-                maxDistance: fisheyeRadius,
-                strength: commitPulse ? 0.06 : 0.18
-            )
+                position: position, anchor: launchAnchor, maxDistance: fisheyeRadius,
+                strength: commitPulse ? 0.06 : 0.18)
         }()
         let hoverPush: CGSize = {
-            guard let selected = gridState.selectedBundleID,
-                  selected != app.bundleID,
-                  let selectedFrame = cellFrames[selected]
-            else { return .zero }
-            // Subtle nudge only — the lattice already keeps a clean
-            // grid, and a stronger repel made the whole cluster jitter
-            // every time the cursor moved between cells.
+            guard !isInteracting, !gridState.isViewportMoving,
+                  let selected = gridState.selectedBundleID, selected != app.bundleID,
+                  let frame = cellFrames[selected] else { return .zero }
             return HoneycombGeometry.hoverRepelOffset(
-                position: position,
-                hoverCenter: CGPoint(x: selectedFrame.midX, y: selectedFrame.midY),
-                radius: iconSize * 1.05,
-                strength: 1.6
-            )
+                position: position, hoverCenter: CGPoint(x: frame.midX, y: frame.midY),
+                radius: iconSize * 1.05, strength: 1.6)
         }()
-        let projection = CGSize(
-            width: baseProjection.width + commitPull.width + hoverPush.width,
-            height: baseProjection.height + commitPull.height + hoverPush.height
-        )
-        // Default: labels hide so long names don't visually overlap
-        // their neighbours. During search the centre gets a watchOS-
-        // style readable strip — matched cells are pulled close to the
-        // focal point, so a centre-bright distance fade automatically
-        // shows just the matches without crowding the rim.
         let labelOpacity: Double = gridState.searchQuery.isEmpty
-            ? 0
-            : pow(max(0, 1 - distance / fisheyeRadius), 1.65)
+            ? 0 : pow(max(0, 1 - projection.distance / max(fisheyeRadius, 1)), 1.65)
+        let entryScale = reduceMotion ? 1 : 0.92 + 0.08 * appearProgress
+        let entryDelay = min(Double(projection.distance / max(fisheyeRadius, 1)), 1) * 0.065
 
         IconCell(
-            bundleID: app.bundleID,
-            name: app.name,
-            baseSize: iconSize,
-            isSelected: isSelected,
-            isCommitting: isCommitting,
-            isDragging: isDragging,
-            isDropTarget: isDropTarget,
-            isCommitDimming: isCommitDimming,
+            bundleID: app.bundleID, name: app.name, baseSize: iconSize,
+            isSelected: isSelected, isCommitting: isCommitting, isDragging: isDragging,
+            isDropTarget: isDropTarget, isCommitDimming: isCommitDimming,
             labelOpacity: labelOpacity,
-            projectedScale: scale,
-            suppressShadows: isInteracting && !isDragging
+            suppressShadows: (isInteracting || gridState.isViewportMoving || isEntering) && !isDragging
         )
-        .scaleEffect(scale * cellExtraScale(isSelected: isSelected, isCommitting: isCommitting, isDragging: isDragging))
-        .opacity(stripFade * (isCommitDimming ? (commitPulse ? 0.58 : 0.08) : cellOpacity(distance: distance, radius: fisheyeRadius, isSelected: isSelected, isDragging: isDragging)))
+        .scaleEffect(projection.scale * entryScale
+                     * cellExtraScale(isSelected: isSelected, isCommitting: isCommitting, isDragging: isDragging))
+        .animation(reduceMotion ? nil : .spring(response: 0.16, dampingFraction: 0.88), value: isSelected)
+        .opacity(appearProgress * stripFade * (isCommitDimming ? (commitPulse ? 0.58 : 0.08)
+                 : cellOpacity(distance: projection.distance, radius: fisheyeRadius,
+                               isSelected: isSelected, isDragging: isDragging)))
         .allowsHitTesting(stripFade > 0.5)
         .offset(dragOffsets[app.bundleID] ?? .zero)
-        .position(
-            x: position.x + projection.width,
-            y: position.y + projection.height
-        )
+        .position(x: viewCentre.x + (position.x - viewCentre.x) * entryScale + commitPull.width + hoverPush.width,
+                  y: viewCentre.y + (position.y - viewCentre.y) * entryScale + commitPull.height + hoverPush.height)
         .zIndex(isCommitting ? 100 : (isDragging ? 80 : (isSelected ? 10 : 0)))
-        .animation(reduceMotion ? nil : .spring(response: 0.13, dampingFraction: 0.68), value: isSelected)
-        .animation(reduceMotion ? nil : .spring(response: 0.22, dampingFraction: 0.82), value: isDropTarget)
+        .animation(.Halo.gridEnter(delay: entryDelay, reduceMotion: reduceMotion), value: appearProgress)
+        .animation(.Halo.gridReflow(reduceMotion: reduceMotion), value: isDropTarget)
         .animation(reduceMotion ? nil : .timingCurve(0.2, 0.7, 0.2, 1, duration: 0.18), value: gridState.committingBundleID)
         .onHover { hovering in
-            // Drag in progress: ignore hover changes from other cells.
-            // Without this gate the cursor passing over neighbours flips
-            // selectedBundleID off the dragged icon and back many times
-            // per second, firing the isSelected spring on multiple cells
-            // and oscillating hoverPush — visible as drag jitter.
-            guard gridState.draggingBundleID == nil else { return }
+            guard gridState.draggingBundleID == nil, !isInteracting, !isEntering,
+                  !gridState.isViewportMoving else { return }
             if hovering {
-                gridState.selectedBundleID = app.bundleID
+                if gridState.selectedBundleID != app.bundleID { gridState.selectedBundleID = app.bundleID }
             } else if gridState.selectedBundleID == app.bundleID {
                 gridState.selectedBundleID = nil
             }
@@ -591,6 +483,7 @@ public struct HoneycombGridView: View {
         .highPriorityGesture(iconDragGesture(for: app, from: position))
         .onTapGesture {
             guard gridState.draggingBundleID == nil else { return }
+            gridState.endViewportGesture()
             gridState.selectedBundleID = app.bundleID
             state.onCommit?()
         }
@@ -612,42 +505,7 @@ public struct HoneycombGridView: View {
 
     private func focusPoint(viewCentre: CGPoint) -> CGPoint {
         guard state.profilePills.count > 1 else { return viewCentre }
-        return CGPoint(x: viewCentre.x, y: viewCentre.y - iconSize * 0.18)
-    }
-
-    private func projectedScale(
-        for position: CGPoint,
-        appCount: Int,
-        viewCentre: CGPoint,
-        fisheyeRadius: CGFloat
-    ) -> CGFloat {
-        let focus = focusPoint(viewCentre: viewCentre)
-        let distance = distance(from: position, to: focus)
-        let dynamicMinScale = minimumScale(for: appCount)
-        let baseScale = HoneycombGeometry.fisheyeScale(
-            distance: distance,
-            maxRadius: fisheyeRadius,
-            minScale: gridState.searchQuery.isEmpty ? dynamicMinScale : 0.70,
-            curve: 1.16
-        )
-        let centreLift = 1 + centerLift(for: appCount)
-            * pow(max(0, 1 - distance / max(fisheyeRadius, 1)), 1.08)
-        return baseScale * centreLift
-    }
-
-    private func cellFootprint(iconScale scale: CGFloat) -> CGSize {
-        // Footprint used by the strip collision guard. Sized to just the
-        // icon (with a small shadow allowance) — labels are hidden for
-        // rim cells, so padding for them would make the guard push
-        // boundary cells outward into their own neighbours.
-        let icon = iconSize * scale
-        return CGSize(width: icon * 1.06, height: icon * 1.06)
-    }
-
-    private func distance(from lhs: CGPoint, to rhs: CGPoint) -> CGFloat {
-        let dx = lhs.x - rhs.x
-        let dy = lhs.y - rhs.y
-        return (dx * dx + dy * dy).squareRoot()
+        return CGPoint(x: viewCentre.x, y: viewCentre.y - canonicalIconSize * 0.18)
     }
 
     private func minimumScale(for count: Int) -> CGFloat {
@@ -691,6 +549,8 @@ public struct HoneycombGridView: View {
                 // changes — assigning every frame fires objectWillChange
                 // on the 100+ cell ZStack and turns drag into a slideshow.
                 if gridState.draggingBundleID != app.bundleID {
+                    gridState.endViewportGesture()
+                    isPanning = false
                     gridState.draggingBundleID = app.bundleID
                 }
                 if gridState.selectedBundleID != app.bundleID {
@@ -712,7 +572,7 @@ public struct HoneycombGridView: View {
                     dragOffsets[app.bundleID] = .zero
                 }
                 if let target {
-                    gridState.moveApp(bundleID: app.bundleID, near: target)
+                    gridState.moveApp(bundleID: app.bundleID, near: target, reduceMotion: reduceMotion)
                 }
                 Task { @MainActor in
                     try? await Task.sleep(nanoseconds: 90_000_000)
@@ -876,82 +736,106 @@ public struct HoneycombGridView: View {
 
     // MARK: - Gestures
 
-    /// Maximum pan offset allowed on each axis. Panning stops the moment
-    /// the last icon's visual edge would disappear past the viewport boundary.
-    ///
-    /// Derivation (rightward pan; same logic applies to all four directions):
-    ///   The renderer places the leftmost cell centre at:
-    ///     x = viewCentre.x - estBounds.width/2 + panOffset.width
-    ///   "Last icon disappears" means its centre (+ half icon width) exits
-    ///   the right edge of the screen:
-    ///     viewCentre.x - clusterHalfW + panOffset.width + iconSize/2 > viewSize.width
-    ///   Rearranging for the last allowed panOffset:
-    ///     maxX = viewSize.width/2 + clusterHalfW - iconSize/2
-    ///              ≡ viewSize.width/2 + estBounds.width/2 - iconSize/2
-    ///
-    ///   Note: `estBounds` contains cell-centre coordinates only, so we add
-    ///   iconSize/2 rather than iconSize — the icon's far edge extends half
-    ///   an icon beyond its centre.
-    private func panLimits(in viewSize: CGSize) -> (maxX: CGFloat, maxY: CGFloat) {
-        let count = max(gridState.filteredApps.count, 1)
-        let estLayout = HoneycombGeometry.spiralLayout(count: count)
-        let estBounds = HoneycombGeometry.layoutBounds(
-            layout: estLayout,
-            spacing: spacing,
-            verticalStretch: verticalSpacingStretch
-        )
-        return (
-            maxX: max(0, viewSize.width  / 2 + estBounds.width  / 2 - iconSize / 2),
-            maxY: max(0, viewSize.height / 2 + estBounds.height / 2 - iconSize / 2)
-        )
+    /// Both input routes use the cached cluster extent, keeping the last
+    /// icon on screen even when the reserved-strip layout is asymmetric.
+    private func panLimits(in viewSize: CGSize) -> CGSize {
+        HoneycombViewportGeometry.panLimits(bounds: layout(in: viewSize).bounds,
+                                           viewSize: viewSize, zoom: gridState.zoomLevel, iconSize: iconSize)
     }
 
     private func clampPanOffset(in viewSize: CGSize) {
-        let limits = panLimits(in: viewSize)
-        let clamped = CGSize(
-            width:  max(-limits.maxX, min(limits.maxX,  gridState.panOffset.width)),
-            height: max(-limits.maxY, min(limits.maxY, gridState.panOffset.height))
-        )
+        let clamped = HoneycombViewportGeometry.clamp(gridState.panOffset, limits: panLimits(in: viewSize))
         guard clamped != gridState.panOffset else { return }
         gridState.panOffset = clamped
-        dragBaseline = clamped
     }
 
-    /// Mark the cluster as actively gesturing. Heavy SwiftUI modifiers
-    /// (shadow blur on every IconCell) are gated on `isInteracting` and
-    /// downgrade to zero-radius while this is on. We auto-clear after
-    /// 120 ms of no further activity so the cluster settles back into
-    /// its polished render without the user having to "release" twice.
+    private func animateEntry() {
+        entryTask?.cancel()
+        isEntering = true
+        gridState.pointerSelectionSuppressed = true
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) { appearProgress = 0 }
+        entryTask = Task { @MainActor in
+            // Ensure the collapsed state is rendered before opening. The
+            // hosting view survives orderOut, so onAppear alone isn't enough.
+            await Task.yield()
+            guard !Task.isCancelled, state.isGridMode else { return }
+            withAnimation(.Halo.gridEnter(reduceMotion: reduceMotion)) { appearProgress = 1 }
+            do { try await Task.sleep(nanoseconds: reduceMotion ? 60_000_000 : 520_000_000) }
+            catch { return }
+            isEntering = false
+            gridState.pointerSelectionSuppressed = isInteracting || gridState.isViewportMoving
+        }
+    }
+
+    private func stopInteraction() {
+        entryTask?.cancel()
+        interactionIdleTask?.cancel()
+        stripSettleTask?.cancel()
+        gridState.endViewportGesture()
+        gridState.pointerSelectionSuppressed = false
+        isEntering = false
+        isInteracting = false
+        isPanning = false
+        isPinching = false
+    }
+
     private func bumpInteraction() {
         if !isInteracting { isInteracting = true }
+        gridState.pointerSelectionSuppressed = true
         interactionIdleTask?.cancel()
         interactionIdleTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 120_000_000)
-            if !Task.isCancelled, isInteracting {
-                isInteracting = false
+            do { try await Task.sleep(nanoseconds: 120_000_000) }
+            catch { return }
+            isInteracting = false
+            gridState.pointerSelectionSuppressed = isEntering || gridState.isViewportMoving
+        }
+    }
+
+    /// Re-anchor the strip hole after pan/zoom has been idle briefly. One
+    /// reflow per settle keeps motion itself slot-stable.
+    private func scheduleStripSettle() {
+        stripSettleTask?.cancel()
+        guard state.profilePills.count > 1 else { return }
+        stripSettleTask = Task { @MainActor in
+            do { try await Task.sleep(nanoseconds: 160_000_000) }
+            catch { return }
+            guard state.isGridMode, !isInteracting, !gridState.isViewportMoving,
+                  gridState.draggingBundleID == nil, gridState.committingBundleID == nil
+            else { return }
+            let pan = gridState.panOffset
+            let zoom = gridState.zoomLevel
+            guard pan != stripAnchorPan || zoom != stripAnchorZoom else { return }
+            withAnimation(.Halo.gridReflow(reduceMotion: reduceMotion)) {
+                stripAnchorPan = pan
+                stripAnchorZoom = zoom
             }
         }
     }
 
     private func panGesture(in viewSize: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 1)
+        DragGesture(minimumDistance: 3)
             .onChanged { value in
                 guard gridState.draggingBundleID == nil else { return }
+                if !isPanning {
+                    gridState.beginViewportGesture()
+                    dragBaseline = gridState.panOffset
+                    isPanning = true
+                }
                 bumpInteraction()
-                // Recompute limits every event so zoom changes and
-                // app-count changes (search) are always reflected.
-                let limits = panLimits(in: viewSize)
-                let proposed = CGSize(
-                    width:  dragBaseline.width  + value.translation.width,
-                    height: dragBaseline.height + value.translation.height
-                )
-                gridState.panOffset = CGSize(
-                    width:  max(-limits.maxX, min(limits.maxX, proposed.width)),
-                    height: max(-limits.maxY, min(limits.maxY, proposed.height))
-                )
+                gridState.panOffset = HoneycombViewportGeometry.clamp(
+                    CGSize(width: dragBaseline.width + value.translation.width,
+                           height: dragBaseline.height + value.translation.height),
+                    limits: panLimits(in: viewSize))
             }
-            .onEnded { _ in
-                dragBaseline = gridState.panOffset
+            .onEnded { value in
+                guard isPanning else { return }
+                isPanning = false
+                gridState.coastViewport(
+                    by: CGSize(width: value.predictedEndTranslation.width - value.translation.width,
+                               height: value.predictedEndTranslation.height - value.translation.height),
+                    reduceMotion: reduceMotion)
                 bumpInteraction()
             }
     }
@@ -959,22 +843,22 @@ public struct HoneycombGridView: View {
     private func zoomGesture(in viewSize: CGSize) -> some Gesture {
         MagnificationGesture()
             .onChanged { mag in
+                if !isPinching {
+                    gridState.beginViewportGesture()
+                    pinchBaseline = gridState.zoomLevel
+                    isPinching = true
+                }
                 bumpInteraction()
-                // During the gesture, only touch the cheap transient scale.
-                // Clamp the *effective* zoom so the live preview matches the
-                // committed bounds the user will land on.
-                let effective = max(0.5, min(2.5, pinchBaseline * mag))
-                liveZoomScale = effective / pinchBaseline
+                // Stable cached slots make continuous projection cheap. No
+                // transient GPU scale to fold back into a different lens.
+                gridState.zoomLevel = max(0.5, min(2.5, pinchBaseline * mag))
             }
             .onEnded { _ in
-                // Fold the transient scale into the real zoom once, then
-                // reset the multiplier — a single relayout instead of one
-                // per frame.
-                let target = max(0.5, min(2.5, pinchBaseline * liveZoomScale))
-                gridState.zoomLevel = target
-                pinchBaseline = target
-                liveZoomScale = 1.0
+                isPinching = false
+                pinchBaseline = gridState.zoomLevel
+                gridState.endViewportGesture()
                 clampPanOffset(in: viewSize)
+                bumpInteraction()
             }
     }
 
@@ -998,7 +882,6 @@ private struct IconCell: View {
     /// 0.0 at the fisheye rim; multiplied with the in-cell label
     /// modulation (selected = full opacity).
     let labelOpacity: Double
-    let projectedScale: CGFloat
     /// Set by the parent while a pan/pinch is in flight. When true,
     /// the icon + label shadows render at radius 0 so SwiftUI skips
     /// the offscreen blur pass.
@@ -1007,11 +890,10 @@ private struct IconCell: View {
     @State private var image: NSImage?
 
     var body: some View {
-        VStack(spacing: 6) {
-            iconStack
-            label
-        }
-        .frame(width: baseSize + 34, height: baseSize + 24, alignment: .top)
+        iconStack
+        .frame(width: baseSize, height: baseSize)
+        .overlay(alignment: .bottom) { label.offset(y: 20) }
+        .contentShape(Rectangle())
         .task(id: bundleID) {
             self.image = AppIconResolver.icon(for: bundleID)
         }
@@ -1079,11 +961,37 @@ private struct IconCell: View {
         // the parent so matches (pulled toward focus) get readable
         // labels and rim non-matches stay clean.
         if labelOpacity > 0 { return labelOpacity }
-        // Default: only large centre icons get a label. Rim icons go
-        // label-less so long names don't crowd neighbours, matching
-        // watchOS Home Screen's clean periphery.
-        if projectedScale >= 0.94 { return 1.0 }
-        if projectedScale >= 0.86 { return Double((projectedScale - 0.86) / 0.08) }
+        // Keep the moving constellation clear. Names appear on hover or
+        // during search; the fixed bottom badge also identifies selection.
         return 0
+    }
+}
+
+
+/// One bounded cache per hosting view; no process-wide layout state.
+@MainActor
+private final class HoneycombLayoutCache: ObservableObject {
+    private struct Key: Equatable {
+        let count: Int
+        let spacing: CGFloat
+        let iconSize: CGFloat
+        let viewSize: CGSize
+        let exclusion: CGRect?
+    }
+    private var key: Key?
+    private var cached: HoneycombViewportGeometry.Layout?
+
+    func resolve(count: Int, spacing: CGFloat, iconSize: CGFloat,
+                 viewSize: CGSize, exclusion: CGRect?) -> HoneycombViewportGeometry.Layout {
+        let next = Key(count: count, spacing: spacing, iconSize: iconSize,
+                       viewSize: viewSize, exclusion: exclusion)
+        if key == next, let cached { return cached }
+        let value = PerfSignpost.measure("watchLayout") {
+            HoneycombViewportGeometry.layout(count: count, spacing: spacing, iconSize: iconSize,
+                                             viewSize: viewSize, exclusion: exclusion)
+        }
+        key = next
+        cached = value
+        return value
     }
 }

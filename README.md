@@ -52,12 +52,12 @@ A full-screen watchOS-style honeycomb of every installed app, for when the wheel
 - **Enter** — Tab to the ALL profile while the wheel is up, or click the 9-dots pill at the top of the wheel.
 - **Search** — start typing. Substring match against name + bundle ID; matched icons pull toward the centre via a fisheye projection.
 - **Navigate** — arrow keys step the keyboard selection through neighbouring cells; cursor hover does the same.
-- **Launch** — `Return` / `Space` / click; or release the hotkey on a hovered icon.
-- **Zoom** — trackpad pinch (0.5×–2.5×).
-- **Pan** — trackpad two-finger drag, or scroll-wheel.
+- **Launch** — `Return` / `Space` / click. Releasing the summon trigger keeps ALL open.
+- **Zoom** — trackpad pinch or mouse wheel (0.5×–2.5×), with continuous focus scaling.
+- **Pan** — two-finger trackpad scroll, or drag the background with the mouse. Mouse drags coast briefly on release; a new gesture interrupts immediately.
 - **Cancel** — `ESC`.
 
-Apps are ranked by usage (most-used cluster near the centre, with the focal core enlarged via fisheye). Toggle the ALL pill on/off under Settings → General → Show ALL profile.
+Apps are ranked by usage (most-used cluster near the centre, with the focal core enlarged via fisheye). Icons keep their honeycomb slots during pan/zoom and bloom gently on entry; Reduce Motion uses a short fade. Names appear on hover or during search. Toggle the ALL pill on/off under Settings → Apps → Show ALL profile.
 
 ### Menu bar
 

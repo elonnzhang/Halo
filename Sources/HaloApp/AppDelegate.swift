@@ -546,6 +546,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController?.show()
     }
 
+    /// A menu-bar app has no main window to raise on a Dock/Finder reopen.
+    /// Reuse its Settings entry point so opening Halo again is discoverable.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openSettings()
+        return true
+    }
+
     /// Hotkey hold-release path. The wheel uses release-to-commit
     /// (slot under cursor launches when the user lets go), but the
     /// grid is Launchpad-style browsing — the user needs the hand free
@@ -1226,26 +1233,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     let dx = event.scrollingDeltaX
                     let dy = event.scrollingDeltaY
                     if dx != 0 || dy != 0 {
-                        let proposed = CGSize(
-                            width:  gs.panOffset.width  + dx,
-                            height: gs.panOffset.height + dy
-                        )
-                        // Clamp inline — same limits the pan gesture uses.
-                        let zoomLevel = gs.zoomLevel
-                        let panelScale = HaloUI.Geometry.panelScale
-                        let spacing   = HoneycombGridView.baseSpacing * zoomLevel * panelScale
-                        let iconSize  = HoneycombGridView.baseIconSize * zoomLevel * panelScale
-                        let vStretch: CGFloat = 1.18
-                        let count = max(gs.filteredApps.count, 1)
-                        let layout = HoneycombGeometry.spiralLayout(count: count)
-                        let bounds = HoneycombGeometry.layoutBounds(
-                            layout: layout, spacing: spacing, verticalStretch: vStretch)
-                        let maxX = max(0, viewSize.width  / 2 + bounds.width  / 2 - iconSize / 2)
-                        let maxY = max(0, viewSize.height / 2 + bounds.height / 2 - iconSize / 2)
-                        gs.panOffset = CGSize(
-                            width:  max(-maxX, min(maxX,  proposed.width)),
-                            height: max(-maxY, min(maxY, proposed.height))
-                        )
+                        gs.panViewport(by: CGSize(width: dx, height: dy))
                     }
                 } else {
                     // Physical mouse wheel → ZOOM (spec: "鼠标滚轮事件为
