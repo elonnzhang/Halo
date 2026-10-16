@@ -12,10 +12,10 @@ Halo is an on-device macOS radial app launcher built with Swift 6, SwiftPM, Swif
 
 - `Sources/HaloCore`: UI-free engine, preferences, profiles, usage, actions, and diagnostics. Do not import AppKit, SwiftUI, or Carbon. Prefer value types and pure functions; explain new global state.
 - `Sources/HaloUI`: views, geometry, UI state, hotkeys, and launcher windows. May depend on HaloCore; keep launcher window implementation here.
-- `Sources/HaloApp`: executable entry point, app lifecycle, and Settings. Depends on HaloCore and HaloUI; SwiftPM resource processing belongs only to HaloApp.
+- `Sources/HaloApp`: executable entry point, app lifecycle, and Settings. Depends on HaloCore and HaloUI; SwiftPM resource processing belongs only to HaloApp. It is also the only target that links PermissionFlow, the project's sole third-party dependency (pinned exactly in `Package.swift`), used for Accessibility authorization guidance.
 - Keep the core switching loop Accessibility-free: Wheel, double-tap, menu bar, and NSWorkspace paths must not require AX. AX is limited to the Action Arc's Fullscreen and keyboard-shortcut chips.
 - Keep Halo on-device: no networking, telemetry, or third-party analytics.
-- Preserve macOS 12 compatibility (`Package.swift`). Guard newer APIs with availability checks or `Sources/HaloUI/PlatformCompat.swift`; retain the older-system material fallback.
+- Halo supports macOS 13 and later (`Package.swift`, `LSMinimumSystemVersion`), the floor PermissionFlow requires. Guard newer APIs with availability checks or `Sources/HaloUI/PlatformCompat.swift`; retain the older-system material fallback.
 
 ## Read for the task
 
@@ -43,7 +43,7 @@ Use Xcode 26.x and Swift 6; CI runs on `macos-26`. The Swift compiler provides t
 | Swift logic or state | Run affected tests with `swift test --filter <test-name>`; use `make test` for changes spanning modules or shared behavior. `make build` compiles the debug target. |
 | UI or interaction | Run affected tests and `make app`, then open this checkout's `dist/Halo.app` and exercise the changed flow. In a worktree, use that worktree's bundle. |
 | Layout or geometry | Include the affected geometry tests. Report `HoneycombGeometryTests` / `RadialGeometryHitTestTests` results when those paths change. |
-| Visual or material behavior | Capture before/after screenshots and check macOS 26 Liquid Glass and macOS 12–25 fallback behavior where those environments are available. Explicitly report any untested branch. |
+| Visual or material behavior | Capture before/after screenshots and check macOS 26 Liquid Glass and macOS 13–25 fallback behavior where those environments are available. Explicitly report any untested branch. |
 | Performance | Compare the affected path against a baseline with `HALO_PERF_LOG=1`; inspect timings in `~/Library/Logs/Halo/halo.log` (for example `refreshSlots`, `adaptiveSpiralLayout`, or `DCE.extract`). |
 | Release | Follow `docs/RELEASE.md`; run `HALO_SIGNING_IDENTITY=… make release` and verify `spctl --assess -vv dist/Halo.app`. |
 

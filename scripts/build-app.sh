@@ -8,7 +8,7 @@
 #   4. Copy executable + Info.plist + Halo.icns
 #   5. Ad-hoc codesign (so Gatekeeper at least lets the user open it once)
 #
-# Output: dist/Halo.app (universal: arm64 + x86_64, macOS 12+)
+# Output: dist/Halo.app (universal: arm64 + x86_64, macOS 13+)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -59,6 +59,17 @@ for lproj in Resources/*.lproj; do
     [ -d "$lproj" ] || continue
     cp -R "$lproj" "$RESOURCES/"
 done
+
+# PermissionFlow's helper-panel strings ship as a SwiftPM resource bundle that
+# it looks up in Contents/Resources at runtime; without it the panel falls
+# back to English. Resources are arch-independent, so the arm64 copy is enough.
+# MIT requires its notice to travel with the binary, so bundle the license too.
+PF_BUNDLE=".build/arm64-apple-macosx/${CONFIG}/PermissionFlow_PermissionFlow.bundle"
+PF_LICENSE=".build/checkouts/PermissionFlow/LICENSE"
+[[ -d "$PF_BUNDLE" ]] || { echo "error: PermissionFlow resource bundle missing at $PF_BUNDLE" >&2; exit 1; }
+[[ -f "$PF_LICENSE" ]] || { echo "error: PermissionFlow LICENSE missing at $PF_LICENSE" >&2; exit 1; }
+cp -R "$PF_BUNDLE" "$RESOURCES/"
+cp "$PF_LICENSE" "$RESOURCES/PermissionFlow-LICENSE.txt"
 
 # Stamp PkgInfo (some Finder paths still read it)
 printf 'APPL????' > "$CONTENTS/PkgInfo"

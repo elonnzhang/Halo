@@ -16,7 +16,7 @@ Post-v1.1.2 on `main`: watchOS-style ALL grid (see [Use](#use) below), `panelSca
 
 ## Install
 
-Requires **macOS 12 (Monterey) or later**. Universal binary (Apple Silicon + Intel). Liquid Glass surfaces light up on macOS 26 (Tahoe); older macOS falls back to `NSVisualEffectView` with the same recipe.
+Requires **macOS 13 (Ventura) or later**. Universal binary (Apple Silicon + Intel). Liquid Glass surfaces light up on macOS 26 (Tahoe); older macOS falls back to `NSVisualEffectView` with the same recipe.
 
 ```sh
 make install           # release build + ad-hoc sign + copy into /Applications
@@ -65,7 +65,7 @@ Click the menu-bar item for keyboard-less summon, profile switching, or Settings
 
 ## Settings (menu bar → Settings…)
 
-Five sections in a native sidebar (`NavigationSplitView` on macOS 13+, custom HStack on macOS 12). Default 880 × 720, min 760 × 600, resizable.
+Five sections in a native sidebar. Default 880 × 720, min 760 × 600, resizable.
 
 - **General** — slot count, summon position, frequency profile, primary chord, double-tap trigger, scroll-wheel toggle, digit-key commit, frontmost-on-summon, ALL profile toggle, panel size, language, autostart, diagnostics export.
 - **Apps** — pin apps to slots via a binding wheel; per-slot popover for identity-colour override. Top pill bar switches between named **profiles** (separate pin sets, sharing all other settings).
@@ -100,7 +100,7 @@ docs/                   Product / interaction / visual / settings specs (Chinese
 
 Halo's core switching needs **no Accessibility permission**. Both trigger paths are passive state queries: Carbon `RegisterEventHotKey` for the primary chord; `CGEventSource.keyState` and `NSEvent.pressedMouseButtons` polling for the double-tap auxiliary. Activation tracking uses `NSWorkspace` notifications. No event taps, accessibility-tree reads, or input monitoring.
 
-Accessibility is requested only when you commit an Action Arc chip that needs it (Fullscreen toggle, custom keyboard shortcut). The chip is dimmed with a yellow indicator until permission is granted.
+Accessibility is requested only when you commit an Action Arc chip that needs it (Fullscreen toggle, custom keyboard shortcut). The chip is dimmed with a yellow indicator until permission is granted. Committing a dimmed chip opens System Settings → Privacy & Security → Accessibility with a floating panel that follows the window — drag Halo from the panel into the list to grant access. The guidance is powered by [PermissionFlow](https://github.com/jaywcjlove/PermissionFlow).
 
 ## Data & privacy
 
@@ -113,3 +113,5 @@ Full storage breakdown, reset and uninstall recipes, perf instrumentation env va
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+Halo bundles [PermissionFlow](https://github.com/jaywcjlove/PermissionFlow) (MIT, © 小弟调调); its license ships inside the app at `Contents/Resources/PermissionFlow-LICENSE.txt`.

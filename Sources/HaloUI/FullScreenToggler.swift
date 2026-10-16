@@ -4,7 +4,7 @@ import HaloCore
 
 /// Read / write the `AXFullScreen` attribute on a target app's focused
 /// window. Requires Accessibility trust; callers must check
-/// `AXPermissionGate.isTrusted` first and surface the trust prompt
+/// `AXPermissionGate.isTrusted` first and start the authorization flow
 /// themselves when needed (we don't want this util to side-effect prompts
 /// during a render snapshot).
 ///

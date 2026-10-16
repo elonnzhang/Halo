@@ -29,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let switcher = Switcher.live()
     private let actionExecutor = ActionExecutor.live()
     private let arcExecutor = ArcExecutor.live()
+    private let accessibilityGuide = AccessibilityGuide()
 
     private var keyMonitor: Any?
     private var flagsMonitor: Any?
@@ -690,20 +691,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Execute the chip at `chipIdx`. Callers must have verified the index
     /// is in-bounds. Empty custom chip routes to Settings → Actions;
-    /// AX-gated fullscreen chip (without permission) triggers the system
-    /// trust prompt instead of executing.
+    /// AX-gated fullscreen chip (without permission) starts the
+    /// Accessibility authorization guide instead of executing.
     private func commitArcChip(_ chipIdx: Int, arc: ActiveArc) {
         let chip = arc.chips[chipIdx]
 
-        // AX gate: if the chip needs AX and we don't have it, ask. Fire
-        // the trust prompt FIRST, then dismiss Halo — otherwise we
-        // re-activate the previous frontmost app, and the system's
-        // Accessibility prompt sometimes mis-attributes to that app
-        // rather than to Halo.
+        // AX gate: if the chip needs AX and we don't have it, guide the user
+        // to grant it. Restore the previous frontmost app first; the guide
+        // opens System Settings once that focus change has settled, so its
+        // close button can hand focus back to that app instead of to Halo.
         if case .builtin(let kind) = chip, kind.requiresAX, !AXPermissionGate.isTrusted {
-            AXPermissionGate.requestTrust(prompt: true)
             state.hideArc()
             window.dismiss(animated: true, restorePreviousFront: true)
+            accessibilityGuide.present(languageOverride: prefs.appLanguageOverride)
             return
         }
 

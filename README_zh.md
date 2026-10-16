@@ -17,7 +17,7 @@ v1.1.2 之后在 `main` 上的更新：watchOS 风格的 ALL 网格（见下文 
 
 ## 安装
 
-需要 **macOS 12（Monterey）及以上**。通用二进制（Apple Silicon + Intel）。Liquid Glass 表面在 macOS 26（Tahoe）点亮，更早的 macOS 自动回退到 `NSVisualEffectView`，视觉配方保持一致。
+需要 **macOS 13（Ventura）及以上**。通用二进制（Apple Silicon + Intel）。Liquid Glass 表面在 macOS 26（Tahoe）点亮，更早的 macOS 自动回退到 `NSVisualEffectView`，视觉配方保持一致。
 
 ```sh
 make install           # release 构建 + ad-hoc 签名 + 拷贝到 /Applications
@@ -66,7 +66,7 @@ watchOS 风格的全屏蜂窝网格，把全部安装的应用平铺出来 —�
 
 ## 设置（菜单栏 → 设置…）
 
-五个标签，原生侧栏布局（macOS 13+ 用 `NavigationSplitView`，macOS 12 自建 HStack 回退）。默认 880 × 720，最小 760 × 600，可缩放。
+五个标签，原生侧栏布局。默认 880 × 720，最小 760 × 600，可缩放。
 
 - **通用** —— 槽位数量、召唤位置、频率模型、主热键、双击辅助键、滚轮切换、数字键提交、召唤时高亮当前应用、ALL profile 开关、面板大小、语言、自启、导出日志。
 - **Apps** —— 用绑定轮盘把应用钉到槽位；每个槽位弹窗内可改身份色或取消 pin。顶部 pill bar 在多个 **profile**（独立 pin 集合，其它设置共享）之间切换。
@@ -101,7 +101,7 @@ docs/                   产品 / 交互 / 视觉 / 设置规格（中文）
 
 Halo 核心切换 **不需要辅助功能权限**。两条触发路径都是被动状态查询：Carbon `RegisterEventHotKey` 主热键；`CGEventSource.keyState` + `NSEvent.pressedMouseButtons` 轮询双击辅助键。激活追踪走 `NSWorkspace` 通知。无 event tap、不读辅助功能树、无输入监控。
 
-仅当你触发了需要权限的 Action Arc chip（Fullscreen toggle、自定义键盘快捷键）时才会请求辅助功能。未授权时 chip 会变暗显示黄色提示。
+仅当你触发了需要权限的 Action Arc chip（Fullscreen toggle、自定义键盘快捷键）时才会请求辅助功能。未授权时 chip 会变暗显示黄色提示。触发变暗的 chip 会打开「系统设置 → 隐私与安全性 → 辅助功能」，并在窗口旁浮出一个跟随窗口的小面板——把面板里的 Halo 拖进列表即可授权。该引导由 [PermissionFlow](https://github.com/jaywcjlove/PermissionFlow) 提供。
 
 ## 数据与隐私
 
@@ -114,3 +114,5 @@ Halo **完全在本地运行**。无网络请求、无遥测、无分析。「�
 ## 许可
 
 MIT —— 见 [LICENSE](LICENSE)。
+
+Halo 内置 [PermissionFlow](https://github.com/jaywcjlove/PermissionFlow)（MIT，© 小弟调调）；其许可证随应用分发，位于 `Contents/Resources/PermissionFlow-LICENSE.txt`。

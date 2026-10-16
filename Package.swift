@@ -3,11 +3,14 @@ import PackageDescription
 
 let package = Package(
     name: "Halo",
-    platforms: [.macOS(.v12)],
+    platforms: [.macOS(.v13)],
     products: [
         .executable(name: "Halo", targets: ["HaloApp"]),
         .library(name: "HaloCore", targets: ["HaloCore"]),
         .library(name: "HaloUI", targets: ["HaloUI"]),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/jaywcjlove/PermissionFlow.git", exact: "2.11.3"),
     ],
     targets: [
         .target(
@@ -21,7 +24,11 @@ let package = Package(
         ),
         .executableTarget(
             name: "HaloApp",
-            dependencies: ["HaloCore", "HaloUI"],
+            dependencies: [
+                "HaloCore",
+                "HaloUI",
+                .product(name: "PermissionFlow", package: "PermissionFlow"),
+            ],
             path: "Sources/HaloApp",
             resources: [.process("Resources")]
         ),
