@@ -1,9 +1,9 @@
 import AppKit
 import SwiftUI
 
-/// A shared native segmented control for the General groups and Apps
-/// profiles. Explicit fill distribution keeps each segment's gesture region
-/// aligned with its label, including the profile drag/rename overlays.
+/// Native segmented control for the General page's three groups. Explicit
+/// equal-width distribution keeps the segments uniform. Not suited to
+/// user-created lists (the Apps profiles) — those wrap instead of scrolling.
 struct SettingsSegmentedTabs: NSViewRepresentable {
     let labels: [String]
     let selectedIndex: Int
@@ -46,8 +46,8 @@ struct SettingsSegmentedTabs: NSViewRepresentable {
     }
 }
 
-/// Both settings pages use the same pinned, centred top row. Profile
-/// management lives below it so adding profiles never shifts the tabs.
+/// The General page's pinned, centred top row, kept outside the scrolling
+/// form so switching groups never moves the tabs.
 struct SettingsTabsHeader<Content: View>: View {
     @ViewBuilder let content: () -> Content
 

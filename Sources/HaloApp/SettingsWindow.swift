@@ -257,19 +257,20 @@ struct AppsTab: View {
     @State private var confirmingClear = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            sceneChipRow
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    heroCard
-                    if !prefs.overflowPinnedBundleIDs.isEmpty {
-                        hiddenPinsCard
-                    }
+        // The scene switcher scrolls with the page: its chips wrap onto as
+        // many rows as the profiles need, so nothing is hidden behind a
+        // horizontal scroll and no strip has to stay pinned above the hero.
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                sceneChipRow
+                heroCard
+                if !prefs.overflowPinnedBundleIDs.isEmpty {
+                    hiddenPinsCard
                 }
-                .padding(.horizontal, 24)
-                .padding(.vertical, 20)
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .alert("Clear all pinned apps?", isPresented: $confirmingClear) {
             Button("Cancel", role: .cancel) {}
@@ -283,10 +284,8 @@ struct AppsTab: View {
 
     // MARK: - Scene chip row
 
-    /// Top strip: the scene switcher. `ProfileBar` renders the pills, the
-    /// left-aligned "Show ALL" tab, and the trailing count — Show ALL lives
-    /// there (not on the panel's trailing edge) so it stays beside the pills
-    /// as the window narrows.
+    /// The scene switcher. `ProfileBar` renders the wrapping chips, the
+    /// profile count, the "Show ALL" switch and the manage menu.
     private var sceneChipRow: some View {
         ProfileBar(prefs: prefs)
     }
@@ -349,11 +348,13 @@ struct AppsTab: View {
     }
 
     /// Left column of the hero: scene identity + the three per-profile
-    /// knobs, each under its own uppercase caption.
+    /// knobs, each under its own uppercase caption, and how to switch
+    /// scenes while Halo is up. Each picker keeps its caption as its
+    /// accessible name while `labelsHidden` hides the duplicate label.
     private var heroControls: some View {
         VStack(alignment: .leading, spacing: 16) {
             controlGroup("Slot count") {
-                Picker("", selection: Binding(
+                Picker("Slot count", selection: Binding(
                     get: { prefs.slotCount },
                     set: { prefs.slotCount = $0 }
                 )) {
@@ -369,7 +370,7 @@ struct AppsTab: View {
             }
 
             controlGroup("Ranking") {
-                Picker("", selection: Binding(
+                Picker("Ranking", selection: Binding(
                     get: { prefs.frequencyProfile },
                     set: { prefs.frequencyProfile = $0 }
                 )) {
@@ -381,6 +382,11 @@ struct AppsTab: View {
                 .pickerStyle(.segmented)
                 .fixedSize()
             }
+
+            Text("Each profile remembers its own slot count, tint, and ranking. Tab / ⇧Tab during summon switches profiles.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

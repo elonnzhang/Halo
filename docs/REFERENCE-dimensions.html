@@ -442,11 +442,12 @@ SVG 示意图按真实比例绘制（基于默认值）。当用户改了 Wheel 
 <table>
 <thead><tr><th>项目</th><th>值</th><th>出处</th></tr></thead>
 <tbody>
-<tr><td>pill 间距</td><td class="num">6 pt</td><td class="path">ProfileBar.swift:37</td></tr>
-<tr><td>颜色点</td><td class="num">Ø 6</td><td class="path">ProfileBar.swift:129</td></tr>
-<tr><td>pill 内 padding</td><td class="num">h 10 / v 4，圆角 7</td><td class="path">ProfileBar.swift:85/154</td></tr>
-<tr><td>"+" 按钮</td><td class="num">22 × 22, 圆角 6, dash [3,3]</td><td class="path">ProfileBar.swift:230–233</td></tr>
-<tr><td>新建 sheet 宽度</td><td class="num">340</td><td class="path">ProfileBar.swift:269</td></tr>
+<tr><td>chip 间距 / 行距（自动换行）</td><td class="num">8 pt / 8 pt</td><td class="path">ProfileBar.swift:42</td></tr>
+<tr><td>颜色点</td><td class="num">Ø 8</td><td class="path">ProfileBar.swift:406</td></tr>
+<tr><td>chip 尺寸</td><td class="num">高 28，h padding 12，最宽 176，胶囊（circular）</td><td class="path">ProfileBar.swift:413–415</td></tr>
+<tr><td>"＋ 新建" chip</td><td class="num">高 28，h padding 12，虚线 [3,3] 0.75pt</td><td class="path">ProfileBar.swift:280–284</td></tr>
+<tr><td>重命名输入框</td><td class="num">148 × 28，accent 描边 1.5pt</td><td class="path">ProfileBar.swift:197</td></tr>
+<tr><td>新建 sheet 宽度</td><td class="num">340</td><td class="path">ProfileBar.swift:321</td></tr>
 </tbody>
 </table>
 
@@ -546,11 +547,11 @@ SVG 示意图按真实比例绘制（基于默认值）。当用户改了 Wheel 
 <table>
 <thead><tr><th>面板</th><th>尺寸</th><th>说明</th><th>出处</th></tr></thead>
 <tbody>
-<tr><td>HaloWindow（Wheel）</td><td class="num">scaledTotalDiameter × scaledTotalDiameter<br><span class="badge">默认 660 × 660</span></td><td>承载 RadialView 的 NSPanel，圆形可见盘居中</td><td class="path">HaloWindow.swift:30</td></tr>
-<tr><td>HaloGridWindow（ALL）</td><td class="num">screen.frame.width × (visible.maxY − frame.minY)</td><td>覆盖 Dock 但避开顶部菜单栏</td><td class="path">HaloGridWindow.swift:84–89</td></tr>
-<tr><td>Ripple panel</td><td class="num">1200 × 1200</td><td>commit 涟漪；endRadius 300（缩放 280/600→1.0）</td><td class="path">HaloWindow.swift:228 / RippleView.swift:9,25</td></tr>
-<tr><td>Settings 窗口</td><td class="num">880 × 720<br>最小 760 × 600</td><td>NavigationSplitView</td><td class="path">SettingsWindow.swift:21,33</td></tr>
-<tr><td>PinPicker 窗口</td><td class="num">480 × 520</td><td>commit 到空 slot 时弹出</td><td class="path">PinPickerWindow.swift:18</td></tr>
+<tr><td>HaloWindow（Wheel）</td><td class="num">scaledTotalDiameter × scaledTotalDiameter<br><span class="badge">默认 660 × 660</span></td><td>承载 RadialView 的 NSPanel，圆形可见盘居中</td><td class="path">HaloWindow.swift:40</td></tr>
+<tr><td>HaloGridWindow（ALL）</td><td class="num">screen.frame.width × (visible.maxY − frame.minY)</td><td>覆盖 Dock 但避开顶部菜单栏</td><td class="path">HaloGridWindow.swift:97–102</td></tr>
+<tr><td>Ripple panel</td><td class="num">1200 × 1200</td><td>commit 涟漪；endRadius 300（缩放 280/600→1.0）</td><td class="path">HaloWindow.swift:245 / RippleView.swift:9,25</td></tr>
+<tr><td>Settings 窗口</td><td class="num">960 × 760<br>最小 900 × 640</td><td>NavigationSplitView</td><td class="path">SettingsWindow.swift:20,39</td></tr>
+<tr><td>PinPicker 窗口</td><td class="num">560 × 640</td><td>commit 到空 slot 时弹出</td><td class="path">PinPickerWindow.swift:18</td></tr>
 <tr><td>WelcomeOverlay 面板</td><td class="num">screen.frame（全屏）</td><td>首次启动引导</td><td class="path">WelcomeWindow.swift:53</td></tr>
 <tr><td>OnboardingChip</td><td class="num">chip 320 × 76<br>外 panel 420 × 176（chip + 50 margin × 2）</td><td>首次 summon 后的浮动提示</td><td class="path">OnboardingOverlay.swift:44–49</td></tr>
 <tr><td>BindingWheelView（Settings 内）</td><td class="num">diameter 280, hub 78, frame 340 × 340</td><td>Settings 里的 mini wheel，等比缩小但同公式</td><td class="path">BindingWheelView.swift:29–32,54</td></tr>
@@ -574,7 +575,7 @@ SVG 示意图按真实比例绘制（基于默认值）。当用户改了 Wheel 
 <tr><td>Label chip 投影</td><td class="num">α0.38, blur 10, y 5</td><td class="path">RadialView.swift:722</td></tr>
 <tr><td>Arc chip 投影</td><td class="num">blur 9, y 4 (dark α0.55 / light α0.20)</td><td class="path">ActionArcView.swift:76/241</td></tr>
 <tr><td>Arc chip hover 光晕</td><td class="num">accent α0.55, blur 18</td><td class="path">ActionArcView.swift:78–79</td></tr>
-<tr><td>Profile pill（Settings）圆角</td><td class="num">7 pt</td><td class="path">ProfileBar.swift:154</td></tr>
+<tr><td>Profile chip（Settings）圆角</td><td class="num">胶囊，半径 = 高 / 2 = 14 pt</td><td class="path">ProfileBar.swift:413–415</td></tr>
 <tr><td>Grid 搜索 chip</td><td class="num">stroke 0.6, blur 10, y 3</td><td class="path">HoneycombGridView.swift:701/703</td></tr>
 <tr><td>Grid icon shadow</td><td class="num">α0.24, blur 5, y 2 (idle) / α0.32, blur 12, y 7 (drag)</td><td class="path">HoneycombGridView.swift:904–908</td></tr>
 <tr><td>BindingWheelView 投影</td><td class="num">α0.20, blur 16, y 6</td><td class="path">BindingWheelView.swift:106</td></tr>

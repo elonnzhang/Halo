@@ -583,6 +583,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // hop into the target app.
         if state.isGridMode {
             HaloLog.summon.debug("commit grid bundleID=\(self.state.gridState.selectedBundleID ?? "nil")")
+            // A launch is already playing its press burst: a second Return
+            // or click must not launch twice now that the burst keeps
+            // `committingBundleID` set through the fade-out.
+            guard state.gridState.committingBundleID == nil else { return }
             guard let bundleID = state.gridState.selectedBundleID else {
                 cancel()
                 return
@@ -592,16 +596,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: 180_000_000)
                 guard let self = self else { return }
-                // If the user cancelled (ESC) during the burst animation
-                // committingBundleID will have been cleared by resetViewport();
+                // If the user cancelled (ESC) or left ALL during the burst
+                // animation, endVisit() will have cleared committingBundleID;
                 // bail so the app doesn't launch after an explicit cancel.
                 guard self.state.gridState.committingBundleID == bundleID else { return }
-                // Reset transient grid state and start the cross-fade.
+                // Start the cross-fade. The grid keeps its layout and the
+                // launch highlight while it fades; the next entry resets it.
                 self.gridWindow.dismiss(animated: true)
                 self.state.isGridMode = false
                 self.state.activeProfileID = self.prefs.activeProfileID
                 self.state.phase = .hidden
-                self.state.gridState.resetViewport()
                 let outcome = self.switcher.switchTo(bundleID: bundleID)
                 if outcome == .failed {
                     HaloLog.switcher.info("grid commit failed bundleID=\(bundleID)")
@@ -760,15 +764,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scrollAccumDelta = 0
         state.scrollAnchor = nil
         state.hideArc()
-        // Grid path: dismiss the full-screen panel, reset transient
-        // grid state, and don't re-summon the wheel (cancel = full
-        // dismiss, the wheel is already orderOut-ed under the grid).
+        // Grid path: dismiss the full-screen panel, stop transient grid
+        // motion, and don't re-summon the wheel (cancel = full dismiss,
+        // the wheel is already orderOut-ed under the grid). The wheel
+        // still holds the app Halo was summoned from, so dismissing it
+        // hands focus back there, as ESC on the wheel does.
         if state.isGridMode {
             state.isGridMode = false
             state.activeProfileID = prefs.activeProfileID
             state.phase = .hidden
-            state.gridState.resetViewport()
+            state.gridState.endVisit()
             gridWindow.dismiss(animated: true)
+            window.dismiss(animated: false, restorePreviousFront: true)
             return
         }
         window.dismiss(animated: true, restorePreviousFront: true)
@@ -824,10 +831,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 return nil
             }
             // Grid mode: route keystrokes to search + arrow nav.
-            // Return / Space commit the icon under the cursor /
-            // keyboard focus. ESC and Tab were handled above.
+            // Return commits the icon under the cursor / keyboard focus;
+            // Space does too until a search is under way, after which it
+            // types (app names have spaces). ESC and Tab were handled above.
             if self.state.isGridMode {
-                if keyCode == 36 || keyCode == 49 || keyCode == 76 {
+                if keyCode == 36 || keyCode == 76
+                    || (keyCode == 49 && self.state.gridState.searchQuery.isEmpty) {
                     self.commitSelection()
                     return nil
                 }
@@ -849,17 +858,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     case 125: delta =  cols                // ↓
                     default: delta = 0
                     }
-                    let next = self.state.gridState.neighbourBundleID(
-                        of: self.state.gridState.selectedBundleID,
-                        delta: delta,
-                        columns: cols
-                    )
-                    self.state.gridState.selectedBundleID = next
-                    // Keyboard selection pans the lens to the app; pointer
-                    // hover selects in place.
-                    if let next, self.state.gridState.style == .lens {
-                        self.state.gridState.lens.centre(on: next)
-                    }
+                    self.stepGridSelection(by: delta, columns: cols)
                     return nil
                 }
                 // Cmd-anything stays a shortcut; don't capture as
@@ -989,6 +988,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return min(13, max(5, raw))
     }
 
+    /// Move the grid selection to the visual neighbour: ±1 horizontally,
+    /// ±columns vertically. Arrow keys and classic wheel notches both step
+    /// through here. Stepping pans the lens to the app; pointer hover
+    /// selects in place.
+    private func stepGridSelection(by delta: Int, columns: Int) {
+        let gs = state.gridState
+        let next = gs.neighbourBundleID(of: gs.selectedBundleID, delta: delta, columns: columns)
+        gs.selectedBundleID = next
+        if let next, gs.style == .lens {
+            gs.lens.centre(on: next)
+        }
+    }
+
     /// Hide the wheel and surface the full-screen honeycomb grid.
     /// Idempotent: a no-op when grid mode is already on.
     ///
@@ -1003,6 +1015,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func enterGridModeBody() {
         guard !state.isGridMode else { return }
+        // Each visit starts centred on the top app with no search. Reset
+        // here rather than on the way out, so the panel fades out showing
+        // what was on screen.
+        state.gridState.resetViewport()
         // Trigger an app scan on first entry. Subsequent entries reuse
         // the cached list so cycle Tab → ALL → Tab → ALL doesn't churn
         // the disk.
@@ -1031,7 +1047,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
             wheelPanel.animator().alphaValue = 0
         }, completionHandler: {
-            Task { @MainActor in
+            Task { @MainActor [weak self] in
+                // A quick Tab back to a wheel profile brings the wheel up
+                // again before this fade ends; ordering it out then would
+                // leave that profile with nothing on screen.
+                if let self, !self.state.isGridMode, self.state.phase != .hidden { return }
                 wheelPanel.orderOut(nil)
                 // Restore alpha so a future re-entry (leaveGridMode →
                 // wheel) doesn't have to reset it before fading in.
@@ -1066,7 +1086,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             wheelPanel.animator().alphaValue = 1
         }
         gridWindow.dismiss(animated: true)
-        state.gridState.resetViewport()
+        state.gridState.endVisit()
         window.resumeCursorTracking()
     }
 
@@ -1228,9 +1248,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 // The lens renderer has no zoom: every scroll pans it,
                 // then it settles on the nearest app.
                 if gs.style == .lens {
-                    let lines: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 8
-                    gs.lens.scroll(by: CGSize(width: event.scrollingDeltaX * lines,
-                                              height: event.scrollingDeltaY * lines))
+                    if event.hasPreciseScrollingDeltas {
+                        gs.lens.scroll(by: CGSize(width: event.scrollingDeltaX,
+                                                  height: event.scrollingDeltaY))
+                        return nil
+                    }
+                    // A classic wheel notch pans a few points, and the settle
+                    // then snaps straight back to the app it left. Step one
+                    // neighbour per notch along the dominant axis instead, in
+                    // the direction a precise scroll would pan.
+                    let dx = event.scrollingDeltaX
+                    let dy = event.scrollingDeltaY
+                    let cols = self.gridColumnsEstimate()
+                    if dy != 0, abs(dy) >= abs(dx) {
+                        self.stepGridSelection(by: dy > 0 ? -cols : cols, columns: cols)
+                    } else if dx != 0 {
+                        self.stepGridSelection(by: dx > 0 ? -1 : 1, columns: cols)
+                    }
                     return nil
                 }
 

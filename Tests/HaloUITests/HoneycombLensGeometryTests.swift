@@ -232,6 +232,24 @@ final class HoneycombLensGeometryTests: XCTestCase {
         XCTAssertTrue(state.lens.endDrag())
     }
 
+    func testArrowCentringDuringAScrollSettle_keepsTheArrowTarget() async throws {
+        let state = GridState()
+        let lens = state.lens
+        let ids = (0..<19).map { "app.\($0)" }
+        lens.sync(ids: ids, metrics: m)
+        // A small scroll leaves a settle pending; an arrow press lands inside it.
+        lens.scroll(by: CGSize(width: 10, height: 0))
+        state.selectedBundleID = "app.5"
+        lens.centre(on: "app.5")
+        try await Task.sleep(nanoseconds: UInt64((HoneycombLensGeometry.settleDelay + 0.15) * 1e9))
+        XCTAssertEqual(state.selectedBundleID, "app.5",
+                       "the scroll settle must not snap back to the app nearest the old pan")
+        lens.advance(at: ProcessInfo.processInfo.systemUptime + 2)
+        XCTAssertEqual(lens.at, lens.cells[5])
+        XCTAssertFalse(lens.isMoving)
+        lens.stop()
+    }
+
     func testResetClearsPan() {
         let state = GridState()
         state.lens.sync(ids: ["a", "b", "c"], metrics: m)

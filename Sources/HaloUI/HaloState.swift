@@ -13,7 +13,11 @@ public final class HaloState: ObservableObject {
         case committing(Int)
     }
 
-    @Published public var phase: Phase = .hidden
+    @Published public var phase: Phase = .hidden {
+        didSet {
+            if phase == .hidden || phase == .idle { inputOwnsSelection = false }
+        }
+    }
     @Published public var slots: [HaloSlot] = []
     /// Currently-summoned Action Arc. When non-nil the RadialView overlays
     /// `ActionArcView` on top of layer 1. See
@@ -124,10 +128,25 @@ public final class HaloState: ObservableObject {
     /// 0.14s sector animation before the cursor poll clears it.
     public var scrollAnchor: Int?
 
+    /// True while the highlighted slot was chosen by the scroll wheel or the
+    /// arrow keys rather than the pointer. The cursor poll re-samples the
+    /// sector under the cursor every frame, so without this a parked cursor
+    /// undoes the slot the user just scrolled to (it clears to idle in the
+    /// hub, or snaps back to the slot under the cursor). It ends when the
+    /// pointer really moves, or when the wheel hides or resets to idle.
+    /// Not @Published — only the poll reads it, nothing renders it.
+    public private(set) var inputOwnsSelection = false
+
+    /// Bumped on every wheel or arrow step so the cursor poll re-measures
+    /// pointer movement from where the cursor was at the latest step.
+    /// Not @Published for the same reason as `inputOwnsSelection`.
+    public private(set) var inputSelectionGeneration: UInt = 0
+
     /// Move the highlighted slot by `delta` (positive = clockwise, in
     /// natural slot-index order), wrapping modulo `slotCount`. Called by
     /// AppDelegate's scrollWheel monitor when Settings → Navigation →
-    /// Scroll to switch slots is on. No-op when Halo is hidden or empty.
+    /// Scroll to switch slots is on, and by the arrow keys. No-op when Halo
+    /// is hidden or empty.
     ///
     /// Anchor priority lives in `SlotCycle.nextIndex` (pure, tested).
     public func advanceSelection(by delta: Int) {
@@ -147,6 +166,8 @@ public final class HaloState: ObservableObject {
         }
         let previous = currentHoverSlot
         phase = .hovering(next)
+        inputOwnsSelection = true
+        inputSelectionGeneration &+= 1
         if previous != next {
             SoundEffectPlayer.shared.play(.slide)
         }
@@ -169,7 +190,16 @@ public final class HaloState: ObservableObject {
         arcHoverChip = nil
     }
 
-    public func updateHover(slot: Int?) {
+    /// - Parameter pointerMoved: pass `false` when the cursor has not moved
+    ///   since the last sample (the 60 Hz poll re-reading a parked cursor).
+    ///   While the wheel or arrow keys own the highlight such a sample is
+    ///   ignored; real pointer movement, the drag gesture, and the default
+    ///   `true` hand the highlight back to the pointer.
+    public func updateHover(slot: Int?, pointerMoved: Bool = true) {
+        if inputOwnsSelection {
+            guard pointerMoved else { return }
+            inputOwnsSelection = false
+        }
         switch (phase, slot) {
         case (.hidden, _):
             return

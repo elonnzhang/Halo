@@ -119,9 +119,13 @@ public final class HoneycombLensModel: ObservableObject {
         }
     }
 
-    /// Keyboard or search selection pans the chosen app to the middle.
+    /// Keyboard or search selection pans the chosen app to the middle. It
+    /// replaces a pending scroll settle, which would otherwise snap back to
+    /// whatever sits nearest the middle and undo the selection.
     public func centre(on bundleID: String) {
         guard !isDragging, let index = ids.firstIndex(of: bundleID), index < cells.count else { return }
+        settleTask?.cancel()
+        settleTask = nil
         glide(to: cells[index])
     }
 
@@ -136,7 +140,9 @@ public final class HoneycombLensModel: ObservableObject {
         settleTask = Task { @MainActor [weak self] in
             do { try await Task.sleep(nanoseconds: UInt64(HoneycombLensGeometry.settleDelay * 1e9)) }
             catch { return }
-            guard let self, !self.isDragging else { return }
+            // A cancel can land after the sleep finished but before this
+            // resumed; it must not clear a newer task or settle over a glide.
+            guard !Task.isCancelled, let self, !self.isDragging else { return }
             self.settleTask = nil
             self.settle(toward: self.at)
             if self.glideTo == nil { self.didComeToRest() }

@@ -24,6 +24,9 @@ public final class HaloGridWindow {
     /// `NSApp.activate(ignoringOtherApps:)` doesn't haul Settings up
     /// with the overlay.
     private var hiddenForSummon: [NSWindow] = []
+    /// Bumped on every summon. A fade-out that finishes after the grid was
+    /// summoned again must not order out the new presentation.
+    private var presentation: UInt = 0
     /// 60 fps cursor poll that drives the hovered-app selection while the
     /// grid is up. SwiftUI `.onHover` inside the borderless panel is
     /// shadowed by the full-frame pan gesture, so we resolve hover the same
@@ -35,11 +38,10 @@ public final class HaloGridWindow {
         self.state = state
         let initialFrame = NSScreen.main?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        // `HaloOverlayPanel` (defined in HaloWindow.swift) forces
-        // `canBecomeKey = true` so a borderless `.nonactivatingPanel`
-        // can still take key focus — the grid needs it for ESC / Tab
-        // delivery.
-        let panel = HaloGridOverlayPanel(
+        // `HaloOverlayPanel` forces `canBecomeKey = true` so a borderless
+        // `.nonactivatingPanel` can still take key focus — the grid needs it
+        // for ESC / Tab delivery.
+        let panel = HaloOverlayPanel(
             contentRect: initialFrame,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -100,14 +102,18 @@ public final class HaloGridWindow {
         )
         panel.setFrame(target, display: true)
 
+        presentation &+= 1
         panel.alphaValue = 0
         panel.orderFrontRegardless()
 
         if #available(macOS 14.0, *) {
             NSApp.activate()
         } else {
+            // Only regular windows (Settings, the pin picker) need hiding.
+            // Restoring panels on dismiss would bring the faded wheel back
+            // after a launch, or a dismissed onboarding chip back for good.
             hiddenForSummon = NSApp.windows.filter {
-                $0 !== panel && $0.isVisible
+                !($0 is NSPanel) && $0.isVisible
             }
             for win in hiddenForSummon { win.orderOut(nil) }
             NSApp.activate(ignoringOtherApps: true)
@@ -152,6 +158,9 @@ public final class HaloGridWindow {
         lastHoverLocation = mouse
         let f = panel.frame
         guard f.contains(mouse) else {
+            // Same pause as `hoverSelect`: while the lens glides to a keyboard
+            // or search pick, a cursor leaving the panel must not replace it.
+            guard !state.gridState.isPointerSelectionPaused else { return }
             // The lens keeps its centred app selected; the flat sheet clears.
             let fallback = state.gridState.style == .lens ? state.gridState.lens.centredID : nil
             if state.gridState.selectedBundleID != fallback {
@@ -176,12 +185,16 @@ public final class HaloGridWindow {
         stopHoverTimer()
         if animated {
             let panel = self.panel
+            let presentation = self.presentation
             NSAnimationContext.runAnimationGroup({ ctx in
                 ctx.duration = 0.16
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
                 panel.animator().alphaValue = 0
             }, completionHandler: {
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
+                    // Tab out of ALL and straight back in: the new summon
+                    // owns the panel now.
+                    guard let self, self.presentation == presentation else { return }
                     panel.orderOut(nil)
                     panel.alphaValue = 1
                 }
@@ -194,12 +207,4 @@ public final class HaloGridWindow {
         for win in hiddenForSummon { win.orderFront(nil) }
         hiddenForSummon.removeAll()
     }
-}
-
-/// Borderless `.nonactivatingPanel` defaults `canBecomeKey` to false. Same
-/// override the wheel uses (`HaloOverlayPanel` in `HaloWindow.swift`); kept
-/// private here so the grid window is self-contained.
-private final class HaloGridOverlayPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
 }

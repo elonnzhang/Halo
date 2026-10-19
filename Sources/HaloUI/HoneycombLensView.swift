@@ -67,7 +67,8 @@ struct HoneycombLensView: View {
                              placement: cell.placement, ringed: selected,
                              lifted: selected && cell.index != middle,
                              ringWidth: lensMetrics.ring,
-                             isCommitting: gridState.committingBundleID == cell.app.bundleID)
+                             isCommitting: gridState.committingBundleID == cell.app.bundleID,
+                             onActivate: { launch(cell.app.bundleID) })
                         .opacity(cell.fade * appear * commitOpacity(for: cell.app.bundleID))
                         .position(cell.placement.center)
                 }
@@ -87,7 +88,12 @@ struct HoneycombLensView: View {
                 lens.reserve(reservation)
             }
             .onChange(of: lensMetrics) { syncModel($0) }
-            .onChange(of: gridState.filteredApps.map(\.bundleID)) { _ in syncModel(lensMetrics) }
+            // Off screen (a first scan landing after the user left ALL) the
+            // rebuild waits for the next entry, which resyncs through `active`.
+            .onChange(of: gridState.filteredApps.map(\.bundleID)) { _ in
+                guard active else { return }
+                syncModel(lensMetrics)
+            }
             .onChange(of: reservation) { lens.reserve($0) }
             // Hover hit-testing (HaloGridWindow) reads the rendered frames.
             .onChange(of: frames) { gridState.cellFrames = $0 }
@@ -155,10 +161,16 @@ struct HoneycombLensView: View {
                       index < lens.ids.count else { return }
                 // Open where it is: centring first could slide the app under
                 // the profile strip, where it can no longer be clicked.
-                lens.stop()
-                gridState.selectedBundleID = lens.ids[index]
-                onCommit()
+                launch(lens.ids[index])
             }
+    }
+
+    /// Click and VoiceOver press share one launch path.
+    private func launch(_ bundleID: String) {
+        guard gridState.committingBundleID == nil else { return }
+        lens.stop()
+        gridState.selectedBundleID = bundleID
+        onCommit()
     }
 }
 
@@ -173,6 +185,8 @@ private struct LensIcon: View {
     let lifted: Bool
     let ringWidth: CGFloat
     let isCommitting: Bool
+    /// VoiceOver's press opens the app, as a click does.
+    let onActivate: () -> Void
     @State private var image: NSImage?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -198,6 +212,7 @@ private struct LensIcon: View {
         .task(id: bundleID) { image = AppIconResolver.icon(for: bundleID) }
         .accessibilityLabel(Text(name))
         .accessibilityAddTraits(.isButton)
+        .accessibilityAction { onActivate() }
     }
 
     /// M = I + (s - 1) u uᵀ about the icon centre, u the radial unit vector.

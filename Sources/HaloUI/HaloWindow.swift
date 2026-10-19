@@ -22,6 +22,7 @@ public final class HaloWindow {
     /// `Task`, so the old task could still perform one hover transition after
     /// the target app had become frontmost.
     private var cursorGeneration: UInt = 0
+    private var pointerGate = PointerReclaimGate()
     private var previousFrontApp: NSRunningApplication?
     private var rippleWindow: NSWindow?
     /// Halo windows other than the Halo panel that were visible at summon
@@ -29,6 +30,10 @@ public final class HaloWindow {
     /// overlay on macOS 12 / 13. macOS 14+ uses the targeted `NSApp.activate()`
     /// instead and leaves this empty. Restored on cancel; cleared on commit.
     private var hiddenForSummon: [NSWindow] = []
+    /// Bumped on every summon. A dismiss fade that finishes after Halo was
+    /// summoned again must neither hide the new wheel nor collapse its
+    /// summon animation back to the hub.
+    private var presentation: UInt = 0
 
     public init(state: HaloState) {
         self.state = state
@@ -129,6 +134,7 @@ public final class HaloWindow {
         state.summonProgress = 0
         state.dismissProgress = 0
 
+        presentation &+= 1
         panel.alphaValue = 0
         panel.orderFrontRegardless()
         // Activate without pulling every Halo window to the front. On
@@ -138,11 +144,13 @@ public final class HaloWindow {
         // only have the older `activate(ignoringOtherApps:)` which raises
         // ALL windows, so on those systems we explicitly order other Halo
         // windows out around the activation and restore them on cancel.
+        // Only regular windows (Settings, the pin picker) are hidden; panels
+        // such as a fading ALL grid stay put, as they do on macOS 14+.
         if #available(macOS 14.0, *) {
             NSApp.activate()
         } else {
             hiddenForSummon = NSApp.windows.filter {
-                $0 !== panel && $0.isVisible
+                !($0 is NSPanel) && $0.isVisible
             }
             for win in hiddenForSummon { win.orderOut(nil) }
             NSApp.activate(ignoringOtherApps: true)
@@ -193,6 +201,7 @@ public final class HaloWindow {
 
         if animated {
             let panel = self.panel
+            let presentation = self.presentation
             // Motion ⑤: SwiftUI-side scale-up + fade-out runs in parallel
             // with the panel's alpha animation. The state-driven curve
             // is the visible part (wheel flies outward 1.00→1.55, opacity
@@ -210,6 +219,7 @@ public final class HaloWindow {
                 // Completion handler is called on main; hop explicitly
                 // so the @MainActor isolation is statically verified.
                 Task { @MainActor in
+                    guard self.presentation == presentation else { return }
                     panel.orderOut(nil)
                     panel.alphaValue = 1
                     // Reset both progress knobs so the next summon
@@ -376,7 +386,14 @@ public final class HaloWindow {
                 outerRadius: outerRadius
             )
         }
-        state.updateHover(slot: index)
+        // A parked cursor must not undo a slot chosen with the wheel or arrow
+        // keys; only real movement hands the highlight back to the pointer.
+        let pointerMoved = pointerGate.pointerMoved(
+            to: mouse,
+            inputOwnsSelection: state.inputOwnsSelection,
+            generation: state.inputSelectionGeneration
+        )
+        state.updateHover(slot: index, pointerMoved: pointerMoved)
     }
 
     // MARK: - Screen helpers
@@ -407,7 +424,7 @@ public final class HaloWindow {
 /// the user keeps Cmd held from the double-tap summon. Forcing the
 /// override (same trick `WelcomeOverlayPanel` uses) lets the panel take
 /// key focus without flipping activation policy or stealing the dock.
-private final class HaloOverlayPanel: NSPanel {
+final class HaloOverlayPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 }

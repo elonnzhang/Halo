@@ -64,10 +64,10 @@ Click the menu-bar item for keyboard-less summon, profile switching, or Settings
 
 ## Settings (menu bar → Settings…)
 
-Five sections in a native sidebar. Default 880 × 720, min 760 × 600, resizable.
+Five sections in a native sidebar. Default 960 × 760, min 900 × 640, resizable.
 
-- **General** — slot count, summon position, frequency profile, primary chord, double-tap trigger, scroll-wheel toggle, digit-key commit, frontmost-on-summon, ALL profile toggle, panel size, language, autostart, diagnostics export.
-- **Apps** — pin apps to slots via a binding wheel; per-slot popover for identity-colour override. Top pill bar switches between named **profiles** (separate pin sets, sharing all other settings).
+- **General** — three tabs. **Controls**: summon position, primary chord, double-tap trigger, scroll-wheel toggle, digit-key commit, frontmost-on-summon. **Appearance**: theme, panel size and wheel layout, ALL grid lens (edge tilt, ellipse ratio, edge fade), sound. **System settings**: autostart, welcome / onboarding replay, diagnostics export, language.
+- **Apps** — pin apps to slots via a binding wheel; per-slot popover for identity-colour override. A row of profile chips at the top (it wraps, so every profile stays visible) switches between named **profiles**; each keeps its own pins, slot count, tint and ranking (MFU / Balanced / MRU), edited beside the wheel. The **Show ALL** switch next to the chips adds the built-in ALL profile.
 - **Actions** — per-app custom chip for the Action Arc (keyboard shortcut / Run Shortcut / AppleScript).
 - **Whitelist** — bundle IDs where Halo's triggers are suppressed (IDEs, design tools, remote desktop, games). "Apply recommended" seeds from installed apps in a curated list.
 - **About** — version, GitHub / License links, runtime metadata, diagnostic-log export.

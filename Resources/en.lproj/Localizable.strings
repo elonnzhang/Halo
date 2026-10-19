@@ -171,6 +171,10 @@
 /* Profile bar — Apps tab (v1.2 multi-profile) */
 "New profile" = "New profile";
 "New profile…" = "New profile…";
+"New" = "New";
+"Name" = "Name";
+"Create" = "Create";
+"Delete" = "Delete";
 "Start from" = "Start from";
 "Blank" = "Blank";
 "Clone of %@" = "Clone of %@";

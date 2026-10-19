@@ -170,6 +170,10 @@
 /* Profile bar — Apps tab (v1.2 多 profile / 场景环) */
 "New profile" = "新建场景";
 "New profile…" = "新建场景…";
+"New" = "新建";
+"Name" = "名称";
+"Create" = "创建";
+"Delete" = "删除";
 "Start from" = "起点";
 "Blank" = "空白";
 "Clone of %@" = "复制 %@";

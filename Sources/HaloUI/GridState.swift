@@ -46,7 +46,7 @@ public final class GridState: ObservableObject {
     /// is treated.
     @Published public var zoomLevel: CGFloat = 1.0
     /// Cumulative drag offset since the grid became visible. Reset on
-    /// `resetViewport()` when leaving grid mode.
+    /// `resetViewport()` when entering grid mode.
     @Published public var panOffset: CGSize = .zero
     /// Presentation motion is transient and scoped to this grid. Pointer
     /// selection pauses while icons move, so hovering cannot retarget springs
@@ -71,7 +71,9 @@ public final class GridState: ObservableObject {
         didSet { invalidateFilteredAppsCache() }
     }
     /// Latches to true on commit so the view can play the launch
-    /// burst before the panel fades. Resets on `resetViewport()`.
+    /// burst before the panel fades, and holds through the fade. Cleared
+    /// by `endVisit()` (which aborts the launch) or the next entry's
+    /// `resetViewport()`.
     @Published public var committingBundleID: String?
     /// Bundle ID currently being dragged in the grid. This is transient
     /// visual state only; persistence for a custom order/folders can be
@@ -97,13 +99,20 @@ public final class GridState: ObservableObject {
     /// updating it every layout doesn't churn the view.
     public var cellFrames: [String: CGRect] = [:]
 
+    /// True while the pointer must not retarget the selection: an icon is
+    /// being dragged, the viewport or lens is moving, or the entry
+    /// animation is still suppressing pointer selection.
+    public var isPointerSelectionPaused: Bool {
+        draggingBundleID != nil || isViewportMoving || pointerSelectionSuppressed
+            || (style == .lens && lens.isMoving)
+    }
+
     /// Resolve the hovered app from a cursor point (view coordinates) and set
     /// it as the selection so the bottom name badge follows the pointer.
     /// Picks the cell whose frame contains the point, else the nearest within
-    /// a small radius. No-op while dragging.
+    /// a small radius. No-op while pointer selection is paused.
     public func hoverSelect(at point: CGPoint, iconSize: CGFloat) {
-        guard draggingBundleID == nil, !isViewportMoving, !pointerSelectionSuppressed,
-              !(style == .lens && lens.isMoving) else { return }
+        guard !isPointerSelectionPaused else { return }
         var best: (id: String, d: CGFloat)?
         for app in filteredApps {
             let id = app.bundleID
@@ -347,7 +356,9 @@ public final class GridState: ObservableObject {
     }
 
     /// Reset transient view state without touching the cached `apps`.
-    /// Called when leaving grid mode so the next entry is fresh.
+    /// Called when entering grid mode (and before a rescan) so each visit
+    /// starts fresh. Leaving calls `endVisit()` instead, so the panel fades
+    /// out still showing what was on screen.
     public func resetViewport() {
         viewportMotion.stop()
         lens.reset()
@@ -357,6 +368,18 @@ public final class GridState: ObservableObject {
         zoomLevel = 1.0
         selectedBundleID = nil
         searchQuery = ""
+        committingBundleID = nil
+        draggingBundleID = nil
+        dropTargetBundleID = nil
+    }
+
+    /// Leaving grid mode without launching: stop motion and drop a pending
+    /// launch or drag, but keep the layout, search and selection so the
+    /// fading panel doesn't empty out. Clearing `committingBundleID` is
+    /// what aborts a launch still waiting on its press burst.
+    public func endVisit() {
+        viewportMotion.stop()
+        lens.stop()
         committingBundleID = nil
         draggingBundleID = nil
         dropTargetBundleID = nil
@@ -419,26 +442,22 @@ public final class GridState: ObservableObject {
     /// responsible for filtering control codes.
     public func appendSearch(_ ch: Character) {
         searchQuery.append(ch)
-        // Selection might no longer match; let the view's onChange
-        // re-seed it to the first filtered match.
-        if let id = selectedBundleID,
-           !filteredApps.contains(where: { $0.bundleID == id }) {
-            selectedBundleID = filteredApps.first?.bundleID
-        } else if selectedBundleID == nil {
-            selectedBundleID = filteredApps.first?.bundleID
-        }
+        reconcileSearchSelection()
     }
 
     /// Pop the last character from the search query; idempotent on empty.
     public func backspaceSearch() {
         guard !searchQuery.isEmpty else { return }
         searchQuery.removeLast()
-        if let id = selectedBundleID,
-           !filteredApps.contains(where: { $0.bundleID == id }) {
-            selectedBundleID = filteredApps.first?.bundleID
-        } else if selectedBundleID == nil {
-            selectedBundleID = filteredApps.first?.bundleID
+        reconcileSearchSelection()
+    }
+
+    private func reconcileSearchSelection() {
+        let filtered = filteredApps
+        if let id = selectedBundleID, filtered.contains(where: { $0.bundleID == id }) {
+            return
         }
+        selectedBundleID = filtered.first?.bundleID
     }
 
     /// Swap two apps in the in-memory catalogue. The order is not
